@@ -1,22 +1,29 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:gym_tracker/main.dart';
+import 'package:gym_tracker/data/database.dart';
+import 'package:gym_tracker/data/providers.dart';
+import 'package:gym_tracker/phone/phone_app.dart';
 
 void main() {
-  testWidgets('Tapping the FAB increments the set count', (tester) async {
+  testWidgets('phone app renders empty workouts state', (tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(home: PhoneHome()),
+      ProviderScope(
+        overrides: [
+          workoutSummariesStreamProvider.overrideWith(
+            (ref) => Stream.value(<WorkoutSummary>[]),
+          ),
+          exercisesStreamProvider.overrideWith(
+            (ref) => Stream.value(<Exercise>[]),
+          ),
+          recentSessionsStreamProvider.overrideWith(
+            (ref) => Stream.value(<Session>[]),
+          ),
+        ],
+        child: const PhoneApp(),
       ),
     );
-
-    expect(find.text('0'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('No workouts yet'), findsOneWidget);
   });
 }

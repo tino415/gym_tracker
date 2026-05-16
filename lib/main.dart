@@ -1,106 +1,58 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wear_plus/wear_plus.dart';
 
-void main() {
-  runApp(const ProviderScope(child: GymTrackerApp()));
-}
+import 'phone/phone_app.dart';
+import 'sync/sync_service.dart';
+import 'watch/watch_app.dart';
 
-class GymTrackerApp extends StatelessWidget {
-  const GymTrackerApp({super.key});
+const _platformChannel = MethodChannel('gym_tracker/platform');
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Gym Tracker',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: defaultTargetPlatform == TargetPlatform.android
-          ? const _WearOrPhoneShell()
-          : const PhoneHome(),
-    );
+Future<bool> _detectIsWatch() async {
+  if (kIsWeb) return false;
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  try {
+    return await _platformChannel.invokeMethod<bool>('isWatch') ?? false;
+  } catch (_) {
+    return false;
   }
 }
 
-class _WearOrPhoneShell extends StatelessWidget {
-  const _WearOrPhoneShell();
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final isWatch = await _detectIsWatch();
+  runApp(ProviderScope(child: GymTrackerRoot(isWatch: isWatch)));
+}
+
+class GymTrackerRoot extends ConsumerWidget {
+  const GymTrackerRoot({super.key, required this.isWatch});
+
+  final bool isWatch;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Eagerly create the sync service so it subscribes to local DB updates
+    // and inbound messages even before any UI route reads it.
+    ref.watch(syncServiceProvider);
+    if (isWatch) return const _WearShell();
+    return const PhoneApp();
+  }
+}
+
+class _WearShell extends StatelessWidget {
+  const _WearShell();
 
   @override
   Widget build(BuildContext context) {
     return WatchShape(
       builder: (context, shape, child) {
-        if (shape == WearShape.round || shape == WearShape.square) {
-          return AmbientMode(
-            builder: (context, mode, child) => WatchHome(ambient: mode == WearMode.ambient),
-          );
-        }
-        return const PhoneHome();
+        return AmbientMode(
+          builder: (context, mode, child) =>
+              WatchApp(ambient: mode == WearMode.ambient),
+        );
       },
-    );
-  }
-}
-
-final _setsProvider = StateProvider<int>((ref) => 0);
-
-class PhoneHome extends ConsumerWidget {
-  const PhoneHome({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sets = ref.watch(_setsProvider);
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('Gym Tracker'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('Sets completed:'),
-            Text('$sets', style: Theme.of(context).textTheme.displayMedium),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => ref.read(_setsProvider.notifier).state++,
-        tooltip: 'Log set',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
-}
-
-class WatchHome extends ConsumerWidget {
-  const WatchHome({super.key, required this.ambient});
-  final bool ambient;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sets = ref.watch(_setsProvider);
-    return Scaffold(
-      backgroundColor: ambient ? Colors.black : Theme.of(context).colorScheme.surface,
-      body: Center(
-        child: GestureDetector(
-          onTap: ambient ? null : () => ref.read(_setsProvider.notifier).state++,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$sets',
-                style: TextStyle(
-                  fontSize: 56,
-                  color: ambient ? Colors.white70 : Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              if (!ambient) const Text('tap to log a set'),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

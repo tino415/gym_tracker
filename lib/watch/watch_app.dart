@@ -1,0 +1,42 @@
+import 'package:flutter/material.dart';
+
+import 'watch_pick_workout_page.dart';
+
+class WatchApp extends StatelessWidget {
+  const WatchApp({super.key, this.ambient = false});
+
+  final bool ambient;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Gym Tracker',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      home: ambient
+          ? const _AmbientFace()
+          : const WatchPickWorkoutPage(),
+    );
+  }
+}
+
+class _AmbientFace extends StatelessWidget {
+  const _AmbientFace();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Center(
+          child: Text(
+            'Gym Tracker',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      ),
+    );
+  }
+}
