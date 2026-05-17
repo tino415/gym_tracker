@@ -20,7 +20,7 @@ class HomeShell extends StatelessWidget {
           NavigationDestination(
             icon: Icon(Icons.fitness_center_outlined),
             selectedIcon: Icon(Icons.fitness_center),
-            label: 'Workouts',
+            label: 'Routines',
           ),
           NavigationDestination(
             icon: Icon(Icons.list_alt_outlined),

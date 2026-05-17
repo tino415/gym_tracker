@@ -1,42 +1,44 @@
 import '../data/database.dart';
 
-const workoutBundleType = 'workout_bundle';
-const sessionCompletedType = 'session_completed';
+const routineBundleType = 'routine_bundle';
+const workoutCompletedType = 'workout_completed';
+const syncRequestType = 'sync_request';
 
-class WorkoutBundleMessage {
-  const WorkoutBundleMessage(this.workouts);
+class RoutineBundleMessage {
+  const RoutineBundleMessage(this.routines);
 
-  final List<WorkoutTemplateDto> workouts;
+  final List<RoutineTemplateDto> routines;
 
   Map<String, Object?> toPayload() => {
-        'workouts': workouts.map((w) => w.toJson()).toList(),
-      };
+    'routines': routines.map((r) => r.toJson()).toList(),
+  };
 
-  static WorkoutBundleMessage fromPayload(Map<String, Object?> json) {
-    final raw = (json['workouts'] as List?)?.cast<Object?>() ?? const [];
+  static RoutineBundleMessage fromPayload(Map<String, Object?> json) {
+    final raw = (json['routines'] as List?)?.cast<Object?>() ?? const [];
     final list = raw
-        .map((m) => WorkoutTemplateDto.fromJson(
-              (m as Map).cast<String, Object?>(),
-            ))
+        .map(
+          (m) =>
+              RoutineTemplateDto.fromJson((m as Map).cast<String, Object?>()),
+        )
         .toList();
-    return WorkoutBundleMessage(list);
+    return RoutineBundleMessage(list);
   }
 }
 
-class SessionCompletedMessage {
-  const SessionCompletedMessage(this.session);
+class WorkoutCompletedMessage {
+  const WorkoutCompletedMessage(this.workout);
 
-  final SessionDto session;
+  final WorkoutDto workout;
 
-  Map<String, Object?> toPayload() => session.toJson();
+  Map<String, Object?> toPayload() => workout.toJson();
 
-  static SessionCompletedMessage fromPayload(Map<String, Object?> json) {
-    return SessionCompletedMessage(SessionDto.fromJson(json));
+  static WorkoutCompletedMessage fromPayload(Map<String, Object?> json) {
+    return WorkoutCompletedMessage(WorkoutDto.fromJson(json));
   }
 }
 
-class WorkoutTemplateDto {
-  WorkoutTemplateDto({
+class RoutineTemplateDto {
+  RoutineTemplateDto({
     required this.syncId,
     required this.name,
     required this.version,
@@ -48,47 +50,48 @@ class WorkoutTemplateDto {
   final String name;
   final int version;
   final int createdAtMs;
-  final List<WorkoutExerciseDto> exercises;
+  final List<RoutineExerciseDto> exercises;
 
   Map<String, Object?> toJson() => {
-        'syncId': syncId,
-        'name': name,
-        'version': version,
-        'createdAtMs': createdAtMs,
-        'exercises': exercises.map((e) => e.toJson()).toList(),
-      };
+    'syncId': syncId,
+    'name': name,
+    'version': version,
+    'createdAtMs': createdAtMs,
+    'exercises': exercises.map((e) => e.toJson()).toList(),
+  };
 
-  factory WorkoutTemplateDto.fromJson(Map<String, Object?> json) {
+  factory RoutineTemplateDto.fromJson(Map<String, Object?> json) {
     final raw = (json['exercises'] as List).cast<Object?>();
-    return WorkoutTemplateDto(
+    return RoutineTemplateDto(
       syncId: json['syncId']! as String,
       name: json['name']! as String,
       version: (json['version']! as num).toInt(),
       createdAtMs: (json['createdAtMs']! as num).toInt(),
       exercises: raw
-          .map((m) => WorkoutExerciseDto.fromJson(
-                (m as Map).cast<String, Object?>(),
-              ))
+          .map(
+            (m) =>
+                RoutineExerciseDto.fromJson((m as Map).cast<String, Object?>()),
+          )
           .toList(),
     );
   }
 
-  static WorkoutTemplateDto fromFullWorkout(FullWorkout full) {
-    return WorkoutTemplateDto(
-      syncId: full.workout.syncId,
-      name: full.workout.name,
-      version: full.workout.version,
-      createdAtMs: full.workout.createdAt.millisecondsSinceEpoch,
+  static RoutineTemplateDto fromFullRoutine(FullRoutine full) {
+    return RoutineTemplateDto(
+      syncId: full.routine.syncId,
+      name: full.routine.name,
+      version: full.routine.version,
+      createdAtMs: full.routine.createdAt.millisecondsSinceEpoch,
       exercises: [
-        for (final we in full.exercises)
-          WorkoutExerciseDto.fromFullExercise(we),
+        for (final re in full.exercises)
+          RoutineExerciseDto.fromFullExercise(re),
       ],
     );
   }
 }
 
-class WorkoutExerciseDto {
-  WorkoutExerciseDto({
+class RoutineExerciseDto {
+  RoutineExerciseDto({
     required this.syncId,
     required this.exerciseSyncId,
     required this.exerciseName,
@@ -105,38 +108,39 @@ class WorkoutExerciseDto {
   final List<PlannedSetDto> plannedSets;
 
   Map<String, Object?> toJson() => {
-        'syncId': syncId,
-        'exerciseSyncId': exerciseSyncId,
-        'exerciseName': exerciseName,
-        'orderIndex': orderIndex,
-        'restSeconds': restSeconds,
-        'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
-      };
+    'syncId': syncId,
+    'exerciseSyncId': exerciseSyncId,
+    'exerciseName': exerciseName,
+    'orderIndex': orderIndex,
+    'restSeconds': restSeconds,
+    'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
+  };
 
-  factory WorkoutExerciseDto.fromJson(Map<String, Object?> json) {
+  factory RoutineExerciseDto.fromJson(Map<String, Object?> json) {
     final raw = (json['plannedSets'] as List).cast<Object?>();
-    return WorkoutExerciseDto(
+    return RoutineExerciseDto(
       syncId: json['syncId']! as String,
       exerciseSyncId: json['exerciseSyncId']! as String,
       exerciseName: json['exerciseName']! as String,
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
       plannedSets: raw
-          .map((m) =>
-              PlannedSetDto.fromJson((m as Map).cast<String, Object?>()))
+          .map(
+            (m) => PlannedSetDto.fromJson((m as Map).cast<String, Object?>()),
+          )
           .toList(),
     );
   }
 
-  static WorkoutExerciseDto fromFullExercise(FullWorkoutExercise we) {
-    return WorkoutExerciseDto(
-      syncId: we.workoutExercise.syncId,
-      exerciseSyncId: we.exercise.syncId,
-      exerciseName: we.exercise.name,
-      orderIndex: we.workoutExercise.orderIndex,
-      restSeconds: we.workoutExercise.restSeconds,
+  static RoutineExerciseDto fromFullExercise(FullRoutineExercise re) {
+    return RoutineExerciseDto(
+      syncId: re.routineExercise.syncId,
+      exerciseSyncId: re.exercise.syncId,
+      exerciseName: re.exercise.name,
+      orderIndex: re.routineExercise.orderIndex,
+      restSeconds: re.routineExercise.restSeconds,
       plannedSets: [
-        for (final s in we.plannedSets) PlannedSetDto.fromPlannedSet(s),
+        for (final s in re.plannedSets) PlannedSetDto.fromPlannedSet(s),
       ],
     );
   }
@@ -156,11 +160,11 @@ class PlannedSetDto {
   final double targetWeightKg;
 
   Map<String, Object?> toJson() => {
-        'syncId': syncId,
-        'setIndex': setIndex,
-        'targetReps': targetReps,
-        'targetWeightKg': targetWeightKg,
-      };
+    'syncId': syncId,
+    'setIndex': setIndex,
+    'targetReps': targetReps,
+    'targetWeightKg': targetWeightKg,
+  };
 
   factory PlannedSetDto.fromJson(Map<String, Object?> json) {
     return PlannedSetDto(
@@ -181,39 +185,41 @@ class PlannedSetDto {
   }
 }
 
-class SessionDto {
-  SessionDto({
+class WorkoutDto {
+  WorkoutDto({
     required this.syncId,
-    required this.workoutSyncId,
+    required this.routineSyncId,
     required this.startedAtMs,
     required this.endedAtMs,
     required this.completions,
   });
 
   final String syncId;
-  final String workoutSyncId;
+  final String routineSyncId;
   final int startedAtMs;
   final int? endedAtMs;
   final List<SetCompletionDto> completions;
 
   Map<String, Object?> toJson() => {
-        'syncId': syncId,
-        'workoutSyncId': workoutSyncId,
-        'startedAtMs': startedAtMs,
-        'endedAtMs': endedAtMs,
-        'completions': completions.map((c) => c.toJson()).toList(),
-      };
+    'syncId': syncId,
+    'routineSyncId': routineSyncId,
+    'startedAtMs': startedAtMs,
+    'endedAtMs': endedAtMs,
+    'completions': completions.map((c) => c.toJson()).toList(),
+  };
 
-  factory SessionDto.fromJson(Map<String, Object?> json) {
+  factory WorkoutDto.fromJson(Map<String, Object?> json) {
     final raw = (json['completions'] as List).cast<Object?>();
-    return SessionDto(
+    return WorkoutDto(
       syncId: json['syncId']! as String,
-      workoutSyncId: json['workoutSyncId']! as String,
+      routineSyncId: json['routineSyncId']! as String,
       startedAtMs: (json['startedAtMs']! as num).toInt(),
       endedAtMs: (json['endedAtMs'] as num?)?.toInt(),
       completions: raw
-          .map((m) =>
-              SetCompletionDto.fromJson((m as Map).cast<String, Object?>()))
+          .map(
+            (m) =>
+                SetCompletionDto.fromJson((m as Map).cast<String, Object?>()),
+          )
           .toList(),
     );
   }
@@ -235,12 +241,12 @@ class SetCompletionDto {
   final int completedAtMs;
 
   Map<String, Object?> toJson() => {
-        'syncId': syncId,
-        'plannedSetSyncId': plannedSetSyncId,
-        'actualReps': actualReps,
-        'actualWeightKg': actualWeightKg,
-        'completedAtMs': completedAtMs,
-      };
+    'syncId': syncId,
+    'plannedSetSyncId': plannedSetSyncId,
+    'actualReps': actualReps,
+    'actualWeightKg': actualWeightKg,
+    'completedAtMs': completedAtMs,
+  };
 
   factory SetCompletionDto.fromJson(Map<String, Object?> json) {
     return SetCompletionDto(

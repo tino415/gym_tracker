@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-class WatchSessionDonePage extends StatelessWidget {
-  const WatchSessionDonePage({super.key, required this.workoutName});
+class WatchWorkoutDonePage extends StatelessWidget {
+  const WatchWorkoutDonePage({super.key, required this.routineName});
 
-  final String workoutName;
+  final String routineName;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,7 @@ class WatchSessionDonePage extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                workoutName,
+                routineName,
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
                 maxLines: 2,

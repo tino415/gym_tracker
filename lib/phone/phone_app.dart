@@ -4,16 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'exercises/exercise_edit_page.dart';
 import 'exercises/exercises_list_page.dart';
 import 'history/history_list_page.dart';
-import 'history/session_detail_page.dart';
+import 'history/workout_detail_page.dart';
 import 'home_shell.dart';
-import 'workouts/workout_edit_page.dart';
-import 'workouts/workouts_list_page.dart';
+import 'routines/routine_edit_page.dart';
+import 'routines/routines_list_page.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
 
 final _router = GoRouter(
   navigatorKey: _rootKey,
-  initialLocation: '/workouts',
+  initialLocation: '/routines',
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
@@ -22,19 +22,19 @@ final _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/workouts',
-              builder: (context, state) => const WorkoutsListPage(),
+              path: '/routines',
+              builder: (context, state) => const RoutinesListPage(),
               routes: [
                 GoRoute(
                   path: 'new',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => const WorkoutEditPage(),
+                  builder: (context, state) => const RoutineEditPage(),
                 ),
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => WorkoutEditPage(
-                    workoutId: int.parse(state.pathParameters['id']!),
+                  builder: (context, state) => RoutineEditPage(
+                    routineId: int.parse(state.pathParameters['id']!),
                   ),
                 ),
               ],
@@ -72,8 +72,8 @@ final _router = GoRouter(
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => SessionDetailPage(
-                    sessionId: int.parse(state.pathParameters['id']!),
+                  builder: (context, state) => WorkoutDetailPage(
+                    workoutId: int.parse(state.pathParameters['id']!),
                   ),
                 ),
               ],

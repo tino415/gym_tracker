@@ -59,9 +59,9 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not save: $e')));
       return;
     }
     if (!mounted) return;
@@ -94,9 +94,9 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       await ref.read(databaseProvider).deleteExercise(_loaded!.id);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not delete: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not delete: $e')));
       return;
     }
     if (!mounted) return;
@@ -106,9 +106,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   @override
   Widget build(BuildContext context) {
     if (_initializing) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final isEdit = _loaded != null;
     return Scaffold(

@@ -3,17 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/database.dart';
 import '../data/providers.dart';
+import '../sync/sync_service.dart';
 import 'watch_run_page.dart';
 
-class WatchPickWorkoutPage extends ConsumerWidget {
-  const WatchPickWorkoutPage({super.key});
+class WatchPickRoutinePage extends ConsumerWidget {
+  const WatchPickRoutinePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final workoutsAsync = ref.watch(workoutSummariesStreamProvider);
+    final routinesAsync = ref.watch(routineSummariesStreamProvider);
     return Scaffold(
       body: SafeArea(
-        child: workoutsAsync.when(
+        child: routinesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(
             child: Padding(
@@ -27,11 +28,33 @@ class WatchPickWorkoutPage extends ConsumerWidget {
             }
             return ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: summaries.length,
+              itemCount: summaries.length + 1,
               itemBuilder: (context, i) {
+                if (i == summaries.length) {
+                  return InkWell(
+                    onTap: () => _sync(context, ref),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 12,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.sync, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Sync',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 final s = summaries[i];
                 return InkWell(
-                  onTap: () => _start(context, ref, s.workout),
+                  onTap: () => _start(context, ref, s.routine),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       vertical: 16,
@@ -41,7 +64,7 @@ class WatchPickWorkoutPage extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          s.workout.name,
+                          s.routine.name,
                           style: Theme.of(context).textTheme.titleMedium,
                           textAlign: TextAlign.center,
                         ),
@@ -67,32 +90,36 @@ class WatchPickWorkoutPage extends ConsumerWidget {
   Future<void> _start(
     BuildContext context,
     WidgetRef ref,
-    Workout workout,
+    Routine routine,
   ) async {
     final db = ref.read(databaseProvider);
-    final full = await db.loadFullWorkout(workout.id);
+    final full = await db.loadFullRoutine(routine.id);
     if (full == null || full.exercises.isEmpty) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout has no exercises')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Routine has no exercises')));
       return;
     }
     final hasSets = full.exercises.any((e) => e.plannedSets.isNotEmpty);
     if (!hasSets) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Workout has no planned sets')),
+        const SnackBar(content: Text('Routine has no planned sets')),
       );
       return;
     }
-    final session = await db.startSession(workout.id);
     if (!context.mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WatchRunPage(workout: full, sessionId: session.id),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => WatchRunPage(routine: full)));
+  }
+
+  Future<void> _sync(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref.read(syncServiceProvider).pushAll();
+    if (!context.mounted) return;
+    messenger.showSnackBar(const SnackBar(content: Text('Sync pushed')));
   }
 }
 
@@ -105,7 +132,7 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'No workouts.\nCreate one on the phone.',
+          'No routines.\nCreate one on the phone.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),

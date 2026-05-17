@@ -23,8 +23,18 @@ Future<bool> _detectIsWatch() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isWatch = await _detectIsWatch();
-  runApp(ProviderScope(child: GymTrackerRoot(isWatch: isWatch)));
+  runApp(
+    ProviderScope(
+      overrides: [isWatchProvider.overrideWithValue(isWatch)],
+      child: GymTrackerRoot(isWatch: isWatch),
+    ),
+  );
 }
+
+/// Whether this build is running on a Wear OS device. Overridden in main.dart
+/// after platform detection; default is false so unit tests pick the phone
+/// branch.
+final isWatchProvider = Provider<bool>((ref) => false);
 
 class GymTrackerRoot extends ConsumerWidget {
   const GymTrackerRoot({super.key, required this.isWatch});

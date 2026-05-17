@@ -28,8 +28,9 @@ class _PlannedSetRowState extends State<PlannedSetRow> {
   @override
   void initState() {
     super.initState();
-    _repsController =
-        TextEditingController(text: widget.plannedSet.targetReps.toString());
+    _repsController = TextEditingController(
+      text: widget.plannedSet.targetReps.toString(),
+    );
     _weightController = TextEditingController(
       text: _formatWeight(widget.plannedSet.targetWeightKg),
     );
@@ -56,9 +57,11 @@ class _PlannedSetRowState extends State<PlannedSetRow> {
   }
 
   void _commit() {
-    final reps = int.tryParse(_repsController.text.trim()) ??
+    final reps =
+        int.tryParse(_repsController.text.trim()) ??
         widget.plannedSet.targetReps;
-    final weight = double.tryParse(_weightController.text.trim()) ??
+    final weight =
+        double.tryParse(_weightController.text.trim()) ??
         widget.plannedSet.targetWeightKg;
     if (reps != widget.plannedSet.targetReps ||
         weight != widget.plannedSet.targetWeightKg) {
@@ -89,10 +92,7 @@ class _PlannedSetRowState extends State<PlannedSetRow> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
               ],
-              decoration: const InputDecoration(
-                labelText: 'kg',
-                isDense: true,
-              ),
+              decoration: const InputDecoration(labelText: 'kg', isDense: true),
               onEditingComplete: _commit,
               onTapOutside: (_) => _commit(),
             ),

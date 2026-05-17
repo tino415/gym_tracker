@@ -3,6 +3,7 @@ package com.otin.gym_tracker
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.MessageClient
@@ -95,6 +96,7 @@ class GymWearBridge(
                 }
                 result.success(null)
             } catch (t: Throwable) {
+                Log.w(TAG, "send($type) failed: ${t.message}")
                 result.error("send_failed", t.message ?: "send failed", null)
             }
         }
@@ -172,6 +174,7 @@ class GymWearBridge(
     }
 
     companion object {
+        private const val TAG = "GymWearBridge"
         private const val METHOD_CHANNEL = "gym_tracker/wear/method"
         private const val EVENT_CHANNEL = "gym_tracker/wear/events"
         private const val PATH = "/gym_tracker/sync"

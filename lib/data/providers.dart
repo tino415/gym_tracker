@@ -12,16 +12,19 @@ final exercisesStreamProvider = StreamProvider<List<Exercise>>((ref) {
   return ref.watch(databaseProvider).watchExercises();
 });
 
-final workoutSummariesStreamProvider =
-    StreamProvider<List<WorkoutSummary>>((ref) {
-  return ref.watch(databaseProvider).watchWorkoutSummaries();
+final routineSummariesStreamProvider = StreamProvider<List<RoutineSummary>>((
+  ref,
+) {
+  return ref.watch(databaseProvider).watchRoutineSummaries();
 });
 
-final fullWorkoutProvider =
-    StreamProvider.family<FullWorkout?, int>((ref, workoutId) {
-  return ref.watch(databaseProvider).watchFullWorkout(workoutId);
+final fullRoutineProvider = StreamProvider.family<FullRoutine?, int>((
+  ref,
+  routineId,
+) {
+  return ref.watch(databaseProvider).watchFullRoutine(routineId);
 });
 
-final recentSessionsStreamProvider = StreamProvider<List<Session>>((ref) {
-  return ref.watch(databaseProvider).watchRecentSessions();
+final recentWorkoutsStreamProvider = StreamProvider<List<Workout>>((ref) {
+  return ref.watch(databaseProvider).watchRecentWorkouts();
 });

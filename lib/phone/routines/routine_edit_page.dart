@@ -6,36 +6,36 @@ import '../../data/database.dart';
 import '../../data/providers.dart';
 import 'planned_set_row.dart';
 
-class WorkoutEditPage extends ConsumerStatefulWidget {
-  const WorkoutEditPage({super.key, this.workoutId});
+class RoutineEditPage extends ConsumerStatefulWidget {
+  const RoutineEditPage({super.key, this.routineId});
 
-  final int? workoutId;
+  final int? routineId;
 
   @override
-  ConsumerState<WorkoutEditPage> createState() => _WorkoutEditPageState();
+  ConsumerState<RoutineEditPage> createState() => _RoutineEditPageState();
 }
 
-class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
+class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
   final _nameController = TextEditingController();
-  int? _workoutId;
+  int? _routineId;
   bool _initializing = true;
 
   @override
   void initState() {
     super.initState();
-    _workoutId = widget.workoutId;
+    _routineId = widget.routineId;
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     final db = ref.read(databaseProvider);
-    if (_workoutId == null) {
-      final w = await db.createWorkout('New workout');
-      _workoutId = w.id;
-      _nameController.text = w.name;
+    if (_routineId == null) {
+      final r = await db.createRoutine('New routine');
+      _routineId = r.id;
+      _nameController.text = r.name;
     } else {
-      final full = await db.loadFullWorkout(_workoutId!);
-      _nameController.text = full?.workout.name ?? '';
+      final full = await db.loadFullRoutine(_routineId!);
+      _nameController.text = full?.routine.name ?? '';
     }
     if (!mounted) return;
     setState(() => _initializing = false);
@@ -49,17 +49,19 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
 
   Future<void> _saveName() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty || _workoutId == null) return;
-    await ref.read(databaseProvider).renameWorkout(_workoutId!, name);
+    if (name.isEmpty || _routineId == null) return;
+    await ref.read(databaseProvider).renameRoutine(_routineId!, name);
   }
 
   Future<void> _delete() async {
-    if (_workoutId == null) return;
+    if (_routineId == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete workout?'),
-        content: Text('Delete "${_nameController.text}" and all of its planned sets?'),
+        title: const Text('Delete routine?'),
+        content: Text(
+          'Delete "${_nameController.text}" and all of its planned sets?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -73,7 +75,7 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(databaseProvider).deleteWorkout(_workoutId!);
+    await ref.read(databaseProvider).deleteRoutine(_routineId!);
     if (!mounted) return;
     context.pop();
   }
@@ -123,15 +125,14 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
       },
     );
     if (picked == null) return;
-    await db.addExerciseToWorkout(
-      workoutId: _workoutId!,
+    await db.addExerciseToRoutine(
+      routineId: _routineId!,
       exerciseId: picked.id,
     );
   }
 
-  Future<void> _editRest(WorkoutExercise we) async {
-    final controller =
-        TextEditingController(text: we.restSeconds.toString());
+  Future<void> _editRest(RoutineExercise re) async {
+    final controller = TextEditingController(text: re.restSeconds.toString());
     final result = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -158,26 +159,24 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
       ),
     );
     if (result != null && result > 0) {
-      await ref.read(databaseProvider).setRestSeconds(we.id, result);
+      await ref.read(databaseProvider).setRestSeconds(re.id, result);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_initializing || _workoutId == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+    if (_initializing || _routineId == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final fullAsync = ref.watch(fullWorkoutProvider(_workoutId!));
+    final fullAsync = ref.watch(fullRoutineProvider(_routineId!));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit workout'),
+        title: const Text('Edit routine'),
         actions: [
           IconButton(
             onPressed: _delete,
             icon: const Icon(Icons.delete_outline),
-            tooltip: 'Delete workout',
+            tooltip: 'Delete routine',
           ),
         ],
       ),
@@ -191,7 +190,7 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (full) {
           if (full == null) {
-            return const Center(child: Text('Workout not found'));
+            return const Center(child: Text('Routine not found'));
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
@@ -211,17 +210,17 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
                   padding: const EdgeInsets.symmetric(vertical: 32),
                   child: Center(
                     child: Text(
-                      'No exercises in this workout yet.',
+                      'No exercises in this routine yet.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.outline,
                       ),
                     ),
                   ),
                 ),
-              for (final we in full.exercises) ...[
+              for (final re in full.exercises) ...[
                 _ExerciseCard(
-                  fullExercise: we,
-                  onRest: () => _editRest(we.workoutExercise),
+                  fullExercise: re,
+                  onRest: () => _editRest(re.routineExercise),
                 ),
                 const SizedBox(height: 16),
               ],
@@ -236,7 +235,7 @@ class _WorkoutEditPageState extends ConsumerState<WorkoutEditPage> {
 class _ExerciseCard extends ConsumerWidget {
   const _ExerciseCard({required this.fullExercise, required this.onRest});
 
-  final FullWorkoutExercise fullExercise;
+  final FullRoutineExercise fullExercise;
   final VoidCallback onRest;
 
   @override
@@ -260,14 +259,14 @@ class _ExerciseCard extends ConsumerWidget {
                   onPressed: onRest,
                   icon: const Icon(Icons.timer_outlined, size: 18),
                   label: Text(
-                    '${fullExercise.workoutExercise.restSeconds}s rest',
+                    '${fullExercise.routineExercise.restSeconds}s rest',
                   ),
                 ),
                 IconButton(
                   onPressed: () =>
-                      db.removeWorkoutExercise(fullExercise.workoutExercise.id),
+                      db.removeRoutineExercise(fullExercise.routineExercise.id),
                   icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove from workout',
+                  tooltip: 'Remove from routine',
                 ),
               ],
             ),
@@ -292,7 +291,7 @@ class _ExerciseCard extends ConsumerWidget {
                 onPressed: () {
                   final last = fullExercise.plannedSets.lastOrNull;
                   db.addPlannedSet(
-                    workoutExerciseId: fullExercise.workoutExercise.id,
+                    routineExerciseId: fullExercise.routineExercise.id,
                     targetReps: last?.targetReps ?? 10,
                     targetWeightKg: last?.targetWeightKg ?? 20,
                   );

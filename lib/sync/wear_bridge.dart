@@ -72,10 +72,10 @@ class WearBridge {
   }) async {
     _ensureBound();
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    await _method.invokeMethod<void>(
-      'send',
-      <String, Object?>{'type': type, 'payload': payload},
-    );
+    await _method.invokeMethod<void>('send', <String, Object?>{
+      'type': type,
+      'payload': payload,
+    });
   }
 
   /// Subscribe to inbound events. Calling this for the first time activates

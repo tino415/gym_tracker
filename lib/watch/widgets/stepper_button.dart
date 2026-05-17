@@ -24,38 +24,43 @@ class StepperValue<T extends num> extends StatelessWidget {
     onChanged(next);
   }
 
+  Future<void> _editTyped(BuildContext context) async {
+    final isInt = value is int;
+    final result = await Navigator.of(context).push<T>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _NumberEntryPage<T>(
+          initial: formatter(value),
+          suffix: suffix,
+          isInt: isInt,
+        ),
+      ),
+    );
+    if (result == null) return;
+    if (min != null && result < min!) return;
+    onChanged(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final label = suffix == null
+        ? formatter(value)
+        : '${formatter(value)} $suffix';
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _RoundButton(
-          icon: Icons.remove,
-          onTap: () => _bump(-1),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                formatter(value),
-                style: theme.textTheme.headlineMedium,
-              ),
-              if (suffix != null)
-                Text(
-                  suffix!,
-                  style: theme.textTheme.bodySmall,
-                ),
-            ],
+        _RoundButton(icon: Icons.remove, onTap: () => _bump(-1)),
+        InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _editTyped(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(label, style: theme.textTheme.titleMedium),
           ),
         ),
-        _RoundButton(
-          icon: Icons.add,
-          onTap: () => _bump(1),
-        ),
+        _RoundButton(icon: Icons.add, onTap: () => _bump(1)),
       ],
     );
   }
@@ -75,12 +80,156 @@ class _RoundButton extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(icon, size: 22),
+        child: SizedBox(width: 36, height: 36, child: Icon(icon, size: 18)),
+      ),
+    );
+  }
+}
+
+/// Custom numpad — Flutter's TextField is broken on Wear OS (the system
+/// IME's batched edit operations don't propagate consistently, so backspace
+/// + multi-digit typing get dropped). This page is fully self-contained:
+/// no system keyboard, no InputConnection, just a string buffer that we
+/// own and that the user mutates by tapping on-screen digits.
+class _NumberEntryPage<T extends num> extends StatefulWidget {
+  const _NumberEntryPage({
+    required this.initial,
+    required this.suffix,
+    required this.isInt,
+  });
+
+  final String initial;
+  final String? suffix;
+  final bool isInt;
+
+  @override
+  State<_NumberEntryPage<T>> createState() => _NumberEntryPageState<T>();
+}
+
+class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
+  late String _buffer;
+  // First digit press clears the pre-filled initial so people can type a
+  // fresh value without having to backspace through it.
+  bool _replaceOnNext = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _buffer = widget.initial;
+  }
+
+  void _onDigit(String d) {
+    setState(() {
+      if (_replaceOnNext) {
+        _buffer = '';
+        _replaceOnNext = false;
+      }
+      if (d == '.') {
+        if (widget.isInt || _buffer.contains('.')) return;
+        _buffer = _buffer.isEmpty ? '0.' : '$_buffer.';
+        return;
+      }
+      _buffer = _buffer == '0' ? d : '$_buffer$d';
+    });
+  }
+
+  T? _parse() {
+    if (_buffer.isEmpty) return null;
+    if (widget.isInt) return int.tryParse(_buffer) as T?;
+    return double.tryParse(_buffer) as T?;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shown = _buffer.isEmpty ? '0' : _buffer;
+    final display = widget.suffix == null ? shown : '$shown ${widget.suffix}';
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 40,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(display, style: theme.textTheme.headlineSmall),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _Numpad(isInt: widget.isInt, onDigit: _onDigit),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _buffer.isEmpty
+                      ? null
+                      : () => Navigator.of(context).pop<T>(_parse()),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(30),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: const Text('OK'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _Numpad extends StatelessWidget {
+  const _Numpad({required this.isInt, required this.onDigit});
+
+  final bool isInt;
+  final void Function(String) onDigit;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget key(String label, {VoidCallback? onTap}) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onTap,
+            child: Center(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Widget digit(String d) => key(d, onTap: () => onDigit(d));
+    final dot = isInt
+        ? const Expanded(child: SizedBox.shrink())
+        : key('.', onTap: () => onDigit('.'));
+    return Column(
+      children: [
+        Expanded(child: Row(children: [digit('1'), digit('2'), digit('3')])),
+        Expanded(child: Row(children: [digit('4'), digit('5'), digit('6')])),
+        Expanded(child: Row(children: [digit('7'), digit('8'), digit('9')])),
+        Expanded(
+          child: Row(
+            children: [
+              dot,
+              digit('0'),
+              const Expanded(child: SizedBox.shrink()),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

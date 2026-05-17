@@ -2,17 +2,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/sync/sync_codec.dart';
 
 void main() {
-  group('WorkoutBundleMessage', () {
+  group('RoutineBundleMessage', () {
     test('round-trips through payload unchanged', () {
-      final bundle = WorkoutBundleMessage([
-        WorkoutTemplateDto(
-          syncId: 'w-1',
+      final bundle = RoutineBundleMessage([
+        RoutineTemplateDto(
+          syncId: 'r-1',
           name: 'Push Day',
           version: 3,
           createdAtMs: 1700000000000,
           exercises: [
-            WorkoutExerciseDto(
-              syncId: 'we-1',
+            RoutineExerciseDto(
+              syncId: 're-1',
               exerciseSyncId: 'ex-1',
               exerciseName: 'Bench Press',
               orderIndex: 0,
@@ -32,8 +32,8 @@ void main() {
                 ),
               ],
             ),
-            WorkoutExerciseDto(
-              syncId: 'we-2',
+            RoutineExerciseDto(
+              syncId: 're-2',
               exerciseSyncId: 'ex-2',
               exerciseName: 'Overhead Press',
               orderIndex: 1,
@@ -44,43 +44,43 @@ void main() {
         ),
       ]);
 
-      final decoded = WorkoutBundleMessage.fromPayload(bundle.toPayload());
+      final decoded = RoutineBundleMessage.fromPayload(bundle.toPayload());
 
-      expect(decoded.workouts, hasLength(1));
-      final w = decoded.workouts.single;
-      expect(w.syncId, 'w-1');
-      expect(w.name, 'Push Day');
-      expect(w.version, 3);
-      expect(w.createdAtMs, 1700000000000);
-      expect(w.exercises, hasLength(2));
+      expect(decoded.routines, hasLength(1));
+      final r = decoded.routines.single;
+      expect(r.syncId, 'r-1');
+      expect(r.name, 'Push Day');
+      expect(r.version, 3);
+      expect(r.createdAtMs, 1700000000000);
+      expect(r.exercises, hasLength(2));
 
-      final e1 = w.exercises[0];
-      expect(e1.syncId, 'we-1');
+      final e1 = r.exercises[0];
+      expect(e1.syncId, 're-1');
       expect(e1.exerciseName, 'Bench Press');
       expect(e1.restSeconds, 90);
       expect(e1.plannedSets, hasLength(2));
       expect(e1.plannedSets[0].targetReps, 10);
       expect(e1.plannedSets[1].targetWeightKg, 62.5);
 
-      final e2 = w.exercises[1];
+      final e2 = r.exercises[1];
       expect(e2.exerciseName, 'Overhead Press');
       expect(e2.restSeconds, 120);
       expect(e2.plannedSets, isEmpty);
     });
 
     test('empty bundle round-trips', () {
-      final bundle = WorkoutBundleMessage(const []);
-      final decoded = WorkoutBundleMessage.fromPayload(bundle.toPayload());
-      expect(decoded.workouts, isEmpty);
+      final bundle = RoutineBundleMessage(const []);
+      final decoded = RoutineBundleMessage.fromPayload(bundle.toPayload());
+      expect(decoded.routines, isEmpty);
     });
   });
 
-  group('SessionCompletedMessage', () {
+  group('WorkoutCompletedMessage', () {
     test('round-trips through payload unchanged', () {
-      final msg = SessionCompletedMessage(
-        SessionDto(
-          syncId: 's-1',
-          workoutSyncId: 'w-1',
+      final msg = WorkoutCompletedMessage(
+        WorkoutDto(
+          syncId: 'w-1',
+          routineSyncId: 'r-1',
           startedAtMs: 1700001000000,
           endedAtMs: 1700004000000,
           completions: [
@@ -102,30 +102,30 @@ void main() {
         ),
       );
 
-      final decoded = SessionCompletedMessage.fromPayload(msg.toPayload());
+      final decoded = WorkoutCompletedMessage.fromPayload(msg.toPayload());
 
-      expect(decoded.session.syncId, 's-1');
-      expect(decoded.session.workoutSyncId, 'w-1');
-      expect(decoded.session.startedAtMs, 1700001000000);
-      expect(decoded.session.endedAtMs, 1700004000000);
-      expect(decoded.session.completions, hasLength(2));
-      expect(decoded.session.completions[0].plannedSetSyncId, 'ps-1');
-      expect(decoded.session.completions[1].actualReps, 7);
+      expect(decoded.workout.syncId, 'w-1');
+      expect(decoded.workout.routineSyncId, 'r-1');
+      expect(decoded.workout.startedAtMs, 1700001000000);
+      expect(decoded.workout.endedAtMs, 1700004000000);
+      expect(decoded.workout.completions, hasLength(2));
+      expect(decoded.workout.completions[0].plannedSetSyncId, 'ps-1');
+      expect(decoded.workout.completions[1].actualReps, 7);
     });
 
-    test('preserves null endedAtMs (in-progress session)', () {
-      final msg = SessionCompletedMessage(
-        SessionDto(
-          syncId: 's-2',
-          workoutSyncId: 'w-1',
+    test('preserves null endedAtMs (in-progress workout)', () {
+      final msg = WorkoutCompletedMessage(
+        WorkoutDto(
+          syncId: 'w-2',
+          routineSyncId: 'r-1',
           startedAtMs: 1700001000000,
           endedAtMs: null,
           completions: const [],
         ),
       );
 
-      final decoded = SessionCompletedMessage.fromPayload(msg.toPayload());
-      expect(decoded.session.endedAtMs, isNull);
+      final decoded = WorkoutCompletedMessage.fromPayload(msg.toPayload());
+      expect(decoded.workout.endedAtMs, isNull);
     });
   });
 }

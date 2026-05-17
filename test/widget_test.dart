@@ -5,18 +5,18 @@ import 'package:gym_tracker/data/providers.dart';
 import 'package:gym_tracker/phone/phone_app.dart';
 
 void main() {
-  testWidgets('phone app renders empty workouts state', (tester) async {
+  testWidgets('phone app renders empty routines state', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          workoutSummariesStreamProvider.overrideWith(
-            (ref) => Stream.value(<WorkoutSummary>[]),
+          routineSummariesStreamProvider.overrideWith(
+            (ref) => Stream.value(<RoutineSummary>[]),
           ),
           exercisesStreamProvider.overrideWith(
             (ref) => Stream.value(<Exercise>[]),
           ),
-          recentSessionsStreamProvider.overrideWith(
-            (ref) => Stream.value(<Session>[]),
+          recentWorkoutsStreamProvider.overrideWith(
+            (ref) => Stream.value(<Workout>[]),
           ),
         ],
         child: const PhoneApp(),
@@ -24,6 +24,6 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('No workouts yet'), findsOneWidget);
+    expect(find.text('No routines yet'), findsOneWidget);
   });
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'watch_pick_workout_page.dart';
+import 'watch_pick_routine_page.dart';
 
 class WatchApp extends StatelessWidget {
   const WatchApp({super.key, this.ambient = false});
@@ -15,9 +15,7 @@ class WatchApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: ambient
-          ? const _AmbientFace()
-          : const WatchPickWorkoutPage(),
+      home: ambient ? const _AmbientFace() : const WatchPickRoutinePage(),
     );
   }
 }
@@ -31,10 +29,7 @@ class _AmbientFace extends StatelessWidget {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
-          child: Text(
-            'Gym Tracker',
-            style: TextStyle(color: Colors.white70),
-          ),
+          child: Text('Gym Tracker', style: TextStyle(color: Colors.white70)),
         ),
       ),
     );

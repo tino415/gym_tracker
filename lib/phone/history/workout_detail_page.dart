@@ -4,17 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 
-class SessionDetailPage extends ConsumerStatefulWidget {
-  const SessionDetailPage({super.key, required this.sessionId});
+class WorkoutDetailPage extends ConsumerStatefulWidget {
+  const WorkoutDetailPage({super.key, required this.workoutId});
 
-  final int sessionId;
+  final int workoutId;
 
   @override
-  ConsumerState<SessionDetailPage> createState() => _SessionDetailPageState();
+  ConsumerState<WorkoutDetailPage> createState() => _WorkoutDetailPageState();
 }
 
-class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
-  Session? _session;
+class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
+  Workout? _workout;
   List<SetCompletion> _completions = const [];
   final _exerciseNameCache = <int, String>{};
   bool _loading = true;
@@ -27,28 +27,28 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
 
   Future<void> _load() async {
     final db = ref.read(databaseProvider);
-    final sessions = await db.watchRecentSessions().first;
-    final session = sessions.where((s) => s.id == widget.sessionId).firstOrNull;
-    final completions = await db.completionsForSession(widget.sessionId);
+    final workouts = await db.watchRecentWorkouts().first;
+    final workout = workouts.where((w) => w.id == widget.workoutId).firstOrNull;
+    final completions = await db.completionsForWorkout(widget.workoutId);
     for (final c in completions) {
       if (_exerciseNameCache.containsKey(c.plannedSetId)) continue;
-      final ps = await (db.select(db.plannedSets)
-            ..where((t) => t.id.equals(c.plannedSetId)))
-          .getSingleOrNull();
+      final ps = await (db.select(
+        db.plannedSets,
+      )..where((t) => t.id.equals(c.plannedSetId))).getSingleOrNull();
       if (ps == null) continue;
-      final we = await (db.select(db.workoutExercises)
-            ..where((t) => t.id.equals(ps.workoutExerciseId)))
-          .getSingleOrNull();
-      if (we == null) continue;
-      final ex = await (db.select(db.exercises)
-            ..where((t) => t.id.equals(we.exerciseId)))
-          .getSingleOrNull();
+      final re = await (db.select(
+        db.routineExercises,
+      )..where((t) => t.id.equals(ps.routineExerciseId))).getSingleOrNull();
+      if (re == null) continue;
+      final ex = await (db.select(
+        db.exercises,
+      )..where((t) => t.id.equals(re.exerciseId))).getSingleOrNull();
       if (ex == null) continue;
       _exerciseNameCache[c.plannedSetId] = ex.name;
     }
     if (!mounted) return;
     setState(() {
-      _session = session;
+      _workout = workout;
       _completions = completions;
       _loading = false;
     });
@@ -58,28 +58,28 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Session')),
+        appBar: AppBar(title: const Text('Workout')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    if (_session == null) {
+    if (_workout == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Session')),
-        body: const Center(child: Text('Session not found')),
+        appBar: AppBar(title: const Text('Workout')),
+        body: const Center(child: Text('Workout not found')),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Session')),
+      appBar: AppBar(title: const Text('Workout')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Started: ${_session!.startedAt}',
+            'Started: ${_workout!.startedAt}',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          if (_session!.endedAt != null)
+          if (_workout!.endedAt != null)
             Text(
-              'Ended: ${_session!.endedAt}',
+              'Ended: ${_workout!.endedAt}',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           const SizedBox(height: 16),
