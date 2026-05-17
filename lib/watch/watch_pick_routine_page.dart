@@ -5,6 +5,7 @@ import '../data/database.dart';
 import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import 'watch_run_page.dart';
+import 'widgets/round_safe_area.dart';
 
 class WatchPickRoutinePage extends ConsumerWidget {
   const WatchPickRoutinePage({super.key});
@@ -13,7 +14,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final routinesAsync = ref.watch(routineSummariesStreamProvider);
     return Scaffold(
-      body: SafeArea(
+      body: RoundSafeArea(
         child: routinesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(
@@ -26,8 +27,12 @@ class WatchPickRoutinePage extends ConsumerWidget {
             if (summaries.isEmpty) {
               return const _EmptyState();
             }
+            // On round watches, push the first/last item past the chord so
+            // they aren't clipped at the top/bottom of the screen.
+            final isRound = WatchShapeScope.of(context);
+            final vGap = isRound ? 36.0 : 8.0;
             return ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: EdgeInsets.fromLTRB(16, vGap, 16, vGap),
               itemCount: summaries.length + 1,
               itemBuilder: (context, i) {
                 if (i == summaries.length) {
@@ -67,6 +72,8 @@ class WatchPickRoutinePage extends ConsumerWidget {
                           s.routine.name,
                           style: Theme.of(context).textTheme.titleMedium,
                           textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(

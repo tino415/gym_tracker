@@ -10,6 +10,7 @@ import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import 'superset_nav.dart';
 import 'watch_workout_done_page.dart';
+import 'widgets/round_safe_area.dart';
 import 'widgets/stepper_button.dart';
 
 class WatchRunPage extends ConsumerStatefulWidget {
@@ -452,7 +453,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       },
       child: Scaffold(
         backgroundColor: widget.ambient ? Colors.black : null,
-        body: SafeArea(
+        body: RoundSafeArea(
           child: widget.ambient
               ? _buildAmbient(context)
               : PageView(
@@ -655,7 +656,7 @@ class _RepsSetView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -685,7 +686,11 @@ class _RepsSetView extends StatelessWidget {
             suffix: 'reps',
             onChanged: onRepsChanged,
           ),
-          _doneButton(completed: completed, onTap: onToggleDone),
+          _doneButton(
+            context: context,
+            completed: completed,
+            onTap: onToggleDone,
+          ),
         ],
       ),
     );
@@ -736,8 +741,10 @@ class _TimeSetView extends StatelessWidget {
       fontFeatures: const [FontFeature.tabularFigures()],
       color: secondsRemaining < 0 ? theme.colorScheme.error : null,
     );
+    final isRound = WatchShapeScope.of(context);
+    final hInset = isRound ? 24.0 : 0.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -763,18 +770,25 @@ class _TimeSetView extends StatelessWidget {
             suffix: 'kg',
             onChanged: onWeightChanged,
           ),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onToggleRun,
-              icon: Icon(running ? Icons.pause : Icons.play_arrow, size: 18),
-              label: Text(running ? 'Pause' : 'Start'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(32),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: hInset),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onToggleRun,
+                icon: Icon(running ? Icons.pause : Icons.play_arrow, size: 18),
+                label: Text(running ? 'Pause' : 'Start'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(32),
+                ),
               ),
             ),
           ),
-          _doneButton(completed: completed, onTap: onToggleDone),
+          _doneButton(
+            context: context,
+            completed: completed,
+            onTap: onToggleDone,
+          ),
         ],
       ),
     );
@@ -791,70 +805,88 @@ Widget _setHeader(
   required VoidCallback onPrev,
   required VoidCallback onNext,
 }) {
-  return Row(
-    children: [
-      SizedBox(
-        width: 28,
-        child: IconButton(
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          iconSize: 18,
-          onPressed: hasPrev ? onPrev : null,
-          icon: const Icon(Icons.chevron_left),
-          tooltip: 'Previous set',
+  // The header row sits near the top of the round face; pull the chevrons
+  // inward so they don't fall behind the bezel.
+  final isRound = WatchShapeScope.of(context);
+  final chordInset = isRound ? 24.0 : 0.0;
+  return Padding(
+    padding: EdgeInsets.symmetric(horizontal: chordInset),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 28,
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            iconSize: 18,
+            onPressed: hasPrev ? onPrev : null,
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Previous set',
+          ),
         ),
-      ),
-      Expanded(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              exerciseName,
-              style: Theme.of(context).textTheme.titleSmall,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              'Set ${setIndex + 1}/$totalSets',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                exerciseName,
+                style: Theme.of(context).textTheme.titleSmall,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                'Set ${setIndex + 1}/$totalSets',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
         ),
-      ),
-      SizedBox(
-        width: 28,
-        child: IconButton(
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          iconSize: 18,
-          onPressed: hasNext ? onNext : null,
-          icon: const Icon(Icons.chevron_right),
-          tooltip: 'Next set',
+        SizedBox(
+          width: 28,
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            iconSize: 18,
+            onPressed: hasNext ? onNext : null,
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next set',
+          ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
 }
 
-Widget _doneButton({required bool completed, required VoidCallback onTap}) {
+Widget _doneButton({
+  required BuildContext context,
+  required bool completed,
+  required VoidCallback onTap,
+}) {
   final style = FilledButton.styleFrom(
     minimumSize: const Size.fromHeight(32),
     padding: const EdgeInsets.symmetric(horizontal: 12),
   );
-  return SizedBox(
-    width: double.infinity,
-    child: completed
-        ? FilledButton.tonal(
-            onPressed: onTap,
-            style: style,
-            child: const Text('Done ✓'),
-          )
-        : FilledButton(
-            onPressed: onTap,
-            style: style,
-            child: const Text('Done'),
-          ),
+  // Pill button at the bottom of the round face — pull its ends inside the
+  // bezel chord.
+  final isRound = WatchShapeScope.of(context);
+  final hInset = isRound ? 32.0 : 0.0;
+  return Padding(
+    padding: EdgeInsets.symmetric(horizontal: hInset),
+    child: SizedBox(
+      width: double.infinity,
+      child: completed
+          ? FilledButton.tonal(
+              onPressed: onTap,
+              style: style,
+              child: const Text('Done ✓'),
+            )
+          : FilledButton(
+              onPressed: onTap,
+              style: style,
+              child: const Text('Done'),
+            ),
+    ),
   );
 }
 
@@ -886,8 +918,11 @@ class _RestView extends StatelessWidget {
       color: muted,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
+    // Skip button at the bottom — pull its ends inside the bezel on round.
+    final isRound = WatchShapeScope.of(context);
+    final skipInset = isRound ? 32.0 : 0.0;
     return Padding(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Column(
         children: [
           Text('Rest', style: Theme.of(context).textTheme.bodySmall),
@@ -933,11 +968,14 @@ class _RestView extends StatelessWidget {
           ],
           const Spacer(),
           if (!ambient)
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: onSkip,
-                child: const Text('Skip'),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: skipInset),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: onSkip,
+                  child: const Text('Skip'),
+                ),
               ),
             ),
         ],
@@ -970,16 +1008,25 @@ class _ExerciseListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isRound = WatchShapeScope.of(context);
+    // Top routine name and bottom Start/Finish button live near the bezel
+    // chord; pull them in on round watches.
+    final titleInset = isRound ? 24.0 : 0.0;
+    final actionInset = isRound ? 32.0 : 0.0;
+    final vGap = isRound ? 28.0 : 4.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: vGap),
       child: Column(
         children: [
-          Text(
-            routineName,
-            style: theme.textTheme.titleSmall,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: titleInset),
+            child: Text(
+              routineName,
+              style: theme.textTheme.titleSmall,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           const SizedBox(height: 4),
           Expanded(
@@ -1042,17 +1089,20 @@ class _ExerciseListView extends StatelessWidget {
               },
             ),
           ),
-          SizedBox(
-            width: double.infinity,
-            child: started
-                ? FilledButton(
-                    onPressed: allDone ? onFinish : null,
-                    child: const Text('Finish'),
-                  )
-                : FilledButton(
-                    onPressed: onStart,
-                    child: const Text('Start'),
-                  ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: actionInset),
+            child: SizedBox(
+              width: double.infinity,
+              child: started
+                  ? FilledButton(
+                      onPressed: allDone ? onFinish : null,
+                      child: const Text('Finish'),
+                    )
+                  : FilledButton(
+                      onPressed: onStart,
+                      child: const Text('Start'),
+                    ),
+            ),
           ),
         ],
       ),

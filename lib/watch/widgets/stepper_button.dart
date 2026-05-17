@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'round_safe_area.dart';
+
 class StepperValue<T extends num> extends StatelessWidget {
   const StepperValue({
     super.key,
@@ -144,36 +146,48 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
     final theme = Theme.of(context);
     final shown = _buffer.isEmpty ? '0' : _buffer;
     final display = widget.suffix == null ? shown : '$shown ${widget.suffix}';
+    // The display row at the top and the OK button at the bottom need a
+    // small chord inset on round watches so they don't bleed past the bezel.
+    final isRound = WatchShapeScope.of(context);
+    final topInset = isRound ? 24.0 : 0.0;
+    final bottomInset = isRound ? 32.0 : 0.0;
+    final vGap = isRound ? 20.0 : 4.0;
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: SafeArea(
+      body: RoundSafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: vGap),
           child: Column(
             children: [
-              SizedBox(
-                height: 40,
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(display, style: theme.textTheme.headlineSmall),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: topInset),
+                child: SizedBox(
+                  height: 40,
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(display, style: theme.textTheme.headlineSmall),
+                    ),
                   ),
                 ),
               ),
               Expanded(
                 child: _Numpad(isInt: widget.isInt, onDigit: _onDigit),
               ),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _buffer.isEmpty
-                      ? null
-                      : () => Navigator.of(context).pop<T>(_parse()),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(30),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: bottomInset),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _buffer.isEmpty
+                        ? null
+                        : () => Navigator.of(context).pop<T>(_parse()),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(30),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text('OK'),
                   ),
-                  child: const Text('OK'),
                 ),
               ),
             ],
@@ -215,21 +229,30 @@ class _Numpad extends StatelessWidget {
     final dot = isInt
         ? const Expanded(child: SizedBox.shrink())
         : key('.', onTap: () => onDigit('.'));
-    return Column(
-      children: [
-        Expanded(child: Row(children: [digit('1'), digit('2'), digit('3')])),
-        Expanded(child: Row(children: [digit('4'), digit('5'), digit('6')])),
-        Expanded(child: Row(children: [digit('7'), digit('8'), digit('9')])),
-        Expanded(
-          child: Row(
-            children: [
-              dot,
-              digit('0'),
-              const Expanded(child: SizedBox.shrink()),
-            ],
+    // The keypad's top/bottom rows are the worst-clipped — pull them off the
+    // bezel just enough that the corner keys (3, 9, `.`, blank) fit inside
+    // the inscribed circle. The middle band needs less inset but applying a
+    // uniform value to the whole keypad is fine since the chord-aware padding
+    // is small (~24 px on a 480 px round face).
+    final hInset = WatchShapeScope.of(context) ? 24.0 : 0.0;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: hInset),
+      child: Column(
+        children: [
+          Expanded(child: Row(children: [digit('1'), digit('2'), digit('3')])),
+          Expanded(child: Row(children: [digit('4'), digit('5'), digit('6')])),
+          Expanded(child: Row(children: [digit('7'), digit('8'), digit('9')])),
+          Expanded(
+            child: Row(
+              children: [
+                dot,
+                digit('0'),
+                const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

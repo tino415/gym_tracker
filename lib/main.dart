@@ -7,6 +7,7 @@ import 'package:wear_plus/wear_plus.dart';
 import 'phone/phone_app.dart';
 import 'sync/sync_service.dart';
 import 'watch/watch_app.dart';
+import 'watch/widgets/round_safe_area.dart';
 
 const _platformChannel = MethodChannel('gym_tracker/platform');
 
@@ -58,9 +59,12 @@ class _WearShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return WatchShape(
       builder: (context, shape, child) {
-        return AmbientMode(
-          builder: (context, mode, child) =>
-              WatchApp(ambient: mode == WearMode.ambient),
+        return WatchShapeScope(
+          isRound: shape == WearShape.round,
+          child: AmbientMode(
+            builder: (context, mode, child) =>
+                WatchApp(ambient: mode == WearMode.ambient),
+          ),
         );
       },
     );
