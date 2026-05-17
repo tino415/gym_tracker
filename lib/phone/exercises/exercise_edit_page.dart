@@ -17,6 +17,7 @@ class ExerciseEditPage extends ConsumerStatefulWidget {
 class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  String _kind = exerciseKindReps;
   Exercise? _loaded;
   bool _initializing = true;
 
@@ -37,6 +38,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     setState(() {
       _loaded = found;
       _nameController.text = found?.name ?? '';
+      _kind = found?.kind ?? exerciseKindReps;
       _initializing = false;
     });
   }
@@ -53,9 +55,12 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     final name = _nameController.text.trim();
     try {
       if (_loaded == null) {
-        await db.createExercise(name);
+        await db.createExercise(name, kind: _kind);
       } else {
         await db.renameExercise(_loaded!.id, name);
+        if (_loaded!.kind != _kind) {
+          await db.setExerciseKind(_loaded!.id, _kind);
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -141,6 +146,23 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
                   if (v == null || v.trim().isEmpty) return 'Name is required';
                   return null;
                 },
+              ),
+              const SizedBox(height: 16),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: exerciseKindReps,
+                    label: Text('Reps'),
+                    icon: Icon(Icons.repeat),
+                  ),
+                  ButtonSegment(
+                    value: exerciseKindTime,
+                    label: Text('Time'),
+                    icon: Icon(Icons.timer_outlined),
+                  ),
+                ],
+                selected: {_kind},
+                onSelectionChanged: (s) => setState(() => _kind = s.first),
               ),
               const SizedBox(height: 16),
               FilledButton(onPressed: _save, child: const Text('Save')),

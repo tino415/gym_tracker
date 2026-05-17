@@ -95,24 +95,30 @@ class RoutineExerciseDto {
     required this.syncId,
     required this.exerciseSyncId,
     required this.exerciseName,
+    required this.exerciseKind,
     required this.orderIndex,
     required this.restSeconds,
+    required this.supersetGroup,
     required this.plannedSets,
   });
 
   final String syncId;
   final String exerciseSyncId;
   final String exerciseName;
+  final String exerciseKind;
   final int orderIndex;
   final int restSeconds;
+  final int? supersetGroup;
   final List<PlannedSetDto> plannedSets;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
     'exerciseSyncId': exerciseSyncId,
     'exerciseName': exerciseName,
+    'exerciseKind': exerciseKind,
     'orderIndex': orderIndex,
     'restSeconds': restSeconds,
+    'supersetGroup': supersetGroup,
     'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
   };
 
@@ -122,8 +128,11 @@ class RoutineExerciseDto {
       syncId: json['syncId']! as String,
       exerciseSyncId: json['exerciseSyncId']! as String,
       exerciseName: json['exerciseName']! as String,
+      exerciseKind:
+          (json['exerciseKind'] as String?) ?? exerciseKindReps,
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
+      supersetGroup: (json['supersetGroup'] as num?)?.toInt(),
       plannedSets: raw
           .map(
             (m) => PlannedSetDto.fromJson((m as Map).cast<String, Object?>()),
@@ -137,8 +146,10 @@ class RoutineExerciseDto {
       syncId: re.routineExercise.syncId,
       exerciseSyncId: re.exercise.syncId,
       exerciseName: re.exercise.name,
+      exerciseKind: re.exercise.kind,
       orderIndex: re.routineExercise.orderIndex,
       restSeconds: re.routineExercise.restSeconds,
+      supersetGroup: re.routineExercise.supersetGroup,
       plannedSets: [
         for (final s in re.plannedSets) PlannedSetDto.fromPlannedSet(s),
       ],
@@ -152,26 +163,30 @@ class PlannedSetDto {
     required this.setIndex,
     required this.targetReps,
     required this.targetWeightKg,
+    required this.targetSeconds,
   });
 
   final String syncId;
   final int setIndex;
-  final int targetReps;
-  final double targetWeightKg;
+  final int? targetReps;
+  final double? targetWeightKg;
+  final int? targetSeconds;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
     'setIndex': setIndex,
     'targetReps': targetReps,
     'targetWeightKg': targetWeightKg,
+    'targetSeconds': targetSeconds,
   };
 
   factory PlannedSetDto.fromJson(Map<String, Object?> json) {
     return PlannedSetDto(
       syncId: json['syncId']! as String,
       setIndex: (json['setIndex']! as num).toInt(),
-      targetReps: (json['targetReps']! as num).toInt(),
-      targetWeightKg: (json['targetWeightKg']! as num).toDouble(),
+      targetReps: (json['targetReps'] as num?)?.toInt(),
+      targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble(),
+      targetSeconds: (json['targetSeconds'] as num?)?.toInt(),
     );
   }
 
@@ -181,6 +196,7 @@ class PlannedSetDto {
       setIndex: ps.setIndex,
       targetReps: ps.targetReps,
       targetWeightKg: ps.targetWeightKg,
+      targetSeconds: ps.targetSeconds,
     );
   }
 }
@@ -191,13 +207,17 @@ class WorkoutDto {
     required this.routineSyncId,
     required this.startedAtMs,
     required this.endedAtMs,
+    required this.exercises,
     required this.completions,
   });
 
   final String syncId;
-  final String routineSyncId;
+  /// Routine sync id at the time the workout started. May reference a routine
+  /// that no longer exists on the receiver — workouts are self-contained.
+  final String? routineSyncId;
   final int startedAtMs;
   final int? endedAtMs;
+  final List<WorkoutExerciseDto> exercises;
   final List<SetCompletionDto> completions;
 
   Map<String, Object?> toJson() => {
@@ -205,17 +225,27 @@ class WorkoutDto {
     'routineSyncId': routineSyncId,
     'startedAtMs': startedAtMs,
     'endedAtMs': endedAtMs,
+    'exercises': exercises.map((e) => e.toJson()).toList(),
     'completions': completions.map((c) => c.toJson()).toList(),
   };
 
   factory WorkoutDto.fromJson(Map<String, Object?> json) {
-    final raw = (json['completions'] as List).cast<Object?>();
+    final rawExercises = (json['exercises'] as List?)?.cast<Object?>() ??
+        const [];
+    final rawCompletions =
+        (json['completions'] as List?)?.cast<Object?>() ?? const [];
     return WorkoutDto(
       syncId: json['syncId']! as String,
-      routineSyncId: json['routineSyncId']! as String,
+      routineSyncId: json['routineSyncId'] as String?,
       startedAtMs: (json['startedAtMs']! as num).toInt(),
       endedAtMs: (json['endedAtMs'] as num?)?.toInt(),
-      completions: raw
+      exercises: rawExercises
+          .map(
+            (m) =>
+                WorkoutExerciseDto.fromJson((m as Map).cast<String, Object?>()),
+          )
+          .toList(),
+      completions: rawCompletions
           .map(
             (m) =>
                 SetCompletionDto.fromJson((m as Map).cast<String, Object?>()),
@@ -225,35 +255,124 @@ class WorkoutDto {
   }
 }
 
+class WorkoutExerciseDto {
+  WorkoutExerciseDto({
+    required this.syncId,
+    required this.exerciseSyncId,
+    required this.exerciseName,
+    required this.kind,
+    required this.orderIndex,
+    required this.restSeconds,
+    required this.supersetGroup,
+    required this.sets,
+  });
+
+  final String syncId;
+  final String? exerciseSyncId;
+  final String exerciseName;
+  final String kind;
+  final int orderIndex;
+  final int restSeconds;
+  final int? supersetGroup;
+  final List<WorkoutSetDto> sets;
+
+  Map<String, Object?> toJson() => {
+    'syncId': syncId,
+    'exerciseSyncId': exerciseSyncId,
+    'exerciseName': exerciseName,
+    'kind': kind,
+    'orderIndex': orderIndex,
+    'restSeconds': restSeconds,
+    'supersetGroup': supersetGroup,
+    'sets': sets.map((s) => s.toJson()).toList(),
+  };
+
+  factory WorkoutExerciseDto.fromJson(Map<String, Object?> json) {
+    final raw = (json['sets'] as List?)?.cast<Object?>() ?? const [];
+    return WorkoutExerciseDto(
+      syncId: json['syncId']! as String,
+      exerciseSyncId: json['exerciseSyncId'] as String?,
+      exerciseName: json['exerciseName']! as String,
+      kind: (json['kind'] as String?) ?? exerciseKindReps,
+      orderIndex: (json['orderIndex']! as num).toInt(),
+      restSeconds: (json['restSeconds']! as num).toInt(),
+      supersetGroup: (json['supersetGroup'] as num?)?.toInt(),
+      sets: raw
+          .map(
+            (m) => WorkoutSetDto.fromJson((m as Map).cast<String, Object?>()),
+          )
+          .toList(),
+    );
+  }
+}
+
+class WorkoutSetDto {
+  WorkoutSetDto({
+    required this.syncId,
+    required this.setIndex,
+    required this.targetReps,
+    required this.targetWeightKg,
+    required this.targetSeconds,
+  });
+
+  final String syncId;
+  final int setIndex;
+  final int? targetReps;
+  final double? targetWeightKg;
+  final int? targetSeconds;
+
+  Map<String, Object?> toJson() => {
+    'syncId': syncId,
+    'setIndex': setIndex,
+    'targetReps': targetReps,
+    'targetWeightKg': targetWeightKg,
+    'targetSeconds': targetSeconds,
+  };
+
+  factory WorkoutSetDto.fromJson(Map<String, Object?> json) {
+    return WorkoutSetDto(
+      syncId: json['syncId']! as String,
+      setIndex: (json['setIndex']! as num).toInt(),
+      targetReps: (json['targetReps'] as num?)?.toInt(),
+      targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble(),
+      targetSeconds: (json['targetSeconds'] as num?)?.toInt(),
+    );
+  }
+}
+
 class SetCompletionDto {
   SetCompletionDto({
     required this.syncId,
-    required this.plannedSetSyncId,
+    required this.workoutSetSyncId,
     required this.actualReps,
     required this.actualWeightKg,
+    required this.actualSeconds,
     required this.completedAtMs,
   });
 
   final String syncId;
-  final String plannedSetSyncId;
-  final int actualReps;
-  final double actualWeightKg;
+  final String workoutSetSyncId;
+  final int? actualReps;
+  final double? actualWeightKg;
+  final int? actualSeconds;
   final int completedAtMs;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
-    'plannedSetSyncId': plannedSetSyncId,
+    'workoutSetSyncId': workoutSetSyncId,
     'actualReps': actualReps,
     'actualWeightKg': actualWeightKg,
+    'actualSeconds': actualSeconds,
     'completedAtMs': completedAtMs,
   };
 
   factory SetCompletionDto.fromJson(Map<String, Object?> json) {
     return SetCompletionDto(
       syncId: json['syncId']! as String,
-      plannedSetSyncId: json['plannedSetSyncId']! as String,
-      actualReps: (json['actualReps']! as num).toInt(),
-      actualWeightKg: (json['actualWeightKg']! as num).toDouble(),
+      workoutSetSyncId: json['workoutSetSyncId']! as String,
+      actualReps: (json['actualReps'] as num?)?.toInt(),
+      actualWeightKg: (json['actualWeightKg'] as num?)?.toDouble(),
+      actualSeconds: (json['actualSeconds'] as num?)?.toInt(),
       completedAtMs: (json['completedAtMs']! as num).toInt(),
     );
   }

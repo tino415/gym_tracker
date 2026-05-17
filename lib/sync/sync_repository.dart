@@ -23,14 +23,12 @@ class SyncRepository {
     return result;
   }
 
-  /// Apply an inbound routine bundle to the local DB. Routines already present
-  /// at a >= version are skipped; older or missing ones are upserted (whole
-  /// template replaced, since templates are small).
+  /// Apply an inbound routine bundle to the local DB.
   ///
   /// The bundle is treated as an authoritative snapshot: any local routine
-  /// whose sync_id is not present in the bundle is also removed, along with
-  /// its workout history. This lets a delete on the phone (the routine
-  /// authority) propagate to the watch.
+  /// whose sync_id is not present in the bundle is also removed. Workouts
+  /// no longer depend on routines (their snapshot is self-contained), so the
+  /// drop is a single delete — workouts.routine_id is SET NULL.
   Future<void> applyRoutineBundle(RoutineBundleMessage bundle) async {
     await _db.transaction(() async {
       final received = bundle.routines.map((r) => r.syncId).toSet();
@@ -40,13 +38,9 @@ class SyncRepository {
       final localRoutines = await _db.select(_db.routines).get();
       for (final r in localRoutines) {
         if (received.contains(r.syncId)) continue;
-        // Drop its workouts first — workouts.routine_id is RESTRICT, so a
-        // direct routine delete would fail. Cascade from workouts cleans
-        // out set_completions automatically.
         await (_db.delete(
-          _db.workouts,
-        )..where((t) => t.routineId.equals(r.id))).go();
-        await (_db.delete(_db.routines)..where((t) => t.id.equals(r.id))).go();
+          _db.routines,
+        )..where((t) => t.id.equals(r.id))).go();
       }
     });
   }
@@ -70,10 +64,6 @@ class SyncRepository {
             ),
           );
     } else {
-      // Update in place. Delete-and-reinsert would cascade through
-      // planned_sets into set_completions, which use RESTRICT to preserve
-      // workout history — that cascade fails as soon as any historical
-      // workout references a planned_set on this routine.
       routineId = existing.id;
       await (_db.update(
         _db.routines,
@@ -88,7 +78,7 @@ class SyncRepository {
       );
     }
 
-    // Upsert routine_exercises by sync_id, indexed for fast lookup.
+    // Upsert routine_exercises by sync_id.
     final existingRE = existing == null
         ? <RoutineExercise>[]
         : await (_db.select(
@@ -101,6 +91,7 @@ class SyncRepository {
       final exerciseId = await _findOrCreateExerciseBySyncId(
         syncId: e.exerciseSyncId,
         name: e.exerciseName,
+        kind: e.exerciseKind,
       );
       final int reId;
       final existingForE = existingREBySync[e.syncId];
@@ -114,6 +105,7 @@ class SyncRepository {
                 exerciseId: exerciseId,
                 orderIndex: e.orderIndex,
                 restSeconds: Value(e.restSeconds),
+                supersetGroup: Value(e.supersetGroup),
               ),
             );
       } else {
@@ -125,6 +117,7 @@ class SyncRepository {
             exerciseId: Value(exerciseId),
             orderIndex: Value(e.orderIndex),
             restSeconds: Value(e.restSeconds),
+            supersetGroup: Value(e.supersetGroup),
           ),
         );
       }
@@ -149,8 +142,9 @@ class SyncRepository {
                   syncId: s.syncId,
                   routineExerciseId: reId,
                   setIndex: s.setIndex,
-                  targetReps: s.targetReps,
-                  targetWeightKg: s.targetWeightKg,
+                  targetReps: Value(s.targetReps),
+                  targetWeightKg: Value(s.targetWeightKg),
+                  targetSeconds: Value(s.targetSeconds),
                 ),
               );
           keptPSIds.add(psId);
@@ -162,17 +156,13 @@ class SyncRepository {
               setIndex: Value(s.setIndex),
               targetReps: Value(s.targetReps),
               targetWeightKg: Value(s.targetWeightKg),
+              targetSeconds: Value(s.targetSeconds),
             ),
           );
           keptPSIds.add(existingForS.id);
         }
       }
 
-      // Best-effort prune of planned_sets that the routine no longer has.
-      // RESTRICT on set_completions.planned_set_id will refuse the delete
-      // when historical workouts reference the set — that is intentional;
-      // the stale set stays around so the history page can still resolve
-      // the exercise name.
       for (final ps in existingPS) {
         if (keptPSIds.contains(ps.id)) continue;
         try {
@@ -180,12 +170,12 @@ class SyncRepository {
             _db.plannedSets,
           )..where((t) => t.id.equals(ps.id))).go();
         } catch (_) {
-          // Referenced by a historical completion — leave it in place.
+          // No longer needed (set_completions reference workout_sets, not
+          // planned_sets) but kept defensively in case of orphan rows.
         }
       }
     }
 
-    // Best-effort prune of routine_exercises that the routine no longer has.
     for (final re in existingRE) {
       if (keptREIds.contains(re.id)) continue;
       try {
@@ -193,7 +183,7 @@ class SyncRepository {
           _db.routineExercises,
         )..where((t) => t.id.equals(re.id))).go();
       } catch (_) {
-        // Has planned_sets still referenced by history — leave it in place.
+        // best-effort
       }
     }
   }
@@ -201,13 +191,22 @@ class SyncRepository {
   Future<int> _findOrCreateExerciseBySyncId({
     required String syncId,
     required String name,
+    required String kind,
   }) async {
     final existing = await (_db.select(
       _db.exercises,
     )..where((t) => t.syncId.equals(syncId))).getSingleOrNull();
-    if (existing != null) return existing.id;
-    // Same name may already exist locally with a different syncId — reuse the
-    // local row but keep the syncId stable on our side. Otherwise create new.
+    if (existing != null) {
+      // Keep the canonical kind aligned with the incoming bundle.
+      if (existing.kind != kind) {
+        await (_db.update(
+          _db.exercises,
+        )..where((t) => t.id.equals(existing.id))).write(
+          ExercisesCompanion(kind: Value(kind)),
+        );
+      }
+      return existing.id;
+    }
     final byName = await (_db.select(
       _db.exercises,
     )..where((t) => t.name.equals(name))).getSingleOrNull();
@@ -219,66 +218,119 @@ class SyncRepository {
             syncId: syncId,
             name: name,
             createdAt: DateTime.now(),
+            kind: Value(kind),
           ),
         );
   }
 
-  /// Export one workout (with its completions) to a DTO for outbound sync.
+  /// Export one workout (its snapshot exercises/sets + every completion) for
+  /// outbound sync.
   Future<WorkoutDto?> exportWorkout(int workoutId) async {
     final workout = await (_db.select(
       _db.workouts,
     )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
     if (workout == null) return null;
-    final routine = await (_db.select(
-      _db.routines,
-    )..where((t) => t.id.equals(workout.routineId))).getSingle();
+    String? routineSyncId;
+    if (workout.routineId != null) {
+      final r = await (_db.select(
+        _db.routines,
+      )..where((t) => t.id.equals(workout.routineId!))).getSingleOrNull();
+      routineSyncId = r?.syncId;
+    }
+    final wes = await (_db.select(_db.workoutExercises)
+          ..where((t) => t.workoutId.equals(workoutId))
+          ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+        .get();
+    final exerciseDtos = <WorkoutExerciseDto>[];
+    final workoutSetSyncByLocalId = <int, String>{};
+    for (final we in wes) {
+      String? exerciseSyncId;
+      if (we.exerciseId != null) {
+        final ex = await (_db.select(
+          _db.exercises,
+        )..where((t) => t.id.equals(we.exerciseId!))).getSingleOrNull();
+        exerciseSyncId = ex?.syncId;
+      }
+      final sets = await (_db.select(_db.workoutSets)
+            ..where((t) => t.workoutExerciseId.equals(we.id))
+            ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+          .get();
+      for (final s in sets) {
+        workoutSetSyncByLocalId[s.id] = s.syncId;
+      }
+      exerciseDtos.add(
+        WorkoutExerciseDto(
+          syncId: we.syncId,
+          exerciseSyncId: exerciseSyncId,
+          exerciseName: we.exerciseName,
+          kind: we.kind,
+          orderIndex: we.orderIndex,
+          restSeconds: we.restSeconds,
+          supersetGroup: we.supersetGroup,
+          sets: [
+            for (final s in sets)
+              WorkoutSetDto(
+                syncId: s.syncId,
+                setIndex: s.setIndex,
+                targetReps: s.targetReps,
+                targetWeightKg: s.targetWeightKg,
+                targetSeconds: s.targetSeconds,
+              ),
+          ],
+        ),
+      );
+    }
     final completions = await _db.completionsForWorkout(workoutId);
-    final dtos = <SetCompletionDto>[];
+    final completionDtos = <SetCompletionDto>[];
     for (final c in completions) {
-      final ps = await (_db.select(
-        _db.plannedSets,
-      )..where((t) => t.id.equals(c.plannedSetId))).getSingleOrNull();
-      if (ps == null) continue;
-      dtos.add(
+      final wsSync = workoutSetSyncByLocalId[c.workoutSetId];
+      if (wsSync == null) continue;
+      completionDtos.add(
         SetCompletionDto(
           syncId: c.syncId,
-          plannedSetSyncId: ps.syncId,
+          workoutSetSyncId: wsSync,
           actualReps: c.actualReps,
           actualWeightKg: c.actualWeightKg,
+          actualSeconds: c.actualSeconds,
           completedAtMs: c.completedAt.millisecondsSinceEpoch,
         ),
       );
     }
     return WorkoutDto(
       syncId: workout.syncId,
-      routineSyncId: routine.syncId,
+      routineSyncId: routineSyncId,
       startedAtMs: workout.startedAt.millisecondsSinceEpoch,
       endedAtMs: workout.endedAt?.millisecondsSinceEpoch,
-      completions: dtos,
+      exercises: exerciseDtos,
+      completions: completionDtos,
     );
   }
 
-  /// Apply an inbound workout message. Append-only on syncId — if a workout
-  /// with the same syncId already exists, it is skipped. Completions whose
-  /// plannedSet can't be resolved are dropped (the corresponding routine was
-  /// not synced yet on this device).
+  /// Apply an inbound workout message. Workouts are self-contained — we
+  /// insert their snapshot tables before binding completions. Append-only on
+  /// syncId.
   Future<void> applyWorkoutCompleted(WorkoutCompletedMessage msg) async {
     final dto = msg.workout;
     await _db.transaction(() async {
       final existing = await (_db.select(
         _db.workouts,
       )..where((t) => t.syncId.equals(dto.syncId))).getSingleOrNull();
-      if (existing != null) return;
-      final routine = await (_db.select(
-        _db.routines,
-      )..where((t) => t.syncId.equals(dto.routineSyncId))).getSingleOrNull();
-      if (routine == null) return; // can't link without a template
+      if (existing != null) return; // already have it; skip
+
+      int? routineLocalId;
+      if (dto.routineSyncId != null) {
+        final routine = await (_db.select(
+          _db.routines,
+        )..where((t) => t.syncId.equals(dto.routineSyncId!))).getSingleOrNull();
+        routineLocalId = routine?.id;
+      }
+
       final workoutId = await _db
           .into(_db.workouts)
           .insert(
             WorkoutsCompanion.insert(
               syncId: dto.syncId,
-              routineId: routine.id,
+              routineId: Value(routineLocalId),
               startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
               endedAt: Value(
                 dto.endedAtMs == null
@@ -287,20 +339,60 @@ class SyncRepository {
               ),
             ),
           );
+
+      final workoutSetIdBySync = <String, int>{};
+      for (final e in dto.exercises) {
+        int? exerciseLocalId;
+        if (e.exerciseSyncId != null) {
+          final ex = await (_db.select(
+            _db.exercises,
+          )..where((t) => t.syncId.equals(e.exerciseSyncId!))).getSingleOrNull();
+          exerciseLocalId = ex?.id;
+        }
+        final weId = await _db
+            .into(_db.workoutExercises)
+            .insert(
+              WorkoutExercisesCompanion.insert(
+                syncId: e.syncId,
+                workoutId: workoutId,
+                exerciseId: Value(exerciseLocalId),
+                exerciseName: e.exerciseName,
+                orderIndex: e.orderIndex,
+                restSeconds: Value(e.restSeconds),
+                supersetGroup: Value(e.supersetGroup),
+                kind: Value(e.kind),
+              ),
+            );
+        for (final s in e.sets) {
+          final wsId = await _db
+              .into(_db.workoutSets)
+              .insert(
+                WorkoutSetsCompanion.insert(
+                  syncId: s.syncId,
+                  workoutExerciseId: weId,
+                  setIndex: s.setIndex,
+                  targetReps: Value(s.targetReps),
+                  targetWeightKg: Value(s.targetWeightKg),
+                  targetSeconds: Value(s.targetSeconds),
+                ),
+              );
+          workoutSetIdBySync[s.syncId] = wsId;
+        }
+      }
+
       for (final c in dto.completions) {
-        final ps = await (_db.select(
-          _db.plannedSets,
-        )..where((t) => t.syncId.equals(c.plannedSetSyncId))).getSingleOrNull();
-        if (ps == null) continue;
+        final wsId = workoutSetIdBySync[c.workoutSetSyncId];
+        if (wsId == null) continue;
         await _db
             .into(_db.setCompletions)
             .insert(
               SetCompletionsCompanion.insert(
                 syncId: c.syncId,
                 workoutId: workoutId,
-                plannedSetId: ps.id,
-                actualReps: c.actualReps,
-                actualWeightKg: c.actualWeightKg,
+                workoutSetId: wsId,
+                actualReps: Value(c.actualReps),
+                actualWeightKg: Value(c.actualWeightKg),
+                actualSeconds: Value(c.actualSeconds),
                 completedAt: DateTime.fromMillisecondsSinceEpoch(
                   c.completedAtMs,
                 ),

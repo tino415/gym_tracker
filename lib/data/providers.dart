@@ -28,3 +28,10 @@ final fullRoutineProvider = StreamProvider.family<FullRoutine?, int>((
 final recentWorkoutsStreamProvider = StreamProvider<List<Workout>>((ref) {
   return ref.watch(databaseProvider).watchRecentWorkouts();
 });
+
+final fullWorkoutProvider = StreamProvider.family<FullWorkout?, int>((
+  ref,
+  workoutId,
+) {
+  return ref.watch(databaseProvider).watchFullWorkout(workoutId);
+});
