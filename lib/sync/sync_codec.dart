@@ -209,6 +209,8 @@ class WorkoutDto {
     required this.endedAtMs,
     required this.exercises,
     required this.completions,
+    this.avgHeartRate,
+    this.maxHeartRate,
   });
 
   final String syncId;
@@ -219,6 +221,8 @@ class WorkoutDto {
   final int? endedAtMs;
   final List<WorkoutExerciseDto> exercises;
   final List<SetCompletionDto> completions;
+  final int? avgHeartRate;
+  final int? maxHeartRate;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -227,6 +231,8 @@ class WorkoutDto {
     'endedAtMs': endedAtMs,
     'exercises': exercises.map((e) => e.toJson()).toList(),
     'completions': completions.map((c) => c.toJson()).toList(),
+    'avgHeartRate': avgHeartRate,
+    'maxHeartRate': maxHeartRate,
   };
 
   factory WorkoutDto.fromJson(Map<String, Object?> json) {
@@ -251,6 +257,8 @@ class WorkoutDto {
                 SetCompletionDto.fromJson((m as Map).cast<String, Object?>()),
           )
           .toList(),
+      avgHeartRate: (json['avgHeartRate'] as num?)?.toInt(),
+      maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
     );
   }
 }
@@ -348,6 +356,8 @@ class SetCompletionDto {
     required this.actualWeightKg,
     required this.actualSeconds,
     required this.completedAtMs,
+    this.avgHeartRate,
+    this.maxHeartRate,
   });
 
   final String syncId;
@@ -356,6 +366,8 @@ class SetCompletionDto {
   final double? actualWeightKg;
   final int? actualSeconds;
   final int completedAtMs;
+  final int? avgHeartRate;
+  final int? maxHeartRate;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -364,6 +376,8 @@ class SetCompletionDto {
     'actualWeightKg': actualWeightKg,
     'actualSeconds': actualSeconds,
     'completedAtMs': completedAtMs,
+    'avgHeartRate': avgHeartRate,
+    'maxHeartRate': maxHeartRate,
   };
 
   factory SetCompletionDto.fromJson(Map<String, Object?> json) {
@@ -374,6 +388,8 @@ class SetCompletionDto {
       actualWeightKg: (json['actualWeightKg'] as num?)?.toDouble(),
       actualSeconds: (json['actualSeconds'] as num?)?.toInt(),
       completedAtMs: (json['completedAtMs']! as num).toInt(),
+      avgHeartRate: (json['avgHeartRate'] as num?)?.toInt(),
+      maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
     );
   }
 }

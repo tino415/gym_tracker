@@ -1701,6 +1701,28 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _avgHeartRateMeta = const VerificationMeta(
+    'avgHeartRate',
+  );
+  @override
+  late final GeneratedColumn<int> avgHeartRate = GeneratedColumn<int>(
+    'avg_heart_rate',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxHeartRateMeta = const VerificationMeta(
+    'maxHeartRate',
+  );
+  @override
+  late final GeneratedColumn<int> maxHeartRate = GeneratedColumn<int>(
+    'max_heart_rate',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1708,6 +1730,8 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     routineId,
     startedAt,
     endedAt,
+    avgHeartRate,
+    maxHeartRate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1752,6 +1776,24 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
       );
     }
+    if (data.containsKey('avg_heart_rate')) {
+      context.handle(
+        _avgHeartRateMeta,
+        avgHeartRate.isAcceptableOrUnknown(
+          data['avg_heart_rate']!,
+          _avgHeartRateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_heart_rate')) {
+      context.handle(
+        _maxHeartRateMeta,
+        maxHeartRate.isAcceptableOrUnknown(
+          data['max_heart_rate']!,
+          _maxHeartRateMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1781,6 +1823,14 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}ended_at'],
       ),
+      avgHeartRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}avg_heart_rate'],
+      ),
+      maxHeartRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_heart_rate'],
+      ),
     );
   }
 
@@ -1796,12 +1846,16 @@ class Workout extends DataClass implements Insertable<Workout> {
   final int? routineId;
   final DateTime startedAt;
   final DateTime? endedAt;
+  final int? avgHeartRate;
+  final int? maxHeartRate;
   const Workout({
     required this.id,
     required this.syncId,
     this.routineId,
     required this.startedAt,
     this.endedAt,
+    this.avgHeartRate,
+    this.maxHeartRate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1814,6 +1868,12 @@ class Workout extends DataClass implements Insertable<Workout> {
     map['started_at'] = Variable<DateTime>(startedAt);
     if (!nullToAbsent || endedAt != null) {
       map['ended_at'] = Variable<DateTime>(endedAt);
+    }
+    if (!nullToAbsent || avgHeartRate != null) {
+      map['avg_heart_rate'] = Variable<int>(avgHeartRate);
+    }
+    if (!nullToAbsent || maxHeartRate != null) {
+      map['max_heart_rate'] = Variable<int>(maxHeartRate);
     }
     return map;
   }
@@ -1829,6 +1889,12 @@ class Workout extends DataClass implements Insertable<Workout> {
       endedAt: endedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(endedAt),
+      avgHeartRate: avgHeartRate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgHeartRate),
+      maxHeartRate: maxHeartRate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxHeartRate),
     );
   }
 
@@ -1843,6 +1909,8 @@ class Workout extends DataClass implements Insertable<Workout> {
       routineId: serializer.fromJson<int?>(json['routineId']),
       startedAt: serializer.fromJson<DateTime>(json['startedAt']),
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
+      avgHeartRate: serializer.fromJson<int?>(json['avgHeartRate']),
+      maxHeartRate: serializer.fromJson<int?>(json['maxHeartRate']),
     );
   }
   @override
@@ -1854,6 +1922,8 @@ class Workout extends DataClass implements Insertable<Workout> {
       'routineId': serializer.toJson<int?>(routineId),
       'startedAt': serializer.toJson<DateTime>(startedAt),
       'endedAt': serializer.toJson<DateTime?>(endedAt),
+      'avgHeartRate': serializer.toJson<int?>(avgHeartRate),
+      'maxHeartRate': serializer.toJson<int?>(maxHeartRate),
     };
   }
 
@@ -1863,12 +1933,16 @@ class Workout extends DataClass implements Insertable<Workout> {
     Value<int?> routineId = const Value.absent(),
     DateTime? startedAt,
     Value<DateTime?> endedAt = const Value.absent(),
+    Value<int?> avgHeartRate = const Value.absent(),
+    Value<int?> maxHeartRate = const Value.absent(),
   }) => Workout(
     id: id ?? this.id,
     syncId: syncId ?? this.syncId,
     routineId: routineId.present ? routineId.value : this.routineId,
     startedAt: startedAt ?? this.startedAt,
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
+    avgHeartRate: avgHeartRate.present ? avgHeartRate.value : this.avgHeartRate,
+    maxHeartRate: maxHeartRate.present ? maxHeartRate.value : this.maxHeartRate,
   );
   Workout copyWithCompanion(WorkoutsCompanion data) {
     return Workout(
@@ -1877,6 +1951,12 @@ class Workout extends DataClass implements Insertable<Workout> {
       routineId: data.routineId.present ? data.routineId.value : this.routineId,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
+      avgHeartRate: data.avgHeartRate.present
+          ? data.avgHeartRate.value
+          : this.avgHeartRate,
+      maxHeartRate: data.maxHeartRate.present
+          ? data.maxHeartRate.value
+          : this.maxHeartRate,
     );
   }
 
@@ -1887,13 +1967,23 @@ class Workout extends DataClass implements Insertable<Workout> {
           ..write('syncId: $syncId, ')
           ..write('routineId: $routineId, ')
           ..write('startedAt: $startedAt, ')
-          ..write('endedAt: $endedAt')
+          ..write('endedAt: $endedAt, ')
+          ..write('avgHeartRate: $avgHeartRate, ')
+          ..write('maxHeartRate: $maxHeartRate')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, syncId, routineId, startedAt, endedAt);
+  int get hashCode => Object.hash(
+    id,
+    syncId,
+    routineId,
+    startedAt,
+    endedAt,
+    avgHeartRate,
+    maxHeartRate,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1902,7 +1992,9 @@ class Workout extends DataClass implements Insertable<Workout> {
           other.syncId == this.syncId &&
           other.routineId == this.routineId &&
           other.startedAt == this.startedAt &&
-          other.endedAt == this.endedAt);
+          other.endedAt == this.endedAt &&
+          other.avgHeartRate == this.avgHeartRate &&
+          other.maxHeartRate == this.maxHeartRate);
 }
 
 class WorkoutsCompanion extends UpdateCompanion<Workout> {
@@ -1911,12 +2003,16 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   final Value<int?> routineId;
   final Value<DateTime> startedAt;
   final Value<DateTime?> endedAt;
+  final Value<int?> avgHeartRate;
+  final Value<int?> maxHeartRate;
   const WorkoutsCompanion({
     this.id = const Value.absent(),
     this.syncId = const Value.absent(),
     this.routineId = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
+    this.avgHeartRate = const Value.absent(),
+    this.maxHeartRate = const Value.absent(),
   });
   WorkoutsCompanion.insert({
     this.id = const Value.absent(),
@@ -1924,6 +2020,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     this.routineId = const Value.absent(),
     required DateTime startedAt,
     this.endedAt = const Value.absent(),
+    this.avgHeartRate = const Value.absent(),
+    this.maxHeartRate = const Value.absent(),
   }) : syncId = Value(syncId),
        startedAt = Value(startedAt);
   static Insertable<Workout> custom({
@@ -1932,6 +2030,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Expression<int>? routineId,
     Expression<DateTime>? startedAt,
     Expression<DateTime>? endedAt,
+    Expression<int>? avgHeartRate,
+    Expression<int>? maxHeartRate,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1939,6 +2039,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       if (routineId != null) 'routine_id': routineId,
       if (startedAt != null) 'started_at': startedAt,
       if (endedAt != null) 'ended_at': endedAt,
+      if (avgHeartRate != null) 'avg_heart_rate': avgHeartRate,
+      if (maxHeartRate != null) 'max_heart_rate': maxHeartRate,
     });
   }
 
@@ -1948,6 +2050,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Value<int?>? routineId,
     Value<DateTime>? startedAt,
     Value<DateTime?>? endedAt,
+    Value<int?>? avgHeartRate,
+    Value<int?>? maxHeartRate,
   }) {
     return WorkoutsCompanion(
       id: id ?? this.id,
@@ -1955,6 +2059,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       routineId: routineId ?? this.routineId,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
+      avgHeartRate: avgHeartRate ?? this.avgHeartRate,
+      maxHeartRate: maxHeartRate ?? this.maxHeartRate,
     );
   }
 
@@ -1976,6 +2082,12 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     if (endedAt.present) {
       map['ended_at'] = Variable<DateTime>(endedAt.value);
     }
+    if (avgHeartRate.present) {
+      map['avg_heart_rate'] = Variable<int>(avgHeartRate.value);
+    }
+    if (maxHeartRate.present) {
+      map['max_heart_rate'] = Variable<int>(maxHeartRate.value);
+    }
     return map;
   }
 
@@ -1986,7 +2098,9 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
           ..write('syncId: $syncId, ')
           ..write('routineId: $routineId, ')
           ..write('startedAt: $startedAt, ')
-          ..write('endedAt: $endedAt')
+          ..write('endedAt: $endedAt, ')
+          ..write('avgHeartRate: $avgHeartRate, ')
+          ..write('maxHeartRate: $maxHeartRate')
           ..write(')'))
         .toString();
   }
@@ -3145,6 +3259,28 @@ class $SetCompletionsTable extends SetCompletions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _avgHeartRateMeta = const VerificationMeta(
+    'avgHeartRate',
+  );
+  @override
+  late final GeneratedColumn<int> avgHeartRate = GeneratedColumn<int>(
+    'avg_heart_rate',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxHeartRateMeta = const VerificationMeta(
+    'maxHeartRate',
+  );
+  @override
+  late final GeneratedColumn<int> maxHeartRate = GeneratedColumn<int>(
+    'max_heart_rate',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3155,6 +3291,8 @@ class $SetCompletionsTable extends SetCompletions
     actualWeightKg,
     actualSeconds,
     completedAt,
+    avgHeartRate,
+    maxHeartRate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3233,6 +3371,24 @@ class $SetCompletionsTable extends SetCompletions
     } else if (isInserting) {
       context.missing(_completedAtMeta);
     }
+    if (data.containsKey('avg_heart_rate')) {
+      context.handle(
+        _avgHeartRateMeta,
+        avgHeartRate.isAcceptableOrUnknown(
+          data['avg_heart_rate']!,
+          _avgHeartRateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_heart_rate')) {
+      context.handle(
+        _maxHeartRateMeta,
+        maxHeartRate.isAcceptableOrUnknown(
+          data['max_heart_rate']!,
+          _maxHeartRateMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3274,6 +3430,14 @@ class $SetCompletionsTable extends SetCompletions
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
       )!,
+      avgHeartRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}avg_heart_rate'],
+      ),
+      maxHeartRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_heart_rate'],
+      ),
     );
   }
 
@@ -3292,6 +3456,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
   final double? actualWeightKg;
   final int? actualSeconds;
   final DateTime completedAt;
+  final int? avgHeartRate;
+  final int? maxHeartRate;
   const SetCompletion({
     required this.id,
     required this.syncId,
@@ -3301,6 +3467,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     this.actualWeightKg,
     this.actualSeconds,
     required this.completedAt,
+    this.avgHeartRate,
+    this.maxHeartRate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3319,6 +3487,12 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       map['actual_seconds'] = Variable<int>(actualSeconds);
     }
     map['completed_at'] = Variable<DateTime>(completedAt);
+    if (!nullToAbsent || avgHeartRate != null) {
+      map['avg_heart_rate'] = Variable<int>(avgHeartRate);
+    }
+    if (!nullToAbsent || maxHeartRate != null) {
+      map['max_heart_rate'] = Variable<int>(maxHeartRate);
+    }
     return map;
   }
 
@@ -3338,6 +3512,12 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
           ? const Value.absent()
           : Value(actualSeconds),
       completedAt: Value(completedAt),
+      avgHeartRate: avgHeartRate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgHeartRate),
+      maxHeartRate: maxHeartRate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxHeartRate),
     );
   }
 
@@ -3355,6 +3535,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       actualWeightKg: serializer.fromJson<double?>(json['actualWeightKg']),
       actualSeconds: serializer.fromJson<int?>(json['actualSeconds']),
       completedAt: serializer.fromJson<DateTime>(json['completedAt']),
+      avgHeartRate: serializer.fromJson<int?>(json['avgHeartRate']),
+      maxHeartRate: serializer.fromJson<int?>(json['maxHeartRate']),
     );
   }
   @override
@@ -3369,6 +3551,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       'actualWeightKg': serializer.toJson<double?>(actualWeightKg),
       'actualSeconds': serializer.toJson<int?>(actualSeconds),
       'completedAt': serializer.toJson<DateTime>(completedAt),
+      'avgHeartRate': serializer.toJson<int?>(avgHeartRate),
+      'maxHeartRate': serializer.toJson<int?>(maxHeartRate),
     };
   }
 
@@ -3381,6 +3565,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     Value<double?> actualWeightKg = const Value.absent(),
     Value<int?> actualSeconds = const Value.absent(),
     DateTime? completedAt,
+    Value<int?> avgHeartRate = const Value.absent(),
+    Value<int?> maxHeartRate = const Value.absent(),
   }) => SetCompletion(
     id: id ?? this.id,
     syncId: syncId ?? this.syncId,
@@ -3394,6 +3580,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
         ? actualSeconds.value
         : this.actualSeconds,
     completedAt: completedAt ?? this.completedAt,
+    avgHeartRate: avgHeartRate.present ? avgHeartRate.value : this.avgHeartRate,
+    maxHeartRate: maxHeartRate.present ? maxHeartRate.value : this.maxHeartRate,
   );
   SetCompletion copyWithCompanion(SetCompletionsCompanion data) {
     return SetCompletion(
@@ -3415,6 +3603,12 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       completedAt: data.completedAt.present
           ? data.completedAt.value
           : this.completedAt,
+      avgHeartRate: data.avgHeartRate.present
+          ? data.avgHeartRate.value
+          : this.avgHeartRate,
+      maxHeartRate: data.maxHeartRate.present
+          ? data.maxHeartRate.value
+          : this.maxHeartRate,
     );
   }
 
@@ -3428,7 +3622,9 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
           ..write('actualReps: $actualReps, ')
           ..write('actualWeightKg: $actualWeightKg, ')
           ..write('actualSeconds: $actualSeconds, ')
-          ..write('completedAt: $completedAt')
+          ..write('completedAt: $completedAt, ')
+          ..write('avgHeartRate: $avgHeartRate, ')
+          ..write('maxHeartRate: $maxHeartRate')
           ..write(')'))
         .toString();
   }
@@ -3443,6 +3639,8 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     actualWeightKg,
     actualSeconds,
     completedAt,
+    avgHeartRate,
+    maxHeartRate,
   );
   @override
   bool operator ==(Object other) =>
@@ -3455,7 +3653,9 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
           other.actualReps == this.actualReps &&
           other.actualWeightKg == this.actualWeightKg &&
           other.actualSeconds == this.actualSeconds &&
-          other.completedAt == this.completedAt);
+          other.completedAt == this.completedAt &&
+          other.avgHeartRate == this.avgHeartRate &&
+          other.maxHeartRate == this.maxHeartRate);
 }
 
 class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
@@ -3467,6 +3667,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
   final Value<double?> actualWeightKg;
   final Value<int?> actualSeconds;
   final Value<DateTime> completedAt;
+  final Value<int?> avgHeartRate;
+  final Value<int?> maxHeartRate;
   const SetCompletionsCompanion({
     this.id = const Value.absent(),
     this.syncId = const Value.absent(),
@@ -3476,6 +3678,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     this.actualWeightKg = const Value.absent(),
     this.actualSeconds = const Value.absent(),
     this.completedAt = const Value.absent(),
+    this.avgHeartRate = const Value.absent(),
+    this.maxHeartRate = const Value.absent(),
   });
   SetCompletionsCompanion.insert({
     this.id = const Value.absent(),
@@ -3486,6 +3690,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     this.actualWeightKg = const Value.absent(),
     this.actualSeconds = const Value.absent(),
     required DateTime completedAt,
+    this.avgHeartRate = const Value.absent(),
+    this.maxHeartRate = const Value.absent(),
   }) : syncId = Value(syncId),
        workoutId = Value(workoutId),
        workoutSetId = Value(workoutSetId),
@@ -3499,6 +3705,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     Expression<double>? actualWeightKg,
     Expression<int>? actualSeconds,
     Expression<DateTime>? completedAt,
+    Expression<int>? avgHeartRate,
+    Expression<int>? maxHeartRate,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3509,6 +3717,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
       if (actualWeightKg != null) 'actual_weight_kg': actualWeightKg,
       if (actualSeconds != null) 'actual_seconds': actualSeconds,
       if (completedAt != null) 'completed_at': completedAt,
+      if (avgHeartRate != null) 'avg_heart_rate': avgHeartRate,
+      if (maxHeartRate != null) 'max_heart_rate': maxHeartRate,
     });
   }
 
@@ -3521,6 +3731,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     Value<double?>? actualWeightKg,
     Value<int?>? actualSeconds,
     Value<DateTime>? completedAt,
+    Value<int?>? avgHeartRate,
+    Value<int?>? maxHeartRate,
   }) {
     return SetCompletionsCompanion(
       id: id ?? this.id,
@@ -3531,6 +3743,8 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
       actualWeightKg: actualWeightKg ?? this.actualWeightKg,
       actualSeconds: actualSeconds ?? this.actualSeconds,
       completedAt: completedAt ?? this.completedAt,
+      avgHeartRate: avgHeartRate ?? this.avgHeartRate,
+      maxHeartRate: maxHeartRate ?? this.maxHeartRate,
     );
   }
 
@@ -3561,6 +3775,12 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
+    if (avgHeartRate.present) {
+      map['avg_heart_rate'] = Variable<int>(avgHeartRate.value);
+    }
+    if (maxHeartRate.present) {
+      map['max_heart_rate'] = Variable<int>(maxHeartRate.value);
+    }
     return map;
   }
 
@@ -3574,7 +3794,9 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
           ..write('actualReps: $actualReps, ')
           ..write('actualWeightKg: $actualWeightKg, ')
           ..write('actualSeconds: $actualSeconds, ')
-          ..write('completedAt: $completedAt')
+          ..write('completedAt: $completedAt, ')
+          ..write('avgHeartRate: $avgHeartRate, ')
+          ..write('maxHeartRate: $maxHeartRate')
           ..write(')'))
         .toString();
   }
@@ -5403,6 +5625,8 @@ typedef $$WorkoutsTableCreateCompanionBuilder =
       Value<int?> routineId,
       required DateTime startedAt,
       Value<DateTime?> endedAt,
+      Value<int?> avgHeartRate,
+      Value<int?> maxHeartRate,
     });
 typedef $$WorkoutsTableUpdateCompanionBuilder =
     WorkoutsCompanion Function({
@@ -5411,6 +5635,8 @@ typedef $$WorkoutsTableUpdateCompanionBuilder =
       Value<int?> routineId,
       Value<DateTime> startedAt,
       Value<DateTime?> endedAt,
+      Value<int?> avgHeartRate,
+      Value<int?> maxHeartRate,
     });
 
 final class $$WorkoutsTableReferences
@@ -5505,6 +5731,16 @@ class $$WorkoutsTableFilterComposer
 
   ColumnFilters<DateTime> get endedAt => $composableBuilder(
     column: $table.endedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5611,6 +5847,16 @@ class $$WorkoutsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$RoutinesTableOrderingComposer get routineId {
     final $$RoutinesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5655,6 +5901,16 @@ class $$WorkoutsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get endedAt =>
       $composableBuilder(column: $table.endedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
+    builder: (column) => column,
+  );
 
   $$RoutinesTableAnnotationComposer get routineId {
     final $$RoutinesTableAnnotationComposer composer = $composerBuilder(
@@ -5767,12 +6023,16 @@ class $$WorkoutsTableTableManager
                 Value<int?> routineId = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> endedAt = const Value.absent(),
+                Value<int?> avgHeartRate = const Value.absent(),
+                Value<int?> maxHeartRate = const Value.absent(),
               }) => WorkoutsCompanion(
                 id: id,
                 syncId: syncId,
                 routineId: routineId,
                 startedAt: startedAt,
                 endedAt: endedAt,
+                avgHeartRate: avgHeartRate,
+                maxHeartRate: maxHeartRate,
               ),
           createCompanionCallback:
               ({
@@ -5781,12 +6041,16 @@ class $$WorkoutsTableTableManager
                 Value<int?> routineId = const Value.absent(),
                 required DateTime startedAt,
                 Value<DateTime?> endedAt = const Value.absent(),
+                Value<int?> avgHeartRate = const Value.absent(),
+                Value<int?> maxHeartRate = const Value.absent(),
               }) => WorkoutsCompanion.insert(
                 id: id,
                 syncId: syncId,
                 routineId: routineId,
                 startedAt: startedAt,
                 endedAt: endedAt,
+                avgHeartRate: avgHeartRate,
+                maxHeartRate: maxHeartRate,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -6985,6 +7249,8 @@ typedef $$SetCompletionsTableCreateCompanionBuilder =
       Value<double?> actualWeightKg,
       Value<int?> actualSeconds,
       required DateTime completedAt,
+      Value<int?> avgHeartRate,
+      Value<int?> maxHeartRate,
     });
 typedef $$SetCompletionsTableUpdateCompanionBuilder =
     SetCompletionsCompanion Function({
@@ -6996,6 +7262,8 @@ typedef $$SetCompletionsTableUpdateCompanionBuilder =
       Value<double?> actualWeightKg,
       Value<int?> actualSeconds,
       Value<DateTime> completedAt,
+      Value<int?> avgHeartRate,
+      Value<int?> maxHeartRate,
     });
 
 final class $$SetCompletionsTableReferences
@@ -7081,6 +7349,16 @@ class $$SetCompletionsTableFilterComposer
 
   ColumnFilters<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7170,6 +7448,16 @@ class $$SetCompletionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutsTableOrderingComposer get workoutId {
     final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7249,6 +7537,16 @@ class $$SetCompletionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get avgHeartRate => $composableBuilder(
+    column: $table.avgHeartRate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxHeartRate => $composableBuilder(
+    column: $table.maxHeartRate,
     builder: (column) => column,
   );
 
@@ -7337,6 +7635,8 @@ class $$SetCompletionsTableTableManager
                 Value<double?> actualWeightKg = const Value.absent(),
                 Value<int?> actualSeconds = const Value.absent(),
                 Value<DateTime> completedAt = const Value.absent(),
+                Value<int?> avgHeartRate = const Value.absent(),
+                Value<int?> maxHeartRate = const Value.absent(),
               }) => SetCompletionsCompanion(
                 id: id,
                 syncId: syncId,
@@ -7346,6 +7646,8 @@ class $$SetCompletionsTableTableManager
                 actualWeightKg: actualWeightKg,
                 actualSeconds: actualSeconds,
                 completedAt: completedAt,
+                avgHeartRate: avgHeartRate,
+                maxHeartRate: maxHeartRate,
               ),
           createCompanionCallback:
               ({
@@ -7357,6 +7659,8 @@ class $$SetCompletionsTableTableManager
                 Value<double?> actualWeightKg = const Value.absent(),
                 Value<int?> actualSeconds = const Value.absent(),
                 required DateTime completedAt,
+                Value<int?> avgHeartRate = const Value.absent(),
+                Value<int?> maxHeartRate = const Value.absent(),
               }) => SetCompletionsCompanion.insert(
                 id: id,
                 syncId: syncId,
@@ -7366,6 +7670,8 @@ class $$SetCompletionsTableTableManager
                 actualWeightKg: actualWeightKg,
                 actualSeconds: actualSeconds,
                 completedAt: completedAt,
+                avgHeartRate: avgHeartRate,
+                maxHeartRate: maxHeartRate,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -29,6 +29,10 @@ final recentWorkoutsStreamProvider = StreamProvider<List<Workout>>((ref) {
   return ref.watch(databaseProvider).watchRecentWorkouts();
 });
 
+final inProgressWorkoutStreamProvider = StreamProvider<Workout?>((ref) {
+  return ref.watch(databaseProvider).watchInProgressWorkout();
+});
+
 final fullWorkoutProvider = StreamProvider.family<FullWorkout?, int>((
   ref,
   workoutId,

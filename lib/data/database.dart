@@ -65,6 +65,11 @@ class Workouts extends Table {
       .references(Routines, #id, onDelete: KeyAction.setNull)();
   DateTimeColumn get startedAt => dateTime()();
   DateTimeColumn get endedAt => dateTime().nullable()();
+  // Workout-level heart-rate aggregates computed on Finish from the per-set
+  // completion aggregates. Null until a workout finishes (or if no HR samples
+  // were captured).
+  IntColumn get avgHeartRate => integer().nullable()();
+  IntColumn get maxHeartRate => integer().nullable()();
 }
 
 /// Snapshot of a routine exercise taken when a workout starts. Owned by the
@@ -113,6 +118,10 @@ class SetCompletions extends Table {
   RealColumn get actualWeightKg => real().nullable()();
   IntColumn get actualSeconds => integer().nullable()();
   DateTimeColumn get completedAt => dateTime()();
+  // Per-set heart-rate aggregates over the time the set was active. Nullable
+  // because earlier rows / sets recorded without HR permission won't have them.
+  IntColumn get avgHeartRate => integer().nullable()();
+  IntColumn get maxHeartRate => integer().nullable()();
 }
 
 class FullRoutine {
@@ -180,7 +189,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -227,6 +236,13 @@ class AppDatabase extends _$AppDatabase {
         // upgrade no longer hits this; the step still runs as a no-op
         // safety net for clean v3s.
         await _migrateToV4(m);
+      }
+      if (from < 5) {
+        // v4 → v5: HR aggregate columns on workouts + set_completions.
+        await m.addColumn(workouts, workouts.avgHeartRate);
+        await m.addColumn(workouts, workouts.maxHeartRate);
+        await m.addColumn(setCompletions, setCompletions.avgHeartRate);
+        await m.addColumn(setCompletions, setCompletions.maxHeartRate);
       }
     },
   );
@@ -695,6 +711,15 @@ class AppDatabase extends _$AppDatabase {
     )..orderBy([(t) => OrderingTerm.desc(t.startedAt)])).watch();
   }
 
+  /// Most recent workout with no `endedAt`. Used by the watch picker to offer
+  /// a Resume entry when the user pops out of a running workout.
+  Stream<Workout?> watchInProgressWorkout() {
+    return ((select(workouts)..where((t) => t.endedAt.isNull()))
+          ..orderBy([(t) => OrderingTerm.desc(t.startedAt)])
+          ..limit(1))
+        .watchSingleOrNull();
+  }
+
   /// Start a workout and snapshot its routine into workout-owned tables.
   /// Returns the new workout row; the snapshot is reachable via
   /// [loadFullWorkout] / [watchFullWorkout].
@@ -743,9 +768,17 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> finishWorkout(int workoutId) async {
+  Future<void> finishWorkout(
+    int workoutId, {
+    int? avgHeartRate,
+    int? maxHeartRate,
+  }) async {
     await (update(workouts)..where((t) => t.id.equals(workoutId))).write(
-      WorkoutsCompanion(endedAt: Value(DateTime.now())),
+      WorkoutsCompanion(
+        endedAt: Value(DateTime.now()),
+        avgHeartRate: Value(avgHeartRate),
+        maxHeartRate: Value(maxHeartRate),
+      ),
     );
   }
 
@@ -846,12 +879,18 @@ class AppDatabase extends _$AppDatabase {
 
   /// Insert or update a completion for (workoutId, workoutSetId). Used by the
   /// watch run page to allow re-marking a set after navigating back to it.
+  ///
+  /// HR aggregates use `Value.absent()` semantics — passing absent leaves the
+  /// existing value untouched on an update. That way re-marking a set with no
+  /// new HR samples buffered doesn't clobber a previously-captured value.
   Future<SetCompletion> upsertSetCompletion({
     required int workoutId,
     required int workoutSetId,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    Value<int?> avgHeartRate = const Value.absent(),
+    Value<int?> maxHeartRate = const Value.absent(),
   }) async {
     return transaction(() async {
       final existing = await (select(setCompletions)..where(
@@ -868,6 +907,8 @@ class AppDatabase extends _$AppDatabase {
             actualReps: Value(actualReps),
             actualWeightKg: Value(actualWeightKg),
             actualSeconds: Value(actualSeconds),
+            avgHeartRate: avgHeartRate,
+            maxHeartRate: maxHeartRate,
             completedAt: Value(DateTime.now()),
           ),
         );
@@ -883,6 +924,8 @@ class AppDatabase extends _$AppDatabase {
           actualReps: Value(actualReps),
           actualWeightKg: Value(actualWeightKg),
           actualSeconds: Value(actualSeconds),
+          avgHeartRate: avgHeartRate,
+          maxHeartRate: maxHeartRate,
           completedAt: DateTime.now(),
         ),
       );

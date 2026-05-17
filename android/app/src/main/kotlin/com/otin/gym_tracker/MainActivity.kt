@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var wearBridge: GymWearBridge? = null
+    private var workoutBridge: WorkoutBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -27,11 +28,31 @@ class MainActivity : FlutterActivity() {
             applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
         ).also { it.attach() }
+
+        workoutBridge = WorkoutBridge(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        ).also {
+            it.attach()
+            it.bindActivity(this)
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         wearBridge?.detach()
         wearBridge = null
+        workoutBridge?.unbindActivity()
+        workoutBridge?.detach()
+        workoutBridge = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        workoutBridge?.handlePermissionResult(requestCode, permissions, grantResults)
     }
 }

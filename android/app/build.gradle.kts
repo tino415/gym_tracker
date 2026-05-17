@@ -47,4 +47,13 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:18.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    // Ongoing Activity (Wear OS chip + foreground notification adornment).
+    implementation("androidx.wear:wear-ongoing:1.0.0")
+    implementation("androidx.core:core-ktx:1.13.1")
+    // Heart rate sampling via Wear Health Services MeasureClient.
+    implementation("androidx.health:health-services-client:1.1.0-alpha05")
+    // health-services-client's unregisterMeasureCallbackAsync returns
+    // com.google.common.util.concurrent.ListenableFuture, so Guava must be on
+    // the compile classpath. The -android flavour is the right one for AOSP.
+    implementation("com.google.guava:guava:32.1.3-android")
 }

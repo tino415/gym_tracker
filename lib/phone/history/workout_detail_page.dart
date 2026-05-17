@@ -105,6 +105,20 @@ class _Body extends ConsumerWidget {
                   title: const Text('Routine'),
                   subtitle: Text(snap.routine!.name),
                 ),
+              if (snap.workout.avgHeartRate != null ||
+                  snap.workout.maxHeartRate != null) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.favorite, color: Colors.redAccent),
+                  title: const Text('Heart rate'),
+                  subtitle: Text(
+                    _hrLine(
+                      snap.workout.avgHeartRate,
+                      snap.workout.maxHeartRate,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -290,6 +304,12 @@ class _Body extends ConsumerWidget {
     final mi = dt.minute.toString().padLeft(2, '0');
     return '$y-$mo-$d $h:$mi';
   }
+
+  static String _hrLine(int? avg, int? max) {
+    if (avg != null && max != null) return 'avg $avg · max $max bpm';
+    if (avg != null) return 'avg $avg bpm';
+    return 'max $max bpm';
+  }
 }
 
 class _ExerciseSection extends StatelessWidget {
@@ -458,6 +478,27 @@ class _SetRow extends StatelessWidget {
                         color: theme.colorScheme.outline,
                       ),
                     ),
+                  if (completion?.avgHeartRate != null ||
+                      completion?.maxHeartRate != null)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.favorite,
+                          size: 12,
+                          color: theme.colorScheme.error,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _setHrLine(
+                            completion?.avgHeartRate,
+                            completion?.maxHeartRate,
+                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -477,6 +518,12 @@ class _SetRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _setHrLine(int? avg, int? max) {
+  if (avg != null && max != null) return 'HR avg $avg · max $max';
+  if (avg != null) return 'HR avg $avg';
+  return 'HR max $max';
 }
 
 /// Returns (reps, weightKg, seconds) — at most two of them are non-null,

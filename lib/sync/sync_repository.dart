@@ -293,6 +293,8 @@ class SyncRepository {
           actualWeightKg: c.actualWeightKg,
           actualSeconds: c.actualSeconds,
           completedAtMs: c.completedAt.millisecondsSinceEpoch,
+          avgHeartRate: c.avgHeartRate,
+          maxHeartRate: c.maxHeartRate,
         ),
       );
     }
@@ -303,6 +305,8 @@ class SyncRepository {
       endedAtMs: workout.endedAt?.millisecondsSinceEpoch,
       exercises: exerciseDtos,
       completions: completionDtos,
+      avgHeartRate: workout.avgHeartRate,
+      maxHeartRate: workout.maxHeartRate,
     );
   }
 
@@ -337,6 +341,8 @@ class SyncRepository {
                     ? null
                     : DateTime.fromMillisecondsSinceEpoch(dto.endedAtMs!),
               ),
+              avgHeartRate: Value(dto.avgHeartRate),
+              maxHeartRate: Value(dto.maxHeartRate),
             ),
           );
 
@@ -393,6 +399,8 @@ class SyncRepository {
                 actualReps: Value(c.actualReps),
                 actualWeightKg: Value(c.actualWeightKg),
                 actualSeconds: Value(c.actualSeconds),
+                avgHeartRate: Value(c.avgHeartRate),
+                maxHeartRate: Value(c.maxHeartRate),
                 completedAt: DateTime.fromMillisecondsSinceEpoch(
                   c.completedAtMs,
                 ),

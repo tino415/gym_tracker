@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
@@ -322,6 +323,153 @@ void main() {
       final snap = await db.loadFullWorkout(workout.id);
       expect(snap!.workout.startedAt, newStart);
       expect(snap.workout.endedAt, newEnd);
+    });
+  });
+
+  group('heart-rate persistence', () {
+    test('upsertSetCompletion writes avg/max on insert', () async {
+      final ex = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: ex.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 60,
+      );
+      final workout = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(workout.id);
+      final ws = snap!.exercises.single.sets.single.workoutSet;
+
+      await db.upsertSetCompletion(
+        workoutId: workout.id,
+        workoutSetId: ws.id,
+        actualReps: 5,
+        actualWeightKg: 60,
+        avgHeartRate: const Value(125),
+        maxHeartRate: const Value(148),
+      );
+
+      final completions = await db.completionsForWorkout(workout.id);
+      expect(completions.single.avgHeartRate, 125);
+      expect(completions.single.maxHeartRate, 148);
+    });
+
+    test(
+      'upsertSetCompletion with absent HR preserves prior values on update',
+      () async {
+        final ex = await db.createExercise('Bench');
+        final routine = await db.createRoutine('Push');
+        final re = await db.addExerciseToRoutine(
+          routineId: routine.id,
+          exerciseId: ex.id,
+        );
+        await db.addPlannedSet(
+          routineExerciseId: re.id,
+          targetReps: 5,
+          targetWeightKg: 60,
+        );
+        final workout = await db.startWorkout(routine.id);
+        final snap = await db.loadFullWorkout(workout.id);
+        final ws = snap!.exercises.single.sets.single.workoutSet;
+
+        await db.upsertSetCompletion(
+          workoutId: workout.id,
+          workoutSetId: ws.id,
+          actualReps: 5,
+          actualWeightKg: 60,
+          avgHeartRate: const Value(130),
+          maxHeartRate: const Value(150),
+        );
+        // Re-toggle without providing HR — existing values must survive.
+        await db.upsertSetCompletion(
+          workoutId: workout.id,
+          workoutSetId: ws.id,
+          actualReps: 6,
+          actualWeightKg: 60,
+        );
+
+        final completions = await db.completionsForWorkout(workout.id);
+        expect(completions.single.actualReps, 6);
+        expect(completions.single.avgHeartRate, 130);
+        expect(completions.single.maxHeartRate, 150);
+      },
+    );
+
+    test('finishWorkout writes avg/max', () async {
+      final ex = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: ex.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 60,
+      );
+      final workout = await db.startWorkout(routine.id);
+
+      await db.finishWorkout(
+        workout.id,
+        avgHeartRate: 132,
+        maxHeartRate: 162,
+      );
+
+      final after = await db.loadFullWorkout(workout.id);
+      expect(after!.workout.endedAt, isNotNull);
+      expect(after.workout.avgHeartRate, 132);
+      expect(after.workout.maxHeartRate, 162);
+    });
+  });
+
+  group('watchInProgressWorkout', () {
+    Future<Workout> seedWorkout(AppDatabase db, String routineName) async {
+      final ex = await db.createExercise('Ex-$routineName');
+      final routine = await db.createRoutine(routineName);
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: ex.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 40,
+      );
+      return db.startWorkout(routine.id);
+    }
+
+    test('emits null when no workouts have been started', () async {
+      expect(await db.watchInProgressWorkout().first, isNull);
+    });
+
+    test('emits the started workout, then null after finish', () async {
+      final stream = db.watchInProgressWorkout();
+      final w = await seedWorkout(db, 'A');
+
+      final first = await stream.first;
+      expect(first?.id, w.id);
+
+      await db.finishWorkout(w.id);
+      final next = await stream.first;
+      expect(next, isNull);
+    });
+
+    test('returns most recent when multiple in-progress workouts exist',
+        () async {
+      final older = await seedWorkout(db, 'older');
+      // Force a distinct startedAt so ordering is deterministic.
+      await db.updateWorkoutTimes(
+        workoutId: older.id,
+        startedAt: DateTime(2024, 1, 1),
+        endedAt: null,
+      );
+      final newer = await seedWorkout(db, 'newer');
+
+      final w = await db.watchInProgressWorkout().first;
+      expect(w?.id, newer.id);
     });
   });
 }
