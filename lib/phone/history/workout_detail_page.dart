@@ -79,6 +79,7 @@ class _Body extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
+        _ImprovementsBanner(workoutId: snap.workout.id),
         Card(
           child: Column(
             children: [
@@ -666,4 +667,120 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
   final w = double.tryParse(weightController.text.trim());
   if (r == null || w == null) return null;
   return (r, w, null);
+}
+
+class _ImprovementsBanner extends ConsumerStatefulWidget {
+  const _ImprovementsBanner({required this.workoutId});
+
+  final int workoutId;
+
+  @override
+  ConsumerState<_ImprovementsBanner> createState() =>
+      _ImprovementsBannerState();
+}
+
+class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
+  Future<List<WorkoutImprovement>>? _future;
+  bool _dismissed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    _future = ref
+        .read(databaseProvider)
+        .findWorkoutImprovements(widget.workoutId);
+  }
+
+  Future<void> _apply() async {
+    await ref
+        .read(databaseProvider)
+        .applyWorkoutImprovements(widget.workoutId);
+    if (!mounted) return;
+    setState(_reload);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+    return FutureBuilder<List<WorkoutImprovement>>(
+      future: _future,
+      builder: (context, snap) {
+        final list = snap.data;
+        if (list == null || list.isEmpty) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        final preview = list.take(3).toList();
+        final extra = list.length - preview.length;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          color: theme.colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '${list.length} set${list.length == 1 ? '' : 's'} exceeded their target',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                for (final imp in preview)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      _formatImprovement(imp),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                if (extra > 0)
+                  Text(
+                    '…and $extra more',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => setState(() => _dismissed = true),
+                      child: const Text('Dismiss'),
+                    ),
+                    const SizedBox(width: 4),
+                    FilledButton(
+                      onPressed: _apply,
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _formatImprovement(WorkoutImprovement imp) {
+    final setLabel = 'set ${imp.setIndex + 1}';
+    if (imp.kind == exerciseKindTime) {
+      return '${imp.exerciseName} · $setLabel · ${imp.oldSeconds}s → ${imp.newSeconds}s';
+    }
+    final oldW = _fmtWeight(imp.oldWeightKg);
+    final newW = _fmtWeight(imp.newWeightKg);
+    return '${imp.exerciseName} · $setLabel · ${imp.oldReps}×$oldW → ${imp.newReps}×$newW';
+  }
+
+  static String _fmtWeight(double? w) {
+    if (w == null) return '—';
+    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
+  }
 }

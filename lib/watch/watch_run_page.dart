@@ -70,6 +70,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
   int? _workoutId;
   FullWorkout? _snapshot;
   StreamSubscription<FullWorkout?>? _snapshotSub;
+
+  // "Last time" panel for the current set position. Token guards against races
+  // when the user advances faster than the lookup completes.
+  SetCompletion? _lastCompletion;
+  int _lastCompletionToken = 0;
   // True once we've consumed the first snapshot emission and seeded our
   // input buffers. Subsequent emissions update `_snapshot` for the exercise
   // list / completion badges but must NOT reload targets — otherwise a sync
@@ -303,9 +308,36 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   bool get _currentIsCompleted => _currentCompletion() != null;
 
+  Future<void> _refreshLastCompletion() async {
+    final wid = _workoutId;
+    if (wid == null || _snapshot == null) {
+      if (mounted && _lastCompletion != null) {
+        setState(() => _lastCompletion = null);
+      }
+      return;
+    }
+    final we = _snapshot!.exercises[_exerciseIdx].workoutExercise;
+    final eid = we.exerciseId;
+    if (eid == null) {
+      if (mounted && _lastCompletion != null) {
+        setState(() => _lastCompletion = null);
+      }
+      return;
+    }
+    final token = ++_lastCompletionToken;
+    final r = await ref.read(databaseProvider).lastCompletionForExerciseAtSetIndex(
+      exerciseId: eid,
+      setIndex: _setIdx,
+      excludeWorkoutId: wid,
+    );
+    if (!mounted || token != _lastCompletionToken) return;
+    setState(() => _lastCompletion = r);
+  }
+
   void _loadCurrentSetTargets() {
     _timer?.cancel();
     _timeRunning = false;
+    unawaited(_refreshLastCompletion());
     final kind = _currentKind();
     final completion = _currentCompletion();
     if (_snapshot != null) {
@@ -713,6 +745,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
         hasPrev: hasPrev,
         hasNext: hasNext,
         heartRateBpm: bpm,
+        lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindTime),
         onWeightChanged: (v) => setState(() => _weightKg = v),
         onToggleRun: _toggleTimeRun,
         onToggleDone: _toggleDone,
@@ -737,6 +770,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       hasPrev: hasPrev,
       hasNext: hasNext,
       heartRateBpm: bpm,
+      lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindReps),
       onRepsChanged: (v) => setState(() => _reps = v),
       onWeightChanged: (v) => setState(() => _weightKg = v),
       onToggleDone: _toggleDone,
@@ -750,6 +784,22 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       },
       onSwap: _openSwapPicker,
     );
+  }
+
+  static String? _formatLastTimeText(SetCompletion? c, String kind) {
+    if (c == null) return null;
+    if (kind == exerciseKindTime) {
+      final s = c.actualSeconds;
+      return s == null ? null : 'Last: ${s}s';
+    }
+    final reps = c.actualReps;
+    final w = c.actualWeightKg;
+    if (reps == null) return null;
+    if (w == null) return 'Last: $reps reps';
+    final weightStr = w == w.roundToDouble()
+        ? w.toStringAsFixed(0)
+        : w.toStringAsFixed(1);
+    return 'Last: $reps × $weightStr kg';
   }
 
   Future<void> _openSwapPicker() async {
@@ -839,6 +889,7 @@ class _RepsSetView extends StatelessWidget {
     required this.onNext,
     required this.onSwap,
     this.heartRateBpm,
+    this.lastTimeText,
   });
 
   final String exerciseName;
@@ -856,6 +907,7 @@ class _RepsSetView extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onSwap;
   final int? heartRateBpm;
+  final String? lastTimeText;
 
   String _formatWeight(double w) {
     return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
@@ -865,6 +917,7 @@ class _RepsSetView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ScrollableSetView(
       onSwap: onSwap,
+      lastTimeText: lastTimeText,
       main: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Column(
@@ -927,6 +980,7 @@ class _TimeSetView extends StatelessWidget {
     required this.onNext,
     required this.onSwap,
     this.heartRateBpm,
+    this.lastTimeText,
   });
 
   final String exerciseName;
@@ -945,6 +999,7 @@ class _TimeSetView extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onSwap;
   final int? heartRateBpm;
+  final String? lastTimeText;
 
   String _formatWeight(double w) {
     return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
@@ -961,6 +1016,7 @@ class _TimeSetView extends StatelessWidget {
     final hInset = isRound ? 24.0 : 0.0;
     return _ScrollableSetView(
       onSwap: onSwap,
+      lastTimeText: lastTimeText,
       main: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         child: Column(
@@ -1024,21 +1080,38 @@ class _TimeSetView extends StatelessWidget {
 /// with a small flick. New aux buttons (swap exercise, skip set, etc.) slot
 /// into the tray without crowding the chord.
 class _ScrollableSetView extends StatelessWidget {
-  const _ScrollableSetView({required this.main, required this.onSwap});
+  const _ScrollableSetView({
+    required this.main,
+    required this.onSwap,
+    this.lastTimeText,
+  });
 
   final Widget main;
   final VoidCallback onSwap;
+  final String? lastTimeText;
 
   @override
   Widget build(BuildContext context) {
     final isRound = WatchShapeScope.of(context);
     final hInset = isRound ? 24.0 : 12.0;
+    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
           child: Column(
             children: [
               SizedBox(height: constraints.maxHeight, child: main),
+              if (lastTimeText != null)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(hInset, 8, hInset, 0),
+                  child: Text(
+                    lastTimeText!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               Padding(
                 padding:
                     EdgeInsets.fromLTRB(hInset, 4, hInset, isRound ? 24 : 12),

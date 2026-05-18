@@ -254,6 +254,38 @@ class FullWorkoutSet {
   final SetCompletion? completion;
 }
 
+/// One outstanding improvement found in a finished workout: the user's actuals
+/// strictly beat the routine's current target for this set. The phone surfaces
+/// these in a banner on the workout-detail page so the user can promote them
+/// to the routine with one tap.
+class WorkoutImprovement {
+  WorkoutImprovement({
+    required this.exerciseName,
+    required this.kind,
+    required this.setIndex,
+    required this.targetPlannedSetId,
+    required this.targetIsAlternative,
+    required this.oldReps,
+    required this.oldWeightKg,
+    required this.oldSeconds,
+    required this.newReps,
+    required this.newWeightKg,
+    required this.newSeconds,
+  });
+  final String exerciseName;
+  final String kind;
+  final int setIndex;
+  // Either a PlannedSets.id or an AlternativePlannedSets.id — `targetIsAlternative` discriminates.
+  final int targetPlannedSetId;
+  final bool targetIsAlternative;
+  final int? oldReps;
+  final double? oldWeightKg;
+  final int? oldSeconds;
+  final int? newReps;
+  final double? newWeightKg;
+  final int? newSeconds;
+}
+
 @DriftDatabase(
   tables: [
     Exercises,
@@ -1242,6 +1274,200 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) => t.workoutId.equals(workoutId))
           ..orderBy([(t) => OrderingTerm.asc(t.completedAt)]))
         .get();
+  }
+
+  /// Most recent completion of [exerciseId] at [setIndex], from any *finished*
+  /// workout other than [excludeWorkoutId]. Used by the watch run page to show
+  /// "Last: 8 × 80 kg" alongside the current set's targets.
+  Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
+    required int exerciseId,
+    required int setIndex,
+    required int excludeWorkoutId,
+  }) async {
+    final query =
+        select(setCompletions).join([
+            innerJoin(
+              workoutSets,
+              workoutSets.id.equalsExp(setCompletions.workoutSetId),
+            ),
+            innerJoin(
+              workoutExercises,
+              workoutExercises.id.equalsExp(workoutSets.workoutExerciseId),
+            ),
+            innerJoin(
+              workouts,
+              workouts.id.equalsExp(setCompletions.workoutId),
+            ),
+          ])
+          ..where(workoutExercises.exerciseId.equals(exerciseId))
+          ..where(workoutSets.setIndex.equals(setIndex))
+          ..where(workouts.id.equals(excludeWorkoutId).not())
+          ..where(workouts.endedAt.isNotNull())
+          ..orderBy([OrderingTerm(expression: workouts.startedAt, mode: OrderingMode.desc)])
+          ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.readTable(setCompletions);
+  }
+
+  /// Sets in [workoutId] whose actuals strictly beat the routine's current
+  /// target. Empty when the routine is gone, the workout is purely ad-hoc, or
+  /// nothing exceeded — the phone uses that to hide the banner entirely.
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(int workoutId) async {
+    final w = await (select(
+      workouts,
+    )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
+    if (w == null || w.routineId == null) return const [];
+    final wes = await (select(workoutExercises)
+          ..where((t) => t.workoutId.equals(workoutId))
+          ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+        .get();
+    final allCompletions = await (select(
+      setCompletions,
+    )..where((t) => t.workoutId.equals(workoutId))).get();
+    final completionByWorkoutSet = {
+      for (final c in allCompletions) c.workoutSetId: c,
+    };
+    final out = <WorkoutImprovement>[];
+    for (final we in wes) {
+      final reId = we.routineExerciseId;
+      if (reId == null) continue;
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(reId))).getSingleOrNull();
+      if (re == null) continue;
+      List<PlannedSet> primaryPs = const [];
+      List<AlternativePlannedSet> altPs = const [];
+      bool useAlt = false;
+      if (we.exerciseId == re.exerciseId) {
+        primaryPs = await (select(plannedSets)
+              ..where((t) => t.routineExerciseId.equals(re.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+            .get();
+      } else if (we.exerciseId != null) {
+        final altRow = await (select(routineExerciseAlternatives)..where(
+              (t) =>
+                  t.routineExerciseId.equals(re.id) &
+                  t.exerciseId.equals(we.exerciseId!),
+            ))
+            .getSingleOrNull();
+        if (altRow == null) continue;
+        altPs = await (select(alternativePlannedSets)
+              ..where((t) => t.alternativeId.equals(altRow.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+            .get();
+        if (altPs.isEmpty) continue;
+        useAlt = true;
+      } else {
+        continue;
+      }
+      final wSets = await (select(workoutSets)
+            ..where((t) => t.workoutExerciseId.equals(we.id))
+            ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+          .get();
+      for (final ws in wSets) {
+        final c = completionByWorkoutSet[ws.id];
+        if (c == null) continue;
+        int? tReps;
+        double? tWeight;
+        int? tSeconds;
+        int targetPsId;
+        if (useAlt) {
+          final ps = altPs
+              .where((p) => p.setIndex == ws.setIndex)
+              .firstOrNull;
+          if (ps == null) continue;
+          tReps = ps.targetReps;
+          tWeight = ps.targetWeightKg;
+          tSeconds = ps.targetSeconds;
+          targetPsId = ps.id;
+        } else {
+          final ps = primaryPs
+              .where((p) => p.setIndex == ws.setIndex)
+              .firstOrNull;
+          if (ps == null) continue;
+          tReps = ps.targetReps;
+          tWeight = ps.targetWeightKg;
+          tSeconds = ps.targetSeconds;
+          targetPsId = ps.id;
+        }
+        final improved = _isImprovement(
+          kind: we.kind,
+          targetReps: tReps,
+          targetWeightKg: tWeight,
+          targetSeconds: tSeconds,
+          actualReps: c.actualReps,
+          actualWeightKg: c.actualWeightKg,
+          actualSeconds: c.actualSeconds,
+        );
+        if (!improved) continue;
+        out.add(
+          WorkoutImprovement(
+            exerciseName: we.exerciseName,
+            kind: we.kind,
+            setIndex: ws.setIndex,
+            targetPlannedSetId: targetPsId,
+            targetIsAlternative: useAlt,
+            oldReps: tReps,
+            oldWeightKg: tWeight,
+            oldSeconds: tSeconds,
+            newReps: c.actualReps,
+            newWeightKg: c.actualWeightKg,
+            newSeconds: c.actualSeconds,
+          ),
+        );
+      }
+    }
+    return out;
+  }
+
+  bool _isImprovement({
+    required String kind,
+    required int? targetReps,
+    required double? targetWeightKg,
+    required int? targetSeconds,
+    required int? actualReps,
+    required double? actualWeightKg,
+    required int? actualSeconds,
+  }) {
+    if (kind == exerciseKindTime) {
+      if (targetSeconds == null || actualSeconds == null) return false;
+      return actualSeconds > targetSeconds;
+    }
+    if (targetReps == null ||
+        targetWeightKg == null ||
+        actualReps == null ||
+        actualWeightKg == null) {
+      return false;
+    }
+    if (actualReps < targetReps || actualWeightKg < targetWeightKg) return false;
+    return actualReps > targetReps || actualWeightKg > targetWeightKg;
+  }
+
+  /// Promote every outstanding improvement in [workoutId] to its routine
+  /// planned set. Idempotent — once applied, the same call returns an empty
+  /// improvement list and is a no-op.
+  Future<void> applyWorkoutImprovements(int workoutId) async {
+    final improvements = await findWorkoutImprovements(workoutId);
+    if (improvements.isEmpty) return;
+    await transaction(() async {
+      for (final imp in improvements) {
+        if (imp.targetIsAlternative) {
+          await updateAlternativePlannedSet(
+            id: imp.targetPlannedSetId,
+            targetReps: imp.newReps,
+            targetWeightKg: imp.newWeightKg,
+            targetSeconds: imp.newSeconds,
+          );
+        } else {
+          await updatePlannedSet(
+            id: imp.targetPlannedSetId,
+            targetReps: imp.newReps,
+            targetWeightKg: imp.newWeightKg,
+            targetSeconds: imp.newSeconds,
+          );
+        }
+      }
+    });
   }
 
   /// Watch all completions for a workout, indexed by workoutSetId for fast

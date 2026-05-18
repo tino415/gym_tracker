@@ -965,5 +965,523 @@ void main() {
           {'Chest', 'Triceps'});
     });
   });
+
+  group('lastCompletionForExerciseAtSetIndex', () {
+    test('returns null when no prior completion exists', () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final workout = await db.startWorkout(routine.id);
+
+      final r = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 0,
+        excludeWorkoutId: workout.id,
+      );
+      expect(r, isNull);
+    });
+
+    test('returns most recent across multiple prior finished workouts',
+        () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+
+      // Workout A — older.
+      final wA = await db.startWorkout(routine.id);
+      final snapA = await db.loadFullWorkout(wA.id);
+      await db.upsertSetCompletion(
+        workoutId: wA.id,
+        workoutSetId: snapA!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+      await db.finishWorkout(wA.id);
+      await db.updateWorkoutTimes(
+        workoutId: wA.id,
+        startedAt: DateTime(2026, 5, 1),
+        endedAt: DateTime(2026, 5, 1, 1),
+      );
+
+      // Workout B — newer, different actuals.
+      final wB = await db.startWorkout(routine.id);
+      final snapB = await db.loadFullWorkout(wB.id);
+      await db.upsertSetCompletion(
+        workoutId: wB.id,
+        workoutSetId: snapB!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 7,
+        actualWeightKg: 82.5,
+      );
+      await db.finishWorkout(wB.id);
+      await db.updateWorkoutTimes(
+        workoutId: wB.id,
+        startedAt: DateTime(2026, 5, 10),
+        endedAt: DateTime(2026, 5, 10, 1),
+      );
+
+      // Querying from a fresh in-progress workout.
+      final wC = await db.startWorkout(routine.id);
+      final r = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 0,
+        excludeWorkoutId: wC.id,
+      );
+      expect(r, isNotNull);
+      expect(r!.actualReps, 7);
+      expect(r.actualWeightKg, 82.5);
+    });
+
+    test('excludes the current workoutId', () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+      await db.finishWorkout(w.id);
+
+      final r = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 0,
+        excludeWorkoutId: w.id,
+      );
+      expect(r, isNull);
+    });
+
+    test('excludes unfinished workouts', () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final wInProg = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(wInProg.id);
+      await db.upsertSetCompletion(
+        workoutId: wInProg.id,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+      // Do NOT finish.
+
+      // A separate in-progress workout queries.
+      final wOther = await db.startWorkout(routine.id);
+      final r = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 0,
+        excludeWorkoutId: wOther.id,
+      );
+      expect(r, isNull);
+    });
+
+    test('matches on setIndex', () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+      final sets = snap!.exercises.single.sets;
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: sets[0].workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: sets[1].workoutSet.id,
+        actualReps: 4,
+        actualWeightKg: 80,
+      );
+      await db.finishWorkout(w.id);
+
+      final wNext = await db.startWorkout(routine.id);
+      final r0 = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 0,
+        excludeWorkoutId: wNext.id,
+      );
+      final r1 = await db.lastCompletionForExerciseAtSetIndex(
+        exerciseId: bench.id,
+        setIndex: 1,
+        excludeWorkoutId: wNext.id,
+      );
+      expect(r0!.actualReps, 5);
+      expect(r1!.actualReps, 4);
+    });
+  });
+
+  group('findWorkoutImprovements / applyWorkoutImprovements', () {
+    Future<({int workoutId, int exerciseId, int routineId, int reId})>
+        seedSingleSet({
+      int targetReps = 5,
+      double targetWeightKg = 80,
+    }) async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: targetReps,
+        targetWeightKg: targetWeightKg,
+      );
+      final w = await db.startWorkout(routine.id);
+      return (
+        workoutId: w.id,
+        exerciseId: bench.id,
+        routineId: routine.id,
+        reId: re.id,
+      );
+    }
+
+    test('detects pure rep increase', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 6,
+        actualWeightKg: 80,
+      );
+      final imps = await db.findWorkoutImprovements(s.workoutId);
+      expect(imps, hasLength(1));
+      expect(imps.single.oldReps, 5);
+      expect(imps.single.newReps, 6);
+      expect(imps.single.targetIsAlternative, isFalse);
+    });
+
+    test('detects pure weight increase', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 82.5,
+      );
+      final imps = await db.findWorkoutImprovements(s.workoutId);
+      expect(imps, hasLength(1));
+      expect(imps.single.oldWeightKg, 80);
+      expect(imps.single.newWeightKg, 82.5);
+    });
+
+    test('detects both reps + weight increase', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 6,
+        actualWeightKg: 82.5,
+      );
+      final imps = await db.findWorkoutImprovements(s.workoutId);
+      expect(imps, hasLength(1));
+    });
+
+    test('ignores equal performance and regressions', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      // Equal.
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+      expect(await db.findWorkoutImprovements(s.workoutId), isEmpty);
+      // Regression.
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap.exercises.single.sets.single.workoutSet.id,
+        actualReps: 4,
+        actualWeightKg: 80,
+      );
+      expect(await db.findWorkoutImprovements(s.workoutId), isEmpty);
+    });
+
+    test('ignores ambiguous swap (more reps, less weight)', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 8,
+        actualWeightKg: 70,
+      );
+      expect(await db.findWorkoutImprovements(s.workoutId), isEmpty);
+    });
+
+    test('returns empty when routineId is null', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 6,
+        actualWeightKg: 80,
+      );
+      await db.deleteRoutine(s.routineId);
+      expect(await db.findWorkoutImprovements(s.workoutId), isEmpty);
+    });
+
+    test('skips ad-hoc exercises (routineExerciseId null)', () async {
+      final bench = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final workout = await db.startWorkout(routine.id);
+
+      // Ad-hoc add.
+      final extra = await db.createExercise('Curl');
+      final adhocWe = await db.addWorkoutExercise(
+        workoutId: workout.id,
+        exerciseId: extra.id,
+      );
+      final adhocWs = await db.addWorkoutSet(
+        workoutExerciseId: adhocWe.id,
+        targetReps: 10,
+        targetWeightKg: 15,
+      );
+      await db.upsertSetCompletion(
+        workoutId: workout.id,
+        workoutSetId: adhocWs.id,
+        actualReps: 12,
+        actualWeightKg: 15,
+      );
+      final imps = await db.findWorkoutImprovements(workout.id);
+      expect(imps.where((i) => i.exerciseName == 'Curl'), isEmpty);
+    });
+
+    test('time-kind: seconds increase detected, equal ignored', () async {
+      final plank =
+          await db.createExercise('Plank', kind: exerciseKindTime);
+      final routine = await db.createRoutine('Core');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: plank.id,
+      );
+      await db.addPlannedSet(routineExerciseId: re.id, targetSeconds: 45);
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+
+      // Equal.
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualSeconds: 45,
+      );
+      expect(await db.findWorkoutImprovements(w.id), isEmpty);
+
+      // Improvement.
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: snap.exercises.single.sets.single.workoutSet.id,
+        actualSeconds: 60,
+      );
+      final imps = await db.findWorkoutImprovements(w.id);
+      expect(imps, hasLength(1));
+      expect(imps.single.newSeconds, 60);
+    });
+
+    test('skips swapped-to alternative that has no planned sets', () async {
+      final bench = await db.createExercise('Bench');
+      final dbBench = await db.createExercise('DB Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.id,
+        exerciseId: dbBench.id,
+      );
+
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+      final we = snap!.exercises.single.workoutExercise;
+      await db.swapWorkoutExercise(
+        workoutExerciseId: we.id,
+        newExerciseId: dbBench.id,
+      );
+      // Targets still come from the primary's planned set (no alt sets).
+      final after = await db.loadFullWorkout(w.id);
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: after!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 8,
+        actualWeightKg: 35,
+      );
+      expect(await db.findWorkoutImprovements(w.id), isEmpty);
+    });
+
+    test('hits alternative planned sets when present', () async {
+      final bench = await db.createExercise('Bench');
+      final dbBench = await db.createExercise('DB Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final alt = await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.id,
+        exerciseId: dbBench.id,
+      );
+      final altPs = await db.addAlternativePlannedSet(
+        alternativeId: alt.id,
+        targetReps: 12,
+        targetWeightKg: 32.5,
+      );
+
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+      final we = snap!.exercises.single.workoutExercise;
+      await db.swapWorkoutExercise(
+        workoutExerciseId: we.id,
+        newExerciseId: dbBench.id,
+      );
+      final after = await db.loadFullWorkout(w.id);
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: after!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 13,
+        actualWeightKg: 32.5,
+      );
+      final imps = await db.findWorkoutImprovements(w.id);
+      expect(imps, hasLength(1));
+      expect(imps.single.targetIsAlternative, isTrue);
+      expect(imps.single.targetPlannedSetId, altPs.id);
+    });
+
+    test('apply updates primary planned set, idempotent', () async {
+      final s = await seedSingleSet();
+      final snap = await db.loadFullWorkout(s.workoutId);
+      await db.upsertSetCompletion(
+        workoutId: s.workoutId,
+        workoutSetId: snap!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 7,
+        actualWeightKg: 82.5,
+      );
+      await db.applyWorkoutImprovements(s.workoutId);
+
+      final full = await db.loadFullRoutine(s.routineId);
+      expect(full!.exercises.single.plannedSets.single.targetReps, 7);
+      expect(full.exercises.single.plannedSets.single.targetWeightKg, 82.5);
+      // Idempotent.
+      expect(await db.findWorkoutImprovements(s.workoutId), isEmpty);
+    });
+
+    test('apply updates alternative planned set', () async {
+      final bench = await db.createExercise('Bench');
+      final dbBench = await db.createExercise('DB Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: bench.id,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.id,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final alt = await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.id,
+        exerciseId: dbBench.id,
+      );
+      final altPs = await db.addAlternativePlannedSet(
+        alternativeId: alt.id,
+        targetReps: 12,
+        targetWeightKg: 32.5,
+      );
+
+      final w = await db.startWorkout(routine.id);
+      final snap = await db.loadFullWorkout(w.id);
+      await db.swapWorkoutExercise(
+        workoutExerciseId: snap!.exercises.single.workoutExercise.id,
+        newExerciseId: dbBench.id,
+      );
+      final after = await db.loadFullWorkout(w.id);
+      await db.upsertSetCompletion(
+        workoutId: w.id,
+        workoutSetId: after!.exercises.single.sets.single.workoutSet.id,
+        actualReps: 13,
+        actualWeightKg: 35,
+      );
+
+      await db.applyWorkoutImprovements(w.id);
+
+      final updated = await db.select(db.alternativePlannedSets).get();
+      final row = updated.firstWhere((p) => p.id == altPs.id);
+      expect(row.targetReps, 13);
+      expect(row.targetWeightKg, 35);
+    });
+  });
 }
 
