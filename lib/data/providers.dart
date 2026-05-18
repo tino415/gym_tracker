@@ -12,6 +12,15 @@ final exercisesStreamProvider = StreamProvider<List<Exercise>>((ref) {
   return ref.watch(databaseProvider).watchExercises();
 });
 
+final musclesStreamProvider = StreamProvider<List<Muscle>>((ref) {
+  return ref.watch(databaseProvider).watchMuscles();
+});
+
+final exercisesWithMusclesStreamProvider =
+    StreamProvider<List<ExerciseWithMuscles>>((ref) {
+  return ref.watch(databaseProvider).watchExercisesWithMuscles();
+});
+
 final routineSummariesStreamProvider = StreamProvider<List<RoutineSummary>>((
   ref,
 ) {

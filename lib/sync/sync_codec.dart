@@ -100,6 +100,8 @@ class RoutineExerciseDto {
     required this.restSeconds,
     required this.supersetGroup,
     required this.plannedSets,
+    this.alternatives = const [],
+    this.muscleSyncIds = const [],
   });
 
   final String syncId;
@@ -110,6 +112,10 @@ class RoutineExerciseDto {
   final int restSeconds;
   final int? supersetGroup;
   final List<PlannedSetDto> plannedSets;
+  final List<AlternativeRefDto> alternatives;
+  // Sync ids of muscles tagged on the canonical exercise. Receiver applies
+  // these to the local Exercise after resolving syncId → local row.
+  final List<String> muscleSyncIds;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -120,10 +126,14 @@ class RoutineExerciseDto {
     'restSeconds': restSeconds,
     'supersetGroup': supersetGroup,
     'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
+    'alternatives': alternatives.map((a) => a.toJson()).toList(),
+    'muscleSyncIds': muscleSyncIds,
   };
 
   factory RoutineExerciseDto.fromJson(Map<String, Object?> json) {
     final raw = (json['plannedSets'] as List).cast<Object?>();
+    final rawAlts = (json['alternatives'] as List?)?.cast<Object?>() ?? const [];
+    final rawMuscles = (json['muscleSyncIds'] as List?)?.cast<Object?>() ?? const [];
     return RoutineExerciseDto(
       syncId: json['syncId']! as String,
       exerciseSyncId: json['exerciseSyncId']! as String,
@@ -138,6 +148,12 @@ class RoutineExerciseDto {
             (m) => PlannedSetDto.fromJson((m as Map).cast<String, Object?>()),
           )
           .toList(),
+      alternatives: rawAlts
+          .map(
+            (m) => AlternativeRefDto.fromJson((m as Map).cast<String, Object?>()),
+          )
+          .toList(),
+      muscleSyncIds: rawMuscles.map((s) => s as String).toList(),
     );
   }
 
@@ -153,6 +169,54 @@ class RoutineExerciseDto {
       plannedSets: [
         for (final s in re.plannedSets) PlannedSetDto.fromPlannedSet(s),
       ],
+      alternatives: const [], // populated by repository (needs syncIds)
+      muscleSyncIds: [for (final m in re.muscles) m.syncId],
+    );
+  }
+}
+
+/// Reference to one alternative exercise of a routine slot.
+class AlternativeRefDto {
+  AlternativeRefDto({
+    required this.syncId,
+    required this.exerciseSyncId,
+    required this.exerciseName,
+    required this.exerciseKind,
+    required this.orderIndex,
+    this.plannedSets = const [],
+  });
+
+  final String syncId;
+  final String exerciseSyncId;
+  final String exerciseName;
+  final String exerciseKind;
+  final int orderIndex;
+  // Per-alternative planned sets. Empty list = alternative inherits the
+  // primary's targets at swap time.
+  final List<PlannedSetDto> plannedSets;
+
+  Map<String, Object?> toJson() => {
+    'syncId': syncId,
+    'exerciseSyncId': exerciseSyncId,
+    'exerciseName': exerciseName,
+    'exerciseKind': exerciseKind,
+    'orderIndex': orderIndex,
+    'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
+  };
+
+  factory AlternativeRefDto.fromJson(Map<String, Object?> json) {
+    final raw = (json['plannedSets'] as List?)?.cast<Object?>() ?? const [];
+    return AlternativeRefDto(
+      syncId: json['syncId']! as String,
+      exerciseSyncId: json['exerciseSyncId']! as String,
+      exerciseName: json['exerciseName']! as String,
+      exerciseKind: (json['exerciseKind'] as String?) ?? exerciseKindReps,
+      orderIndex: (json['orderIndex']! as num).toInt(),
+      plannedSets: raw
+          .map(
+            (m) => PlannedSetDto.fromJson((m as Map).cast<String, Object?>()),
+          )
+          .toList(),
     );
   }
 }
@@ -273,6 +337,7 @@ class WorkoutExerciseDto {
     required this.restSeconds,
     required this.supersetGroup,
     required this.sets,
+    this.routineExerciseSyncId,
   });
 
   final String syncId;
@@ -283,6 +348,10 @@ class WorkoutExerciseDto {
   final int restSeconds;
   final int? supersetGroup;
   final List<WorkoutSetDto> sets;
+  // Sync id of the routine slot the workout exercise was created from. The
+  // receiver resolves this to a local routine_exercise row to enable
+  // mid-workout swap; nullable since pre-v6 / orphaned snapshots have none.
+  final String? routineExerciseSyncId;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -293,6 +362,7 @@ class WorkoutExerciseDto {
     'restSeconds': restSeconds,
     'supersetGroup': supersetGroup,
     'sets': sets.map((s) => s.toJson()).toList(),
+    'routineExerciseSyncId': routineExerciseSyncId,
   };
 
   factory WorkoutExerciseDto.fromJson(Map<String, Object?> json) {
@@ -310,6 +380,7 @@ class WorkoutExerciseDto {
             (m) => WorkoutSetDto.fromJson((m as Map).cast<String, Object?>()),
           )
           .toList(),
+      routineExerciseSyncId: json['routineExerciseSyncId'] as String?,
     );
   }
 }

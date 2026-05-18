@@ -20,6 +20,9 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   String _kind = exerciseKindReps;
   Exercise? _loaded;
   bool _initializing = true;
+  // Muscle ids currently selected for the exercise being edited. Resolved from
+  // the join table on load; replaced wholesale on save.
+  final Set<int> _selectedMuscleIds = <int>{};
 
   @override
   void initState() {
@@ -35,10 +38,16 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     final db = ref.read(databaseProvider);
     final list = await db.watchExercises().first;
     final found = list.where((e) => e.id == widget.exerciseId).firstOrNull;
+    final mus = found == null
+        ? const <Muscle>[]
+        : await db.musclesForExercise(found.id);
     setState(() {
       _loaded = found;
       _nameController.text = found?.name ?? '';
       _kind = found?.kind ?? exerciseKindReps;
+      _selectedMuscleIds
+        ..clear()
+        ..addAll(mus.map((m) => m.id));
       _initializing = false;
     });
   }
@@ -54,14 +63,17 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     final db = ref.read(databaseProvider);
     final name = _nameController.text.trim();
     try {
+      final Exercise exercise;
       if (_loaded == null) {
-        await db.createExercise(name, kind: _kind);
+        exercise = await db.createExercise(name, kind: _kind);
       } else {
         await db.renameExercise(_loaded!.id, name);
         if (_loaded!.kind != _kind) {
           await db.setExerciseKind(_loaded!.id, _kind);
         }
+        exercise = _loaded!;
       }
+      await db.setExerciseMuscles(exercise.id, _selectedMuscleIds.toList());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -130,9 +142,10 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               TextFormField(
                 controller: _nameController,
                 autofocus: true,
@@ -165,11 +178,59 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
                 onSelectionChanged: (s) => setState(() => _kind = s.first),
               ),
               const SizedBox(height: 16),
+              _MuscleSelector(
+                selectedIds: _selectedMuscleIds,
+                onToggled: (id) => setState(() {
+                  if (!_selectedMuscleIds.add(id)) {
+                    _selectedMuscleIds.remove(id);
+                  }
+                }),
+              ),
+              const SizedBox(height: 16),
               FilledButton(onPressed: _save, child: const Text('Save')),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MuscleSelector extends ConsumerWidget {
+  const _MuscleSelector({required this.selectedIds, required this.onToggled});
+
+  final Set<int> selectedIds;
+  final ValueChanged<int> onToggled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final musclesAsync = ref.watch(musclesStreamProvider);
+    return musclesAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => Text('Could not load muscles: $e'),
+      data: (muscles) {
+        if (muscles.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Muscles', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final m in muscles)
+                  FilterChip(
+                    label: Text(m.name),
+                    selected: selectedIds.contains(m.id),
+                    onSelected: (_) => onToggled(m.id),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

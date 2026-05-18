@@ -11,6 +11,7 @@ import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'superset_nav.dart';
+import 'watch_alternative_picker_page.dart';
 import 'watch_workout_done_page.dart';
 import 'widgets/discard_dialog.dart';
 import 'widgets/round_safe_area.dart';
@@ -723,6 +724,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
           final n = _nextAfter(_exerciseIdx, _setIdx);
           if (n != null) _goTo(n.eIdx, n.sIdx);
         },
+        onSwap: _openSwapPicker,
       );
     }
     return _RepsSetView(
@@ -746,7 +748,24 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
         final n = _nextAfter(_exerciseIdx, _setIdx);
         if (n != null) _goTo(n.eIdx, n.sIdx);
       },
+      onSwap: _openSwapPicker,
     );
+  }
+
+  Future<void> _openSwapPicker() async {
+    if (_snapshot == null) return;
+    final we = _snapshot!.exercises[_exerciseIdx].workoutExercise;
+    final swapped = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => WatchAlternativePickerPage(workoutExerciseId: we.id),
+      ),
+    );
+    if (swapped != true) return;
+    if (!mounted) return;
+    // Snapshot has been re-emitted by the stream; pull fresh targets for the
+    // active set since the listener skips target reloads for safety (rest /
+    // countdown timers).
+    setState(_loadCurrentSetTargets);
   }
 
   List<_ExerciseListItem> _exerciseListItems() {
@@ -818,6 +837,7 @@ class _RepsSetView extends StatelessWidget {
     required this.onToggleDone,
     required this.onPrev,
     required this.onNext,
+    required this.onSwap,
     this.heartRateBpm,
   });
 
@@ -834,6 +854,7 @@ class _RepsSetView extends StatelessWidget {
   final VoidCallback onToggleDone;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onSwap;
   final int? heartRateBpm;
 
   String _formatWeight(double w) {
@@ -842,44 +863,47 @@ class _RepsSetView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _setHeader(
-            context,
-            exerciseName: exerciseName,
-            setIndex: setIndex,
-            totalSets: totalSets,
-            hasPrev: hasPrev,
-            hasNext: hasNext,
-            onPrev: onPrev,
-            onNext: onNext,
-            heartRateBpm: heartRateBpm,
-          ),
-          StepperValue<double>(
-            value: weightKg,
-            step: 2.5,
-            min: 0,
-            formatter: _formatWeight,
-            suffix: 'kg',
-            onChanged: onWeightChanged,
-          ),
-          StepperValue<int>(
-            value: reps,
-            step: 1,
-            min: 1,
-            formatter: (v) => v.toString(),
-            suffix: 'reps',
-            onChanged: onRepsChanged,
-          ),
-          _doneButton(
-            context: context,
-            completed: completed,
-            onTap: onToggleDone,
-          ),
-        ],
+    return _ScrollableSetView(
+      onSwap: onSwap,
+      main: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _setHeader(
+              context,
+              exerciseName: exerciseName,
+              setIndex: setIndex,
+              totalSets: totalSets,
+              hasPrev: hasPrev,
+              hasNext: hasNext,
+              onPrev: onPrev,
+              onNext: onNext,
+              heartRateBpm: heartRateBpm,
+            ),
+            StepperValue<double>(
+              value: weightKg,
+              step: 2.5,
+              min: 0,
+              formatter: _formatWeight,
+              suffix: 'kg',
+              onChanged: onWeightChanged,
+            ),
+            StepperValue<int>(
+              value: reps,
+              step: 1,
+              min: 1,
+              formatter: (v) => v.toString(),
+              suffix: 'reps',
+              onChanged: onRepsChanged,
+            ),
+            _doneButton(
+              context: context,
+              completed: completed,
+              onTap: onToggleDone,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -901,6 +925,7 @@ class _TimeSetView extends StatelessWidget {
     required this.onToggleDone,
     required this.onPrev,
     required this.onNext,
+    required this.onSwap,
     this.heartRateBpm,
   });
 
@@ -918,6 +943,7 @@ class _TimeSetView extends StatelessWidget {
   final VoidCallback onToggleDone;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onSwap;
   final int? heartRateBpm;
 
   String _formatWeight(double w) {
@@ -933,57 +959,106 @@ class _TimeSetView extends StatelessWidget {
     );
     final isRound = WatchShapeScope.of(context);
     final hInset = isRound ? 24.0 : 0.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _setHeader(
-            context,
-            exerciseName: exerciseName,
-            setIndex: setIndex,
-            totalSets: totalSets,
-            hasPrev: hasPrev,
-            hasNext: hasNext,
-            onPrev: onPrev,
-            onNext: onNext,
-            heartRateBpm: heartRateBpm,
-          ),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text('${secondsRemaining}s', style: big),
-          ),
-          StepperValue<double>(
-            value: weightKg,
-            step: 2.5,
-            min: 0,
-            formatter: _formatWeight,
-            suffix: 'kg',
-            onChanged: onWeightChanged,
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: hInset),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onToggleRun,
-                icon: Icon(running ? Icons.pause : Icons.play_arrow, size: 16),
-                label: Text(running ? 'Pause' : 'Start'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(26),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
+    return _ScrollableSetView(
+      onSwap: onSwap,
+      main: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _setHeader(
+              context,
+              exerciseName: exerciseName,
+              setIndex: setIndex,
+              totalSets: totalSets,
+              hasPrev: hasPrev,
+              hasNext: hasNext,
+              onPrev: onPrev,
+              onNext: onNext,
+              heartRateBpm: heartRateBpm,
+            ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('${secondsRemaining}s', style: big),
+            ),
+            StepperValue<double>(
+              value: weightKg,
+              step: 2.5,
+              min: 0,
+              formatter: _formatWeight,
+              suffix: 'kg',
+              onChanged: onWeightChanged,
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: hInset),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onToggleRun,
+                  icon:
+                      Icon(running ? Icons.pause : Icons.play_arrow, size: 16),
+                  label: Text(running ? 'Pause' : 'Start'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(26),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
               ),
             ),
-          ),
-          _doneButton(
-            context: context,
-            completed: completed,
-            onTap: onToggleDone,
-          ),
-        ],
+            _doneButton(
+              context: context,
+              completed: completed,
+              onTap: onToggleDone,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// Wraps a set view's main controls in a scrollable column with a small
+/// "actions" tray below. The main region is sized to the viewport so the
+/// existing space-between layout still works; the actions tray is reachable
+/// with a small flick. New aux buttons (swap exercise, skip set, etc.) slot
+/// into the tray without crowding the chord.
+class _ScrollableSetView extends StatelessWidget {
+  const _ScrollableSetView({required this.main, required this.onSwap});
+
+  final Widget main;
+  final VoidCallback onSwap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRound = WatchShapeScope.of(context);
+    final hInset = isRound ? 24.0 : 12.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              SizedBox(height: constraints.maxHeight, child: main),
+              Padding(
+                padding:
+                    EdgeInsets.fromLTRB(hInset, 4, hInset, isRound ? 24 : 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onSwap,
+                    icon: const Icon(Icons.swap_horiz, size: 16),
+                    label: const Text('Swap exercise'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(32),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

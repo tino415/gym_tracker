@@ -55,6 +55,53 @@ class PlannedSets extends Table {
   IntColumn get targetSeconds => integer().nullable()();
 }
 
+/// Alternative exercises for a routine slot. The user can swap to any of these
+/// mid-workout (e.g., dumbbell bench if the barbell is occupied). Lives on the
+/// routine — workouts read these on demand via [WorkoutExercises.routineExerciseId].
+class RoutineExerciseAlternatives extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get syncId => text().unique()();
+  IntColumn get routineExerciseId =>
+      integer().references(RoutineExercises, #id, onDelete: KeyAction.cascade)();
+  IntColumn get exerciseId =>
+      integer().references(Exercises, #id, onDelete: KeyAction.restrict)();
+  IntColumn get orderIndex => integer()();
+}
+
+/// Per-alternative planned sets. Mirrors [PlannedSets] but FK'd to an
+/// alternative row. Empty list means the alternative shares the primary's
+/// targets at swap time — feature is opt-in per alternative.
+class AlternativePlannedSets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get syncId => text().unique()();
+  IntColumn get alternativeId => integer().references(
+    RoutineExerciseAlternatives,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get setIndex => integer()();
+  IntColumn get targetReps => integer().nullable()();
+  RealColumn get targetWeightKg => real().nullable()();
+  IntColumn get targetSeconds => integer().nullable()();
+}
+
+/// Muscle group registry. Seeded with a standard set; users may add more.
+class Muscles extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get syncId => text().unique()();
+  TextColumn get name => text().unique()();
+}
+
+/// Many-to-many: which muscles an exercise targets.
+class ExerciseMuscles extends Table {
+  IntColumn get exerciseId =>
+      integer().references(Exercises, #id, onDelete: KeyAction.cascade)();
+  IntColumn get muscleId =>
+      integer().references(Muscles, #id, onDelete: KeyAction.cascade)();
+  @override
+  Set<Column> get primaryKey => {exerciseId, muscleId};
+}
+
 class Workouts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get syncId => text().unique()();
@@ -92,6 +139,14 @@ class WorkoutExercises extends Table {
   IntColumn get supersetGroup => integer().nullable()();
   TextColumn get kind =>
       text().withDefault(const Constant(exerciseKindReps))();
+  // Back-pointer to the routine slot this workout exercise was created from.
+  // SET NULL on delete so a routine edit that removes the slot mid-workout
+  // gracefully disables mid-workout swap without breaking the workout itself.
+  IntColumn get routineExerciseId => integer().nullable().references(
+    RoutineExercises,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
 }
 
 /// Snapshot of a planned set taken when a workout starts.
@@ -130,16 +185,43 @@ class FullRoutine {
   final List<FullRoutineExercise> exercises;
 }
 
+/// Exercise + its muscle tags, for list/registry rendering.
+class ExerciseWithMuscles {
+  ExerciseWithMuscles({required this.exercise, required this.muscles});
+  final Exercise exercise;
+  final List<Muscle> muscles;
+}
+
 class FullRoutineExercise {
   FullRoutineExercise({
     required this.routineExercise,
     required this.exercise,
     required this.plannedSets,
+    this.alternatives = const [],
+    this.muscles = const [],
   });
   final RoutineExercise routineExercise;
   final Exercise exercise;
   final List<PlannedSet> plannedSets;
+  // Alternative exercises for this slot, ordered by `orderIndex`. Each carries
+  // its own (optional) planned sets — empty list = share the primary's.
+  final List<RoutineAlternative> alternatives;
+  // Muscles targeted by [exercise]. Same shape on every variant slot.
+  final List<Muscle> muscles;
   String get kind => exercise.kind;
+}
+
+/// One alternative on a routine slot: the join row, the canonical exercise,
+/// and its (optional) own planned sets.
+class RoutineAlternative {
+  RoutineAlternative({
+    required this.join,
+    required this.exercise,
+    required this.plannedSets,
+  });
+  final RoutineExerciseAlternative join;
+  final Exercise exercise;
+  final List<AlternativePlannedSet> plannedSets;
 }
 
 class RoutineSummary {
@@ -178,6 +260,10 @@ class FullWorkoutSet {
     Routines,
     RoutineExercises,
     PlannedSets,
+    RoutineExerciseAlternatives,
+    AlternativePlannedSets,
+    Muscles,
+    ExerciseMuscles,
     Workouts,
     WorkoutExercises,
     WorkoutSets,
@@ -189,7 +275,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -198,6 +284,7 @@ class AppDatabase extends _$AppDatabase {
       // Drift / sqlite3 do not enable foreign keys by default. Without this,
       // ON DELETE CASCADE / SET NULL silently no-op, leaving orphan rows.
       await customStatement('PRAGMA foreign_keys = ON');
+      await _seedMuscles();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -244,8 +331,48 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(setCompletions, setCompletions.avgHeartRate);
         await m.addColumn(setCompletions, setCompletions.maxHeartRate);
       }
+      if (from < 6) {
+        // v5 → v6: alternative exercises per routine slot + muscle registry.
+        await m.createTable(routineExerciseAlternatives);
+        await m.createTable(muscles);
+        await m.createTable(exerciseMuscles);
+        await m.addColumn(
+          workoutExercises,
+          workoutExercises.routineExerciseId,
+        );
+      }
+      if (from < 7) {
+        // v6 → v7: per-alternative planned sets.
+        await m.createTable(alternativePlannedSets);
+      }
     },
   );
+
+  // Standard muscle list. Seeded idempotently on every open so a fresh DB and
+  // an upgraded one both end up with the same row ids (deterministic syncIds
+  // mean phone and watch agree without sync round-trips).
+  static const _muscleSeeds = [
+    'Chest',
+    'Back',
+    'Shoulders',
+    'Biceps',
+    'Triceps',
+    'Forearms',
+    'Abs',
+    'Quads',
+    'Hamstrings',
+    'Glutes',
+    'Calves',
+  ];
+
+  Future<void> _seedMuscles() async {
+    for (final name in _muscleSeeds) {
+      await customStatement(
+        'INSERT OR IGNORE INTO muscles (sync_id, name) VALUES (?, ?)',
+        ['muscle:${name.toLowerCase()}', name],
+      );
+    }
+  }
 
   Future<void> _migrateToV3(Migrator m) async {
     // Foreign keys must be off for the recreate-table dance below. They get
@@ -426,6 +553,42 @@ class AppDatabase extends _$AppDatabase {
     )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
   }
 
+  /// One-shot fetch of every exercise with its muscle tags, in name order.
+  /// Used by the exercise registry list — the call is cheap (small N) and
+  /// avoids one query per row on rebuild.
+  Future<List<ExerciseWithMuscles>> loadExercisesWithMuscles() async {
+    final exs = await (select(
+      exercises,
+    )..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
+    if (exs.isEmpty) return const [];
+    final rows = await (select(exerciseMuscles).join([
+          innerJoin(muscles, muscles.id.equalsExp(exerciseMuscles.muscleId)),
+        ])
+          ..orderBy([OrderingTerm.asc(muscles.name)]))
+        .get();
+    final byExercise = <int, List<Muscle>>{};
+    for (final row in rows) {
+      final em = row.readTable(exerciseMuscles);
+      final m = row.readTable(muscles);
+      byExercise.putIfAbsent(em.exerciseId, () => []).add(m);
+    }
+    return [
+      for (final e in exs)
+        ExerciseWithMuscles(exercise: e, muscles: byExercise[e.id] ?? const []),
+    ];
+  }
+
+  /// Stream variant of [loadExercisesWithMuscles] for reactive UIs.
+  Stream<List<ExerciseWithMuscles>> watchExercisesWithMuscles() async* {
+    yield await loadExercisesWithMuscles();
+    final updates = tableUpdates(
+      TableUpdateQuery.onAllTables([exercises, muscles, exerciseMuscles]),
+    );
+    await for (final _ in updates) {
+      yield await loadExercisesWithMuscles();
+    }
+  }
+
   Future<Exercise> createExercise(
     String name, {
     String kind = exerciseKindReps,
@@ -526,15 +689,57 @@ class AppDatabase extends _$AppDatabase {
                 ..where((t) => t.routineExerciseId.equals(re.id))
                 ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
               .get();
+      final alts = await _loadAlternatives(re.id);
+      final mus = await _loadMusclesFor(ex.id);
       result.add(
         FullRoutineExercise(
           routineExercise: re,
           exercise: ex,
           plannedSets: sets,
+          alternatives: alts,
+          muscles: mus,
         ),
       );
     }
     return FullRoutine(routine: r, exercises: result);
+  }
+
+  Future<List<RoutineAlternative>> _loadAlternatives(
+    int routineExerciseId,
+  ) async {
+    final alts =
+        await (select(routineExerciseAlternatives)
+              ..where((t) => t.routineExerciseId.equals(routineExerciseId))
+              ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+            .get();
+    if (alts.isEmpty) return const [];
+    final ids = alts.map((a) => a.exerciseId).toList();
+    final exs = await (select(
+      exercises,
+    )..where((t) => t.id.isIn(ids))).get();
+    final byId = {for (final e in exs) e.id: e};
+    final result = <RoutineAlternative>[];
+    for (final a in alts) {
+      final ex = byId[a.exerciseId];
+      if (ex == null) continue;
+      final ps = await (select(alternativePlannedSets)
+            ..where((t) => t.alternativeId.equals(a.id))
+            ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+          .get();
+      result.add(RoutineAlternative(join: a, exercise: ex, plannedSets: ps));
+    }
+    return result;
+  }
+
+  Future<List<Muscle>> _loadMusclesFor(int exerciseId) async {
+    final rows =
+        await (select(exerciseMuscles).join([
+              innerJoin(muscles, muscles.id.equalsExp(exerciseMuscles.muscleId)),
+            ])
+              ..where(exerciseMuscles.exerciseId.equals(exerciseId))
+              ..orderBy([OrderingTerm.asc(muscles.name)]))
+            .get();
+    return rows.map((r) => r.readTable(muscles)).toList();
   }
 
   Stream<FullRoutine?> watchFullRoutine(int routineId) async* {
@@ -545,6 +750,10 @@ class AppDatabase extends _$AppDatabase {
         routineExercises,
         plannedSets,
         exercises,
+        routineExerciseAlternatives,
+        alternativePlannedSets,
+        muscles,
+        exerciseMuscles,
       ]),
     );
     await for (final _ in updates) {
@@ -703,6 +912,171 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  // -- Routine exercise alternatives ------------------------------------
+
+  Future<RoutineExerciseAlternative> addRoutineExerciseAlternative({
+    required int routineExerciseId,
+    required int exerciseId,
+  }) async {
+    return transaction(() async {
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(routineExerciseId))).getSingle();
+      final maxExpr = routineExerciseAlternatives.orderIndex.max();
+      final row =
+          await (selectOnly(routineExerciseAlternatives)
+                ..where(
+                  routineExerciseAlternatives.routineExerciseId.equals(
+                    routineExerciseId,
+                  ),
+                )
+                ..addColumns([maxExpr]))
+              .getSingleOrNull();
+      final next = (row?.read(maxExpr) ?? -1) + 1;
+      final id = await into(routineExerciseAlternatives).insert(
+        RoutineExerciseAlternativesCompanion.insert(
+          syncId: _uuid.v4(),
+          routineExerciseId: routineExerciseId,
+          exerciseId: exerciseId,
+          orderIndex: next,
+        ),
+      );
+      await _bumpRoutineVersion(re.routineId);
+      return (select(
+        routineExerciseAlternatives,
+      )..where((t) => t.id.equals(id))).getSingle();
+    });
+  }
+
+  Future<AlternativePlannedSet> addAlternativePlannedSet({
+    required int alternativeId,
+    int? targetReps,
+    double? targetWeightKg,
+    int? targetSeconds,
+  }) async {
+    return transaction(() async {
+      final alt = await (select(
+        routineExerciseAlternatives,
+      )..where((t) => t.id.equals(alternativeId))).getSingle();
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
+      final maxExpr = alternativePlannedSets.setIndex.max();
+      final row = await (selectOnly(alternativePlannedSets)
+            ..where(alternativePlannedSets.alternativeId.equals(alternativeId))
+            ..addColumns([maxExpr]))
+          .getSingleOrNull();
+      final next = (row?.read(maxExpr) ?? -1) + 1;
+      final id = await into(alternativePlannedSets).insert(
+        AlternativePlannedSetsCompanion.insert(
+          syncId: _uuid.v4(),
+          alternativeId: alternativeId,
+          setIndex: next,
+          targetReps: Value(targetReps),
+          targetWeightKg: Value(targetWeightKg),
+          targetSeconds: Value(targetSeconds),
+        ),
+      );
+      await _bumpRoutineVersion(re.routineId);
+      return (select(
+        alternativePlannedSets,
+      )..where((t) => t.id.equals(id))).getSingle();
+    });
+  }
+
+  Future<void> updateAlternativePlannedSet({
+    required int id,
+    int? targetReps,
+    double? targetWeightKg,
+    int? targetSeconds,
+  }) async {
+    await transaction(() async {
+      final ps = await (select(
+        alternativePlannedSets,
+      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (ps == null) return;
+      final alt = await (select(
+        routineExerciseAlternatives,
+      )..where((t) => t.id.equals(ps.alternativeId))).getSingle();
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
+      await (update(alternativePlannedSets)..where((t) => t.id.equals(id)))
+          .write(
+            AlternativePlannedSetsCompanion(
+              targetReps: Value(targetReps),
+              targetWeightKg: Value(targetWeightKg),
+              targetSeconds: Value(targetSeconds),
+            ),
+          );
+      await _bumpRoutineVersion(re.routineId);
+    });
+  }
+
+  Future<void> deleteAlternativePlannedSet(int id) async {
+    await transaction(() async {
+      final ps = await (select(
+        alternativePlannedSets,
+      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (ps == null) return;
+      final alt = await (select(
+        routineExerciseAlternatives,
+      )..where((t) => t.id.equals(ps.alternativeId))).getSingle();
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
+      await (delete(alternativePlannedSets)..where((t) => t.id.equals(id)))
+          .go();
+      await _bumpRoutineVersion(re.routineId);
+    });
+  }
+
+  Future<void> removeRoutineExerciseAlternative(int alternativeId) async {
+    await transaction(() async {
+      final alt = await (select(
+        routineExerciseAlternatives,
+      )..where((t) => t.id.equals(alternativeId))).getSingleOrNull();
+      if (alt == null) return;
+      final re = await (select(
+        routineExercises,
+      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingleOrNull();
+      await (delete(routineExerciseAlternatives)
+            ..where((t) => t.id.equals(alternativeId)))
+          .go();
+      if (re != null) {
+        await _bumpRoutineVersion(re.routineId);
+      }
+    });
+  }
+
+  // -- Muscles ----------------------------------------------------------
+
+  Stream<List<Muscle>> watchMuscles() {
+    return (select(
+      muscles,
+    )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
+  }
+
+  Future<List<Muscle>> musclesForExercise(int exerciseId) =>
+      _loadMusclesFor(exerciseId);
+
+  /// Replace the muscle set for an exercise with [muscleIds].
+  Future<void> setExerciseMuscles(int exerciseId, List<int> muscleIds) async {
+    await transaction(() async {
+      await (delete(
+        exerciseMuscles,
+      )..where((t) => t.exerciseId.equals(exerciseId))).go();
+      for (final mId in muscleIds) {
+        await into(exerciseMuscles).insert(
+          ExerciseMusclesCompanion.insert(
+            exerciseId: exerciseId,
+            muscleId: mId,
+          ),
+        );
+      }
+    });
+  }
+
   // -- Workouts (runs) --------------------------------------------------
 
   Stream<List<Workout>> watchRecentWorkouts() {
@@ -747,6 +1121,7 @@ class AppDatabase extends _$AppDatabase {
             restSeconds: Value(re.routineExercise.restSeconds),
             supersetGroup: Value(re.routineExercise.supersetGroup),
             kind: Value(re.exercise.kind),
+            routineExerciseId: Value(re.routineExercise.id),
           ),
         );
         for (final ps in re.plannedSets) {
@@ -1042,5 +1417,141 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> removeWorkoutSet(int workoutSetId) async {
     await (delete(workoutSets)..where((t) => t.id.equals(workoutSetId))).go();
+  }
+
+  /// Mid-workout swap: change which canonical exercise this snapshot row
+  /// represents. If the chosen alternative carries its own planned sets, the
+  /// workout's uncompleted sets are retargeted to those values (completed sets
+  /// keep their targets + completions intact). With no alternative planned
+  /// sets, targets are left as-is — falling back to "share with primary"
+  /// behaviour.
+  Future<void> swapWorkoutExercise({
+    required int workoutExerciseId,
+    required int newExerciseId,
+  }) async {
+    await transaction(() async {
+      final ex = await (select(
+        exercises,
+      )..where((t) => t.id.equals(newExerciseId))).getSingle();
+      final we = await (select(workoutExercises)
+            ..where((t) => t.id.equals(workoutExerciseId)))
+          .getSingle();
+
+      // Look up the alternative row (and its planned sets) for this slot, if
+      // any: the alternative's exerciseId matches the new selection, and the
+      // workout exercise has a back-pointer to a routine slot.
+      List<AlternativePlannedSet> altPs = const [];
+      final reId = we.routineExerciseId;
+      if (reId != null) {
+        final alts = await (select(routineExerciseAlternatives)
+              ..where((t) => t.routineExerciseId.equals(reId)))
+            .get();
+        final altRow =
+            alts.where((a) => a.exerciseId == newExerciseId).firstOrNull;
+        if (altRow != null) {
+          altPs = await (select(alternativePlannedSets)
+                ..where((t) => t.alternativeId.equals(altRow.id))
+                ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+              .get();
+        }
+      }
+
+      if (altPs.isNotEmpty) {
+        // Retarget unfinished sets in place. Walk existing WorkoutSets in
+        // setIndex order; for each one without a completion, overwrite its
+        // targets from the matching alt set. Append extras for any alt sets
+        // beyond the current count.
+        final existingSets = await (select(workoutSets)
+              ..where((t) => t.workoutExerciseId.equals(workoutExerciseId))
+              ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+            .get();
+        final completions = await (select(setCompletions)
+              ..where((t) => t.workoutId.equals(we.workoutId)))
+            .get();
+        final completedSetIds = {
+          for (final c in completions) c.workoutSetId,
+        };
+        final byIndex = {for (final s in existingSets) s.setIndex: s};
+        for (final aps in altPs) {
+          final existing = byIndex[aps.setIndex];
+          if (existing == null) {
+            await into(workoutSets).insert(
+              WorkoutSetsCompanion.insert(
+                syncId: _uuid.v4(),
+                workoutExerciseId: workoutExerciseId,
+                setIndex: aps.setIndex,
+                targetReps: Value(aps.targetReps),
+                targetWeightKg: Value(aps.targetWeightKg),
+                targetSeconds: Value(aps.targetSeconds),
+              ),
+            );
+            continue;
+          }
+          if (completedSetIds.contains(existing.id)) continue;
+          await (update(workoutSets)..where((t) => t.id.equals(existing.id)))
+              .write(
+                WorkoutSetsCompanion(
+                  targetReps: Value(aps.targetReps),
+                  targetWeightKg: Value(aps.targetWeightKg),
+                  targetSeconds: Value(aps.targetSeconds),
+                ),
+              );
+        }
+      }
+
+      await (update(workoutExercises)
+            ..where((t) => t.id.equals(workoutExerciseId)))
+          .write(
+            WorkoutExercisesCompanion(
+              exerciseId: Value(ex.id),
+              exerciseName: Value(ex.name),
+              kind: Value(ex.kind),
+            ),
+          );
+    });
+  }
+
+  /// Variants available for [workoutExerciseId]: the routine slot's primary
+  /// exercise plus all its alternatives, minus the currently-selected one.
+  /// Returns empty if the workout exercise has no `routineExerciseId` back
+  /// pointer (e.g., pre-v6 workouts) or if the slot was removed from the
+  /// routine since the workout started.
+  Future<List<Exercise>> loadAlternativesForWorkoutExercise(
+    int workoutExerciseId,
+  ) async {
+    final we = await (select(
+      workoutExercises,
+    )..where((t) => t.id.equals(workoutExerciseId))).getSingleOrNull();
+    if (we == null) return const [];
+    final reId = we.routineExerciseId;
+    if (reId == null) return const [];
+    final re = await (select(
+      routineExercises,
+    )..where((t) => t.id.equals(reId))).getSingleOrNull();
+    if (re == null) return const [];
+    final variantIds = <int>{re.exerciseId};
+    final alts = await (select(routineExerciseAlternatives)
+          ..where((t) => t.routineExerciseId.equals(reId))
+          ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+        .get();
+    variantIds.addAll(alts.map((a) => a.exerciseId));
+    final current = we.exerciseId;
+    if (current != null) variantIds.remove(current);
+    if (variantIds.isEmpty) return const [];
+    final exs = await (select(
+      exercises,
+    )..where((t) => t.id.isIn(variantIds))).get();
+    // Stable order: primary first if still present, then alternatives in
+    // their stored orderIndex.
+    final byId = {for (final e in exs) e.id: e};
+    final ordered = <Exercise>[];
+    if (current != re.exerciseId && byId.containsKey(re.exerciseId)) {
+      ordered.add(byId[re.exerciseId]!);
+    }
+    for (final a in alts) {
+      final ex = byId[a.exerciseId];
+      if (ex != null && ex.id != current) ordered.add(ex);
+    }
+    return ordered;
   }
 }

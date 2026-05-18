@@ -16,9 +16,71 @@ class SyncRepository {
     final result = <RoutineTemplateDto>[];
     for (final r in all) {
       final full = await _db.loadFullRoutine(r.id);
-      if (full != null) {
-        result.add(RoutineTemplateDto.fromFullRoutine(full));
+      if (full == null) continue;
+      // Hydrate each routine exercise with its alternatives. fromFullRoutine
+      // can't see the canonical exercise rows for alternatives without an
+      // extra DB roundtrip, so we patch the dtos here.
+      final exDtos = <RoutineExerciseDto>[];
+      for (final re in full.exercises) {
+        final altRows = await (_db.select(_db.routineExerciseAlternatives)
+              ..where((t) => t.routineExerciseId.equals(re.routineExercise.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+            .get();
+        final altDtos = <AlternativeRefDto>[];
+        for (final a in altRows) {
+          final ex = await (_db.select(
+            _db.exercises,
+          )..where((t) => t.id.equals(a.exerciseId))).getSingleOrNull();
+          if (ex == null) continue;
+          final altPs = await (_db.select(_db.alternativePlannedSets)
+                ..where((t) => t.alternativeId.equals(a.id))
+                ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+              .get();
+          altDtos.add(
+            AlternativeRefDto(
+              syncId: a.syncId,
+              exerciseSyncId: ex.syncId,
+              exerciseName: ex.name,
+              exerciseKind: ex.kind,
+              orderIndex: a.orderIndex,
+              plannedSets: [
+                for (final p in altPs)
+                  PlannedSetDto(
+                    syncId: p.syncId,
+                    setIndex: p.setIndex,
+                    targetReps: p.targetReps,
+                    targetWeightKg: p.targetWeightKg,
+                    targetSeconds: p.targetSeconds,
+                  ),
+              ],
+            ),
+          );
+        }
+        final base = RoutineExerciseDto.fromFullExercise(re);
+        exDtos.add(
+          RoutineExerciseDto(
+            syncId: base.syncId,
+            exerciseSyncId: base.exerciseSyncId,
+            exerciseName: base.exerciseName,
+            exerciseKind: base.exerciseKind,
+            orderIndex: base.orderIndex,
+            restSeconds: base.restSeconds,
+            supersetGroup: base.supersetGroup,
+            plannedSets: base.plannedSets,
+            alternatives: altDtos,
+            muscleSyncIds: base.muscleSyncIds,
+          ),
+        );
       }
+      result.add(
+        RoutineTemplateDto(
+          syncId: full.routine.syncId,
+          name: full.routine.name,
+          version: full.routine.version,
+          createdAtMs: full.routine.createdAt.millisecondsSinceEpoch,
+          exercises: exDtos,
+        ),
+      );
     }
     return result;
   }
@@ -174,6 +236,111 @@ class SyncRepository {
           // planned_sets) but kept defensively in case of orphan rows.
         }
       }
+
+      // Upsert alternatives within this routine exercise.
+      final existingAlts = await (_db.select(_db.routineExerciseAlternatives)
+            ..where((t) => t.routineExerciseId.equals(reId)))
+          .get();
+      final existingAltsBySync = {
+        for (final a in existingAlts) a.syncId: a,
+      };
+      final keptAltIds = <int>{};
+      for (final a in e.alternatives) {
+        final altExerciseId = await _findOrCreateExerciseBySyncId(
+          syncId: a.exerciseSyncId,
+          name: a.exerciseName,
+          kind: a.exerciseKind,
+        );
+        final exA = existingAltsBySync[a.syncId];
+        final int altRowId;
+        if (exA == null) {
+          altRowId = await _db
+              .into(_db.routineExerciseAlternatives)
+              .insert(
+                RoutineExerciseAlternativesCompanion.insert(
+                  syncId: a.syncId,
+                  routineExerciseId: reId,
+                  exerciseId: altExerciseId,
+                  orderIndex: a.orderIndex,
+                ),
+              );
+        } else {
+          altRowId = exA.id;
+          await (_db.update(_db.routineExerciseAlternatives)
+                ..where((t) => t.id.equals(altRowId)))
+              .write(
+                RoutineExerciseAlternativesCompanion(
+                  exerciseId: Value(altExerciseId),
+                  orderIndex: Value(a.orderIndex),
+                ),
+              );
+        }
+        keptAltIds.add(altRowId);
+
+        // Upsert this alt's planned sets by syncId. Match the primary's
+        // pattern: drop any not present in the bundle.
+        final existingAltPs =
+            await (_db.select(_db.alternativePlannedSets)
+                  ..where((t) => t.alternativeId.equals(altRowId)))
+                .get();
+        final existingAltPsBySync = {
+          for (final p in existingAltPs) p.syncId: p,
+        };
+        final keptAltPsIds = <int>{};
+        for (final s in a.plannedSets) {
+          final existingForS = existingAltPsBySync[s.syncId];
+          if (existingForS == null) {
+            final psId = await _db
+                .into(_db.alternativePlannedSets)
+                .insert(
+                  AlternativePlannedSetsCompanion.insert(
+                    syncId: s.syncId,
+                    alternativeId: altRowId,
+                    setIndex: s.setIndex,
+                    targetReps: Value(s.targetReps),
+                    targetWeightKg: Value(s.targetWeightKg),
+                    targetSeconds: Value(s.targetSeconds),
+                  ),
+                );
+            keptAltPsIds.add(psId);
+          } else {
+            await (_db.update(_db.alternativePlannedSets)
+                  ..where((t) => t.id.equals(existingForS.id)))
+                .write(
+                  AlternativePlannedSetsCompanion(
+                    setIndex: Value(s.setIndex),
+                    targetReps: Value(s.targetReps),
+                    targetWeightKg: Value(s.targetWeightKg),
+                    targetSeconds: Value(s.targetSeconds),
+                  ),
+                );
+            keptAltPsIds.add(existingForS.id);
+          }
+        }
+        for (final p in existingAltPs) {
+          if (keptAltPsIds.contains(p.id)) continue;
+          await (_db.delete(_db.alternativePlannedSets)
+                ..where((t) => t.id.equals(p.id)))
+              .go();
+        }
+      }
+      for (final a in existingAlts) {
+        if (keptAltIds.contains(a.id)) continue;
+        await (_db.delete(_db.routineExerciseAlternatives)
+              ..where((t) => t.id.equals(a.id)))
+            .go();
+      }
+
+      // Apply muscle tags to the canonical exercise (last-write-wins).
+      if (e.muscleSyncIds.isNotEmpty) {
+        final muscleRows = await (_db.select(_db.muscles)
+              ..where((t) => t.syncId.isIn(e.muscleSyncIds)))
+            .get();
+        await _db.setExerciseMuscles(
+          exerciseId,
+          [for (final m in muscleRows) m.id],
+        );
+      }
     }
 
     for (final re in existingRE) {
@@ -251,6 +418,13 @@ class SyncRepository {
         )..where((t) => t.id.equals(we.exerciseId!))).getSingleOrNull();
         exerciseSyncId = ex?.syncId;
       }
+      String? routineExerciseSyncId;
+      if (we.routineExerciseId != null) {
+        final re = await (_db.select(
+          _db.routineExercises,
+        )..where((t) => t.id.equals(we.routineExerciseId!))).getSingleOrNull();
+        routineExerciseSyncId = re?.syncId;
+      }
       final sets = await (_db.select(_db.workoutSets)
             ..where((t) => t.workoutExerciseId.equals(we.id))
             ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
@@ -267,6 +441,7 @@ class SyncRepository {
           orderIndex: we.orderIndex,
           restSeconds: we.restSeconds,
           supersetGroup: we.supersetGroup,
+          routineExerciseSyncId: routineExerciseSyncId,
           sets: [
             for (final s in sets)
               WorkoutSetDto(
@@ -355,6 +530,13 @@ class SyncRepository {
           )..where((t) => t.syncId.equals(e.exerciseSyncId!))).getSingleOrNull();
           exerciseLocalId = ex?.id;
         }
+        int? routineExerciseLocalId;
+        if (e.routineExerciseSyncId != null) {
+          final re = await (_db.select(_db.routineExercises)
+                ..where((t) => t.syncId.equals(e.routineExerciseSyncId!)))
+              .getSingleOrNull();
+          routineExerciseLocalId = re?.id;
+        }
         final weId = await _db
             .into(_db.workoutExercises)
             .insert(
@@ -367,6 +549,7 @@ class SyncRepository {
                 restSeconds: Value(e.restSeconds),
                 supersetGroup: Value(e.supersetGroup),
                 kind: Value(e.kind),
+                routineExerciseId: Value(routineExerciseLocalId),
               ),
             );
         for (final s in e.sets) {

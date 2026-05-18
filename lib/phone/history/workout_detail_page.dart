@@ -312,7 +312,7 @@ class _Body extends ConsumerWidget {
   }
 }
 
-class _ExerciseSection extends StatelessWidget {
+class _ExerciseSection extends ConsumerWidget {
   const _ExerciseSection({
     required this.ex,
     required this.onAddSet,
@@ -330,8 +330,9 @@ class _ExerciseSection extends StatelessWidget {
   final void Function(int workoutSetId) onRemoveSet;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final exerciseId = ex.workoutExercise.exerciseId;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -360,6 +361,7 @@ class _ExerciseSection extends StatelessWidget {
                 ),
               ],
             ),
+            if (exerciseId != null) _MuscleChipsRow(exerciseId: exerciseId),
             const Divider(),
             for (var i = 0; i < ex.sets.length; i++)
               _SetRow(
@@ -384,6 +386,51 @@ class _ExerciseSection extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MuscleChipsRow extends ConsumerWidget {
+  const _MuscleChipsRow({required this.exerciseId});
+
+  final int exerciseId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(databaseProvider);
+    return FutureBuilder<List<Muscle>>(
+      future: db.musclesForExercise(exerciseId),
+      builder: (context, snap) {
+        final list = snap.data ?? const <Muscle>[];
+        if (list.isEmpty) return const SizedBox.shrink();
+        final scheme = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final m in list)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    m.name,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSecondaryContainer,
+                        ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -9,7 +9,7 @@ class ExercisesListPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final exercisesAsync = ref.watch(exercisesStreamProvider);
+    final exercisesAsync = ref.watch(exercisesWithMusclesStreamProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Exercises')),
       floatingActionButton: FloatingActionButton(
@@ -29,13 +29,49 @@ class ExercisesListPage extends ConsumerWidget {
             itemBuilder: (context, i) {
               final e = exercises[i];
               return ListTile(
-                title: Text(e.name),
+                title: Text(e.exercise.name),
+                subtitle: e.muscles.isEmpty
+                    ? null
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: [
+                            for (final m in e.muscles)
+                              _MuscleTag(name: m.name),
+                          ],
+                        ),
+                      ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/exercises/${e.id}'),
+                onTap: () => context.push('/exercises/${e.exercise.id}'),
               );
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _MuscleTag extends StatelessWidget {
+  const _MuscleTag({required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        name,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSecondaryContainer,
+            ),
       ),
     );
   }
