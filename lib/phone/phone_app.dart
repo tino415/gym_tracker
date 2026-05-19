@@ -7,6 +7,7 @@ import 'history/history_list_page.dart';
 import 'history/workout_detail_page.dart';
 import 'home_shell.dart';
 import 'routines/routine_edit_page.dart';
+import 'routines/routine_exercise_detail_page.dart';
 import 'routines/routines_list_page.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -36,6 +37,17 @@ final _router = GoRouter(
                   builder: (context, state) => RoutineEditPage(
                     routineId: int.parse(state.pathParameters['id']!),
                   ),
+                  routes: [
+                    GoRoute(
+                      path: 'exercises/:reId',
+                      parentNavigatorKey: _rootKey,
+                      builder: (context, state) => RoutineExerciseDetailPage(
+                        routineId: int.parse(state.pathParameters['id']!),
+                        routineExerciseId:
+                            int.parse(state.pathParameters['reId']!),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

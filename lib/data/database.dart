@@ -827,6 +827,21 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> reorderRoutineExercises({
+    required int routineId,
+    required List<int> orderedIds,
+  }) async {
+    await transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (update(routineExercises)..where(
+              (t) => t.id.equals(orderedIds[i]) & t.routineId.equals(routineId),
+            ))
+            .write(RoutineExercisesCompanion(orderIndex: Value(i)));
+      }
+      await _bumpRoutineVersion(routineId);
+    });
+  }
+
   Future<void> setRestSeconds(int routineExerciseId, int seconds) async {
     await transaction(() async {
       final re = await (select(

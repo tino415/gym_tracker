@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
@@ -1481,6 +1481,117 @@ void main() {
       final row = updated.firstWhere((p) => p.id == altPs.id);
       expect(row.targetReps, 13);
       expect(row.targetWeightKg, 35);
+    });
+  });
+
+  group('reorderRoutineExercises', () {
+    test('rewrites orderIndex in the given order and bumps version', () async {
+      final exA = await db.createExercise('A');
+      final exB = await db.createExercise('B');
+      final exC = await db.createExercise('C');
+      final routine = await db.createRoutine('R');
+      final reA = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exA.id,
+      );
+      final reB = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exB.id,
+      );
+      final reC = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exC.id,
+      );
+      final before = await (db.select(db.routines)
+            ..where((t) => t.id.equals(routine.id)))
+          .getSingle();
+
+      await db.reorderRoutineExercises(
+        routineId: routine.id,
+        orderedIds: [reC.id, reA.id, reB.id],
+      );
+
+      final rows = await (db.select(db.routineExercises)
+            ..where((t) => t.routineId.equals(routine.id))
+            ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+          .get();
+      expect(rows.map((r) => r.id).toList(), [reC.id, reA.id, reB.id]);
+      expect(rows.map((r) => r.orderIndex).toList(), [0, 1, 2]);
+
+      final after = await (db.select(db.routines)
+            ..where((t) => t.id.equals(routine.id)))
+          .getSingle();
+      expect(after.version, greaterThan(before.version));
+    });
+
+    test('preserves superset_group on members kept consecutive', () async {
+      final exA = await db.createExercise('A');
+      final exB = await db.createExercise('B');
+      final exC = await db.createExercise('C');
+      final routine = await db.createRoutine('R');
+      final reA = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exA.id,
+      );
+      final reB = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exB.id,
+      );
+      final reC = await db.addExerciseToRoutine(
+        routineId: routine.id,
+        exerciseId: exC.id,
+      );
+      // A is standalone; B and C form a superset.
+      await db.setSupersetGroup(reB.id, 7);
+      await db.setSupersetGroup(reC.id, 7);
+
+      // Move the {B, C} group ahead of A — they remain consecutive.
+      await db.reorderRoutineExercises(
+        routineId: routine.id,
+        orderedIds: [reB.id, reC.id, reA.id],
+      );
+
+      final rows = await (db.select(db.routineExercises)
+            ..where((t) => t.routineId.equals(routine.id))
+            ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
+          .get();
+      expect(rows[0].id, reB.id);
+      expect(rows[0].supersetGroup, 7);
+      expect(rows[1].id, reC.id);
+      expect(rows[1].supersetGroup, 7);
+      expect(rows[2].supersetGroup, isNull);
+    });
+
+    test('routineId guard rejects ids from a different routine', () async {
+      final exA = await db.createExercise('A');
+      final exB = await db.createExercise('B');
+      final r1 = await db.createRoutine('R1');
+      final r2 = await db.createRoutine('R2');
+      final r1ea = await db.addExerciseToRoutine(
+        routineId: r1.id,
+        exerciseId: exA.id,
+      );
+      final r1eb = await db.addExerciseToRoutine(
+        routineId: r1.id,
+        exerciseId: exB.id,
+      );
+      final r2ea = await db.addExerciseToRoutine(
+        routineId: r2.id,
+        exerciseId: exA.id,
+      );
+      final r2eaBefore = r2ea.orderIndex;
+
+      // Sneak r2ea.id into r1's reorder — should be ignored by the guard.
+      await db.reorderRoutineExercises(
+        routineId: r1.id,
+        orderedIds: [r1eb.id, r2ea.id, r1ea.id],
+      );
+
+      final r2Row = await (db.select(db.routineExercises)
+            ..where((t) => t.id.equals(r2ea.id)))
+          .getSingle();
+      expect(r2Row.orderIndex, r2eaBefore);
+      expect(r2Row.routineId, r2.id);
     });
   });
 }

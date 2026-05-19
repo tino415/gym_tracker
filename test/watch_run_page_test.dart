@@ -278,4 +278,54 @@ void main() {
       expect(find.text('7s'), findsOneWidget);
     });
   });
+
+  group('Watch run page — skip-and-wrap', () {
+    testWidgets('wraps to first unfinished after completing the last set',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Skip',
+        restSeconds: 2,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [_SetFixture(reps: 5, weight: 60)],
+          ),
+          _ExerciseFixture(
+            name: 'Row',
+            sets: [_SetFixture(reps: 8, weight: 40)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      // Land on Bench set 1/1.
+      expect(find.text('Bench'), findsWidgets);
+
+      // Tap the chevron-right "Next set" arrow to skip Bench without
+      // completing it.
+      await tester.tap(find.byTooltip('Next set'));
+      await tester.pumpAndSettle();
+      expect(find.text('Row'), findsWidgets);
+
+      // Mark Row done — this is the last position in the forward sequence,
+      // so we expect a wrap back to Bench's still-incomplete set 1 after the
+      // rest interval elapses.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      // Wrap landed on Bench set 1/1 with the "Done" (uncompleted) button.
+      expect(find.text('Bench'), findsWidgets);
+      expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
+    });
+  });
 }
