@@ -945,43 +945,55 @@ class _RepsSetView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ScrollableSetView(
       onSwap: onSwap,
-      lastTimeText: lastTimeText,
-      main: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      main: _SetViewScaffold(
+        prevEnabled: hasPrev,
+        nextEnabled: hasNext,
+        onPrev: onPrev,
+        onNext: onNext,
+        setIndex: setIndex,
+        totalSets: totalSets,
+        heartRateBpm: heartRateBpm,
+        child: Stack(
           children: [
-            _setHeader(
-              context,
-              exerciseName: exerciseName,
-              setIndex: setIndex,
-              totalSets: totalSets,
-              hasPrev: hasPrev,
-              hasNext: hasNext,
-              onPrev: onPrev,
-              onNext: onNext,
-              heartRateBpm: heartRateBpm,
+            Align(
+              alignment: Alignment.topCenter,
+              child: _setHeader(
+                context,
+                exerciseName: exerciseName,
+                lastTimeText: lastTimeText,
+              ),
             ),
-            StepperValue<double>(
-              value: weightKg,
-              step: 2.5,
-              min: 0,
-              formatter: _formatWeight,
-              suffix: 'kg',
-              onChanged: onWeightChanged,
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  StepperValue<double>(
+                    value: weightKg,
+                    step: 2.5,
+                    min: 0,
+                    formatter: _formatWeight,
+                    suffix: 'kg',
+                    onChanged: onWeightChanged,
+                  ),
+                  const SizedBox(height: 8),
+                  StepperValue<int>(
+                    value: reps,
+                    step: 1,
+                    min: 1,
+                    formatter: (v) => v.toString(),
+                    suffix: 'reps',
+                    onChanged: onRepsChanged,
+                  ),
+                ],
+              ),
             ),
-            StepperValue<int>(
-              value: reps,
-              step: 1,
-              min: 1,
-              formatter: (v) => v.toString(),
-              suffix: 'reps',
-              onChanged: onRepsChanged,
-            ),
-            _doneButton(
-              context: context,
-              completed: completed,
-              onTap: onToggleDone,
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: _doneButton(
+                context: context,
+                completed: completed,
+                onTap: onToggleDone,
+              ),
             ),
           ],
         ),
@@ -1044,58 +1056,219 @@ class _TimeSetView extends StatelessWidget {
     final hInset = isRound ? 24.0 : 0.0;
     return _ScrollableSetView(
       onSwap: onSwap,
-      lastTimeText: lastTimeText,
-      main: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      main: _SetViewScaffold(
+        prevEnabled: hasPrev,
+        nextEnabled: hasNext,
+        onPrev: onPrev,
+        onNext: onNext,
+        setIndex: setIndex,
+        totalSets: totalSets,
+        heartRateBpm: heartRateBpm,
+        child: Stack(
           children: [
-            _setHeader(
-              context,
-              exerciseName: exerciseName,
-              setIndex: setIndex,
-              totalSets: totalSets,
-              hasPrev: hasPrev,
-              hasNext: hasNext,
-              onPrev: onPrev,
-              onNext: onNext,
-              heartRateBpm: heartRateBpm,
-            ),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text('${secondsRemaining}s', style: big),
-            ),
-            StepperValue<double>(
-              value: weightKg,
-              step: 2.5,
-              min: 0,
-              formatter: _formatWeight,
-              suffix: 'kg',
-              onChanged: onWeightChanged,
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: hInset),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: onToggleRun,
-                  icon:
-                      Icon(running ? Icons.pause : Icons.play_arrow, size: 16),
-                  label: Text(running ? 'Pause' : 'Start'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(26),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
+            Align(
+              alignment: Alignment.topCenter,
+              child: _setHeader(
+                context,
+                exerciseName: exerciseName,
+                lastTimeText: lastTimeText,
               ),
             ),
-            _doneButton(
-              context: context,
-              completed: completed,
-              onTap: onToggleDone,
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('${secondsRemaining}s', style: big),
+                  ),
+                  const SizedBox(height: 8),
+                  StepperValue<double>(
+                    value: weightKg,
+                    step: 2.5,
+                    min: 0,
+                    formatter: _formatWeight,
+                    suffix: 'kg',
+                    onChanged: onWeightChanged,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: hInset),
+                    child: OutlinedButton.icon(
+                      onPressed: onToggleRun,
+                      icon: Icon(
+                        running ? Icons.pause : Icons.play_arrow,
+                        size: 16,
+                      ),
+                      label: Text(running ? 'Pause' : 'Start'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(26),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: _doneButton(
+                context: context,
+                completed: completed,
+                onTap: onToggleDone,
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Lays out a set view's main content with side rails for the prev/next
+/// chevrons and (right side) the live heart-rate badge. Uses Stack so the
+/// rails don't compete with the center column for the viewport's
+/// fractional-pixel width; previous Row + Expanded layout reported a
+/// sub-pixel overflow on round faces.
+class _SetViewScaffold extends StatelessWidget {
+  const _SetViewScaffold({
+    required this.child,
+    required this.prevEnabled,
+    required this.nextEnabled,
+    required this.onPrev,
+    required this.onNext,
+    required this.setIndex,
+    required this.totalSets,
+    this.heartRateBpm,
+  });
+
+  final Widget child;
+  final bool prevEnabled;
+  final bool nextEnabled;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final int setIndex;
+  final int totalSets;
+  final int? heartRateBpm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            // Leave the rail-wide gutters free so steppers / Done don't slide
+            // under the chevrons. 32 = 28 rail + 4 breathing room. Vertical
+            // inset keeps the header off the bezel and pulls the Done button
+            // up from the very bottom.
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              child: child,
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 28,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${setIndex + 1}/$totalSets',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _RailChevron(
+                    icon: Icons.chevron_left,
+                    enabled: prevEnabled,
+                    onPressed: onPrev,
+                    tooltip: 'Previous set',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 28,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Always render the HR slot so the rail height doesn't
+                  // jump when the sensor warms up. Greyed placeholder when
+                  // we don't have a live sample.
+                  Icon(
+                    Icons.favorite,
+                    size: 12,
+                    color: heartRateBpm != null
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.outlineVariant,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    heartRateBpm?.toString() ?? '—',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: heartRateBpm != null
+                          ? null
+                          : theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _RailChevron(
+                    icon: Icons.chevron_right,
+                    enabled: nextEnabled,
+                    onPressed: onNext,
+                    tooltip: 'Next set',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RailChevron extends StatelessWidget {
+  const _RailChevron({
+    required this.icon,
+    required this.enabled,
+    required this.onPressed,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled ? null : Theme.of(context).disabledColor,
+          ),
         ),
       ),
     );
@@ -1111,35 +1284,22 @@ class _ScrollableSetView extends StatelessWidget {
   const _ScrollableSetView({
     required this.main,
     required this.onSwap,
-    this.lastTimeText,
   });
 
   final Widget main;
   final VoidCallback onSwap;
-  final String? lastTimeText;
 
   @override
   Widget build(BuildContext context) {
     final isRound = WatchShapeScope.of(context);
     final hInset = isRound ? 24.0 : 12.0;
-    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(height: constraints.maxHeight, child: main),
-              if (lastTimeText != null)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hInset, 8, hInset, 0),
-                  child: Text(
-                    lastTimeText!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
               Padding(
                 padding:
                     EdgeInsets.fromLTRB(hInset, 4, hInset, isRound ? 24 : 12),
@@ -1164,91 +1324,41 @@ class _ScrollableSetView extends StatelessWidget {
   }
 }
 
+/// Compact name + optional "last time" caption header. Set counter sits on
+/// the left rail; chevrons + HR sit on the side rails — kept off this header
+/// so it stays short.
 Widget _setHeader(
   BuildContext context, {
   required String exerciseName,
-  required int setIndex,
-  required int totalSets,
-  required bool hasPrev,
-  required bool hasNext,
-  required VoidCallback onPrev,
-  required VoidCallback onNext,
-  int? heartRateBpm,
+  String? lastTimeText,
 }) {
-  // The header row sits near the top of the round face; pull the chevrons
-  // inward so they don't fall behind the bezel.
-  final isRound = WatchShapeScope.of(context);
-  final chordInset = isRound ? 24.0 : 0.0;
-  final scheme = Theme.of(context).colorScheme;
-  return Padding(
-    padding: EdgeInsets.symmetric(horizontal: chordInset),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 28,
-          child: IconButton(
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            iconSize: 18,
-            onPressed: hasPrev ? onPrev : null,
-            icon: const Icon(Icons.chevron_left),
-            tooltip: 'Previous set',
+  final theme = Theme.of(context);
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        exerciseName,
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          height: 1.1,
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      if (lastTimeText != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            lastTimeText,
+            style: theme.textTheme.labelSmall?.copyWith(
+              height: 1.0,
+              color: theme.colorScheme.outline,
+            ),
+            textAlign: TextAlign.center,
           ),
         ),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                exerciseName,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  height: 1.1,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Set ${setIndex + 1}/$totalSets',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (heartRateBpm != null) ...[
-                      const SizedBox(width: 6),
-                      Icon(Icons.favorite, size: 10, color: scheme.error),
-                      const SizedBox(width: 2),
-                      Text(
-                        '$heartRateBpm',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          width: 28,
-          child: IconButton(
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            iconSize: 18,
-            onPressed: hasNext ? onNext : null,
-            icon: const Icon(Icons.chevron_right),
-            tooltip: 'Next set',
-          ),
-        ),
-      ],
-    ),
+    ],
   );
 }
 

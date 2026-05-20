@@ -98,7 +98,7 @@ void main() {
       // PageView swept to page 1 → set view shows the exercise name and the
       // reps-mode "Done" button.
       expect(find.text('Bench'), findsWidgets);
-      expect(find.text('Set 1/1'), findsOneWidget);
+      expect(find.text('1/1'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
     });
   });
@@ -170,13 +170,13 @@ void main() {
 
       // Land on A set 1/2.
       expect(find.text('A'), findsWidgets);
-      expect(find.text('Set 1/2'), findsOneWidget);
+      expect(find.text('1/2'), findsOneWidget);
 
       // Mark A.set0 — should jump straight to B.set0 (no rest in superset).
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pumpAndSettle();
       expect(find.text('B'), findsWidgets);
-      expect(find.text('Set 1/2'), findsOneWidget);
+      expect(find.text('1/2'), findsOneWidget);
       expect(find.text('Rest'), findsNothing);
 
       // Mark B.set0 — round ends, rest screen.
@@ -191,7 +191,7 @@ void main() {
 
       // Should now be at A.set1.
       expect(find.text('A'), findsWidgets);
-      expect(find.text('Set 2/2'), findsOneWidget);
+      expect(find.text('2/2'), findsOneWidget);
     });
   });
 

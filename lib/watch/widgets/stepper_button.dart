@@ -46,10 +46,18 @@ class StepperValue<T extends num> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final label = suffix == null
-        ? formatter(value)
-        : '${formatter(value)} $suffix';
-    return Row(
+    // Reserve a fixed slot for the value so the +/- buttons don't shift
+    // when the digit count changes. 44 px fits "100" at titleMedium with
+    // tight margins on either side.
+    final valueText = SizedBox(
+      width: 44,
+      child: Text(
+        formatter(value),
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleMedium?.copyWith(height: 1.0),
+      ),
+    );
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -58,11 +66,31 @@ class StepperValue<T extends num> extends StatelessWidget {
           customBorder: const StadiumBorder(),
           onTap: () => _editTyped(context),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Text(label, style: theme.textTheme.titleMedium),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: valueText,
           ),
         ),
         _RoundButton(icon: Icons.add, onTap: () => _bump(1)),
+      ],
+    );
+    if (suffix == null) return row;
+    // Pull the unit caption up under the value glyphs — without the negative
+    // offset, Text's intrinsic ascent/descent leaves a visible gap below the
+    // 36 px button row.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        row,
+        Transform.translate(
+          offset: const Offset(0, -8),
+          child: Text(
+            suffix!,
+            style: theme.textTheme.labelSmall?.copyWith(
+              height: 1.0,
+              color: theme.colorScheme.outline,
+            ),
+          ),
+        ),
       ],
     );
   }
