@@ -12,6 +12,7 @@ import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'superset_nav.dart';
 import 'watch_alternative_picker_page.dart';
+import 'watch_exercise_preview_page.dart';
 import 'watch_workout_done_page.dart';
 import 'widgets/discard_dialog.dart';
 import 'widgets/round_safe_area.dart';
@@ -65,6 +66,10 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   _Phase _phase = _Phase.logSet;
   int _restSecondsLeft = 0;
+  // Mirror of `_restSecondsLeft` exposed to off-route observers (the exercise
+  // preview pushed on top reads this so its rest pill ticks down without us
+  // rebuilding the whole run page from a parent route).
+  final ValueNotifier<int> _restSecondsLeftVN = ValueNotifier<int>(0);
   Timer? _timer;
 
   int? _workoutId;
@@ -181,6 +186,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
     _hrSub?.cancel();
     _snapshotSub?.cancel();
     _pageController.dispose();
+    _restSecondsLeftVN.dispose();
     super.dispose();
   }
 
@@ -383,6 +389,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   void _goTo(int eIdx, int sIdx) {
     _timer?.cancel();
+    _restSecondsLeftVN.value = 0;
     _setHrBpms.clear();
     setState(() {
       _exerciseIdx = eIdx;
@@ -468,6 +475,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       _phase = _Phase.rest;
       _restSecondsLeft = seconds;
     });
+    _restSecondsLeftVN.value = seconds;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -476,15 +484,18 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       if (_restSecondsLeft <= 1) {
         t.cancel();
         HapticFeedback.heavyImpact();
+        _restSecondsLeftVN.value = 0;
         _advanceAfterRest();
       } else {
         setState(() => _restSecondsLeft -= 1);
+        _restSecondsLeftVN.value = _restSecondsLeft;
       }
     });
   }
 
   void _skipRest() {
     _timer?.cancel();
+    _restSecondsLeftVN.value = 0;
     _advanceAfterRest();
   }
 
@@ -492,6 +503,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
     setState(() {
       _restSecondsLeft = max(1, _restSecondsLeft + delta);
     });
+    _restSecondsLeftVN.value = _restSecondsLeft;
   }
 
   void _advanceAfterRest() {
@@ -606,6 +618,46 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   // --- Exercise list jump -------------------------------------------------
 
+  /// Open a read-only preview of the given exercise. Available pre-start and
+  /// during an active workout. Never touches `_exerciseIdx` / `_setIdx` or
+  /// cancels timers — the preview is purely informational. The "Switch to
+  /// this" affordance inside the preview is the only way to make this
+  /// exercise active, and it routes through [_jumpToExercise].
+  Future<void> _openExercisePreview(int eIdx) async {
+    if (_setCount(eIdx) == 0) return;
+    final navigator = Navigator.of(context);
+    final Widget page;
+    if (_snapshot != null) {
+      page = WatchExercisePreviewPage.fromWorkout(
+        _snapshot!.exercises[eIdx],
+        restCountdown: _restSecondsLeftVN,
+        onSwitchActive: () {
+          navigator.pop();
+          _jumpToExercise(eIdx);
+        },
+      );
+    } else {
+      page = WatchExercisePreviewPage.fromRoutine(
+        widget.routine!.exercises[eIdx],
+      );
+    }
+    await navigator.push(MaterialPageRoute(builder: (_) => page));
+    if (!mounted) return;
+    // If we were resting when the user opened the preview (and they didn't
+    // switch active out of it), slide back to the run pane so the rest
+    // countdown is in front of them again. _jumpToExercise has already
+    // animated to page 1 in the switch-active case, so this is a no-op there.
+    if (_workoutId != null &&
+        _phase == _Phase.rest &&
+        _pageController.hasClients) {
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   void _jumpToExercise(int eIdx) {
     if (_workoutId == null) return;
     if (_setCount(eIdx) == 0) return;
@@ -698,7 +750,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
                       routineName: _routineName(),
                       started: _workoutId != null,
                       allDone: _allDone(),
-                      onPick: _jumpToExercise,
+                      onPick: _openExercisePreview,
                       onStart: _startWorkout,
                       onFinish: _finishWorkout,
                       onDiscard: _confirmDiscard,
@@ -1515,11 +1567,13 @@ class _ExerciseListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isRound = WatchShapeScope.of(context);
-    // Top routine name and bottom Start/Finish button live near the bezel
-    // chord; pull them in on round watches.
+    // Pull the title and action buttons in past the bezel chord on round
+    // watches. The list rows themselves stay full-width so they don't lose
+    // space to the bezel inset — round clipping clips letters at the rounded
+    // corners, but the user can scroll to bring any row into the chord.
     final titleInset = isRound ? 24.0 : 0.0;
     final actionInset = isRound ? 32.0 : 0.0;
-    final vGap = isRound ? 28.0 : 4.0;
+    final vGap = isRound ? 12.0 : 4.0;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: vGap),
       child: Column(
@@ -1536,17 +1590,58 @@ class _ExerciseListView extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Expanded(
+            // Single scrollable region: exercise rows followed by the
+            // Start / Finish / Discard actions. User can see more rows at a
+            // time because the actions no longer claim fixed bottom space;
+            // they're reached by scrolling to the end of the list.
             child: ListView.builder(
-              itemCount: exercises.length,
+              itemCount: exercises.length + 1,
               itemBuilder: (context, i) {
+                if (i == exercises.length) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      top: 8,
+                      left: actionInset,
+                      right: actionInset,
+                      bottom: isRound ? 24 : 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        started
+                            ? FilledButton(
+                                onPressed: allDone ? onFinish : null,
+                                child: const Text('Finish'),
+                              )
+                            : FilledButton(
+                                onPressed: onStart,
+                                child: const Text('Start'),
+                              ),
+                        if (started)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: TextButton(
+                              onPressed: onDiscard,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size.fromHeight(28),
+                                padding: EdgeInsets.zero,
+                                foregroundColor: theme.colorScheme.error,
+                              ),
+                              child: const Text('Discard'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }
                 final ex = exercises[i];
-                final tappable = started && ex.totalSets > 0;
+                final tappable = ex.totalSets > 0;
                 final isCurrent = i == currentExerciseIdx;
                 return InkWell(
                   onTap: tappable ? () => onPick(i) : null,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 8,
+                      vertical: 6,
                       horizontal: 4,
                     ),
                     child: Row(
@@ -1595,34 +1690,6 @@ class _ExerciseListView extends StatelessWidget {
               },
             ),
           ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: actionInset),
-            child: SizedBox(
-              width: double.infinity,
-              child: started
-                  ? FilledButton(
-                      onPressed: allDone ? onFinish : null,
-                      child: const Text('Finish'),
-                    )
-                  : FilledButton(
-                      onPressed: onStart,
-                      child: const Text('Start'),
-                    ),
-            ),
-          ),
-          if (started)
-            Padding(
-              padding: EdgeInsets.only(top: 2, left: actionInset, right: actionInset),
-              child: TextButton(
-                onPressed: onDiscard,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size.fromHeight(28),
-                  padding: EdgeInsets.zero,
-                  foregroundColor: theme.colorScheme.error,
-                ),
-                child: const Text('Discard'),
-              ),
-            ),
         ],
       ),
     );
