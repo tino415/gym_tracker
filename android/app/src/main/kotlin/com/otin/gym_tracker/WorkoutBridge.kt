@@ -38,6 +38,7 @@ class WorkoutBridge(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var sink: EventChannel.EventSink? = null
     private var collectJob: Job? = null
+    private var timerJob: Job? = null
 
     private var activity: Activity? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
@@ -52,6 +53,8 @@ class WorkoutBridge(
         eventChannel.setStreamHandler(null)
         collectJob?.cancel()
         collectJob = null
+        timerJob?.cancel()
+        timerJob = null
         scope.cancel()
     }
 
@@ -73,6 +76,20 @@ class WorkoutBridge(
             }
             "stop" -> {
                 WorkoutService.stop(appContext)
+                result.success(null)
+            }
+            "setTimer" -> {
+                val kind = call.argument<String>("kind") ?: WorkoutService.KIND_REST
+                val endMs = (call.argument<Number>("endTimeMs"))?.toLong()
+                if (endMs == null) {
+                    result.error("bad_args", "endTimeMs required", null)
+                } else {
+                    WorkoutService.setTimer(appContext, kind, endMs)
+                    result.success(null)
+                }
+            }
+            "clearTimer" -> {
+                WorkoutService.clearTimer(appContext)
                 result.success(null)
             }
             "hasBodySensorsPermission" -> {
@@ -141,12 +158,27 @@ class WorkoutBridge(
                 }
             }
         }
+        timerJob?.cancel()
+        timerJob = scope.launch {
+            WorkoutService.timerDone.collect { event ->
+                mainHandler.post {
+                    sink?.success(
+                        mapOf(
+                            "type" to "timerDone",
+                            "payload" to mapOf("kind" to event.kind),
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     override fun onCancel(arguments: Any?) {
         sink = null
         collectJob?.cancel()
         collectJob = null
+        timerJob?.cancel()
+        timerJob = null
     }
 
     private fun hasBodySensors(): Boolean = ContextCompat.checkSelfPermission(

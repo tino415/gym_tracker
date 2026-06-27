@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:clock/clock.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -48,7 +49,8 @@ class WatchRunPage extends ConsumerStatefulWidget {
 
 enum _Phase { logSet, rest }
 
-class _WatchRunPageState extends ConsumerState<WatchRunPage> {
+class _WatchRunPageState extends ConsumerState<WatchRunPage>
+    with WidgetsBindingObserver {
   late int _exerciseIdx;
   late int _setIdx;
 
@@ -70,7 +72,24 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
   // preview pushed on top reads this so its rest pill ticks down without us
   // rebuilding the whole run page from a parent route).
   final ValueNotifier<int> _restSecondsLeftVN = ValueNotifier<int>(0);
+  // `_timer` is now a display-only ticker that recomputes the countdown from a
+  // wall-clock anchor each second. The authoritative completion + vibration is
+  // scheduled natively (survives screen-off); these anchors hold the absolute
+  // end time and double as idempotency guards for the completion paths.
   Timer? _timer;
+  DateTime? _restEndTime;
+  DateTime? _timeEndTime;
+  // True while we believe the native service has a vibration scheduled for the
+  // active countdown. If arming it failed (no bridge, platform error, service
+  // not live) we fall back to a Dart haptic at completion so a buzz is never
+  // silently lost. One flag suffices — only one countdown runs at a time.
+  bool _nativeTimerArmed = false;
+  // One-shot guard for the fallback buzz at the time-set's target crossing.
+  bool _timeTargetBuzzed = false;
+  // Set once the workout has ended (finish/discard) so dispose() won't re-issue
+  // clearTimer() — which would resurrect the just-stopped foreground service.
+  bool _serviceStopped = false;
+  StreamSubscription<String>? _timerDoneSub;
 
   int? _workoutId;
   FullWorkout? _snapshot;
@@ -100,6 +119,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final routine = widget.routine;
     if (routine != null) {
       final first = _firstNonEmptyPreview(routine);
@@ -116,6 +136,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
     }
 
     _hrSub = WorkoutBridge.instance.heartRateStream.listen(_onHeartRate);
+    _timerDoneSub =
+        WorkoutBridge.instance.timerDoneStream.listen(_onNativeTimerDone);
   }
 
   void _onHeartRate(HeartRateSample sample) {
@@ -181,13 +203,42 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _hrStaleTimer?.cancel();
     _hrSub?.cancel();
+    _timerDoneSub?.cancel();
     _snapshotSub?.cancel();
+    // Cancel any pending native vibration so it can't fire after we're gone —
+    // but not if we already stopped the service (finish/discard). Re-issuing
+    // clearTimer after stop would startService a fresh, orphaned instance.
+    if (!_serviceStopped) unawaited(WorkoutBridge.instance.clearTimer());
     _pageController.dispose();
     _restSecondsLeftVN.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // While the screen was off our periodic ticker was frozen, but the
+    // wall-clock anchor and the native countdown were not. On resume, jump the
+    // display to the correct value — or, if the anchor has already passed,
+    // complete now (native already vibrated while we were paused).
+    if (state != AppLifecycleState.resumed) return;
+    final now = clock.now();
+    if (_phase == _Phase.rest && _restEndTime != null) {
+      if (now.isAfter(_restEndTime!)) {
+        _onRestElapsed();
+      } else {
+        _startUiTicker();
+        _tickCountdown();
+      }
+    } else if (_timeRunning && _timeEndTime != null) {
+      // Overtime keeps counting into negative; just re-sync the display. The
+      // native buzz at the target already fired while we were paused.
+      _startUiTicker();
+      _tickCountdown();
+    }
   }
 
   // --- Navigation helpers -------------------------------------------------
@@ -351,6 +402,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   void _loadCurrentSetTargets() {
     _timer?.cancel();
+    // Leaving the current set cancels any running countdown — drop the native
+    // vibration too so a stale buzz can't fire on the next set.
+    _cancelNativeCountdown();
     _timeRunning = false;
     unawaited(_refreshLastCompletion());
     final kind = _currentKind();
@@ -424,6 +478,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       final elapsed = max(0, _timeStartTarget - _timeRemaining);
       _timer?.cancel();
       _timeRunning = false;
+      // Done pressed mid-hold (or in overtime): cancel the pending native fire.
+      _cancelNativeCountdown();
       await db.upsertSetCompletion(
         workoutId: workoutId,
         workoutSetId: wsId,
@@ -469,44 +525,135 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   // --- Rest timer ---------------------------------------------------------
 
-  void _startRest(int seconds) {
+  // Display-only ticker. Both countdowns recompute remaining = end - now each
+  // second; the native service owns the authoritative fire + vibration.
+  void _startUiTicker() {
     _timer?.cancel();
-    setState(() {
-      _phase = _Phase.rest;
-      _restSecondsLeft = seconds;
-    });
-    _restSecondsLeftVN.value = seconds;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
         return;
       }
-      if (_restSecondsLeft <= 1) {
-        t.cancel();
-        HapticFeedback.heavyImpact();
-        _restSecondsLeftVN.value = 0;
-        _advanceAfterRest();
-      } else {
-        setState(() => _restSecondsLeft -= 1);
-        _restSecondsLeftVN.value = _restSecondsLeft;
-      }
+      _tickCountdown();
     });
+  }
+
+  void _tickCountdown() {
+    final now = clock.now();
+    if (_phase == _Phase.rest && _restEndTime != null) {
+      final remaining =
+          (_restEndTime!.difference(now).inMilliseconds / 1000).ceil();
+      if (remaining <= 0) {
+        _onRestElapsed();
+      } else {
+        setState(() => _restSecondsLeft = remaining);
+        _restSecondsLeftVN.value = remaining;
+      }
+    } else if (_timeRunning && _timeEndTime != null) {
+      // Counts past 0 into negative (overtime) so a hold kept past target logs
+      // the extra seconds (`_toggleDone` does startTarget - remaining). ceil
+      // matches the rest display and shows the target for its full first
+      // second. The native vibration fires once at the target; if it wasn't
+      // armed, buzz here at the 0 crossing instead.
+      final remaining =
+          (_timeEndTime!.difference(now).inMilliseconds / 1000).ceil();
+      setState(() => _timeRemaining = remaining);
+      if (remaining <= 0 && !_timeTargetBuzzed) {
+        _timeTargetBuzzed = true;
+        if (!_nativeTimerArmed) HapticFeedback.mediumImpact();
+      }
+    }
+  }
+
+  void _onNativeTimerDone(String kind) {
+    if (!mounted) return;
+    if (kind == kTimerKindRest) {
+      _onRestElapsed();
+    } else if (kind == kTimerKindTime) {
+      // Native vibrated at the target; the hold keeps running into overtime.
+      // Just suppress the Dart fallback buzz.
+      _timeTargetBuzzed = true;
+    }
+  }
+
+  // Arms (or, when [schedule] is false, deliberately skips) the native
+  // vibration for the active countdown and records whether it succeeded, so
+  // completion can fall back to a Dart haptic if the native path failed.
+  void _armNativeTimer(String kind, DateTime end, {bool schedule = true}) {
+    if (!schedule) {
+      _nativeTimerArmed = false;
+      return;
+    }
+    _nativeTimerArmed = true; // optimistic; flipped false if the call fails
+    WorkoutBridge.instance
+        .setTimer(kind: kind, endTimeMs: end.millisecondsSinceEpoch)
+        .then((ok) {
+      if (mounted && !ok) _nativeTimerArmed = false;
+    });
+  }
+
+  // Drop the active countdown's wall-clock anchor and recall its pending native
+  // vibration. Idempotent; safe to call when nothing is armed.
+  void _cancelNativeCountdown() {
+    if (_restEndTime == null && _timeEndTime == null && !_nativeTimerArmed) {
+      return;
+    }
+    _restEndTime = null;
+    _timeEndTime = null;
+    _nativeTimerArmed = false;
+    unawaited(WorkoutBridge.instance.clearTimer());
+  }
+
+  void _startRest(int seconds) {
+    _timer?.cancel();
+    final end = clock.now().add(Duration(seconds: seconds));
+    _restEndTime = end;
+    setState(() {
+      _phase = _Phase.rest;
+      _restSecondsLeft = seconds;
+    });
+    _restSecondsLeftVN.value = seconds;
+    // A zero-length rest has no future instant to schedule — completion (and
+    // its fallback buzz) is handled by the immediate Dart tick.
+    _armNativeTimer(kTimerKindRest, end, schedule: seconds > 0);
+    _startUiTicker();
+  }
+
+  // Single completion path for rest. Native is the buzzer when armed; if it
+  // wasn't, we buzz here so the rest-over signal is never lost. Nulling the
+  // anchor first makes this idempotent, so whichever of the Dart ticker /
+  // native event / resume reconciliation arrives first wins.
+  void _onRestElapsed() {
+    if (_phase != _Phase.rest || _restEndTime == null) return;
+    _restEndTime = null;
+    _timer?.cancel();
+    _restSecondsLeftVN.value = 0;
+    if (!_nativeTimerArmed) HapticFeedback.heavyImpact();
+    _advanceAfterRest();
   }
 
   void _skipRest() {
     _timer?.cancel();
     _restSecondsLeftVN.value = 0;
+    _cancelNativeCountdown();
     _advanceAfterRest();
   }
 
   void _bumpRest(int delta) {
-    setState(() {
-      _restSecondsLeft = max(1, _restSecondsLeft + delta);
-    });
-    _restSecondsLeftVN.value = _restSecondsLeft;
+    if (_restEndTime == null) return;
+    final floor = clock.now().add(const Duration(seconds: 1));
+    var end = _restEndTime!.add(Duration(seconds: delta));
+    if (end.isBefore(floor)) end = floor;
+    _restEndTime = end;
+    final remaining =
+        (end.difference(clock.now()).inMilliseconds / 1000).ceil();
+    setState(() => _restSecondsLeft = remaining);
+    _restSecondsLeftVN.value = remaining;
+    _armNativeTimer(kTimerKindRest, end);
   }
 
   void _advanceAfterRest() {
+    _restEndTime = null;
     var next = _nextAfter(_exerciseIdx, _setIdx);
     if (next == null) {
       final snap = _snapshot;
@@ -531,21 +678,21 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
 
   void _toggleTimeRun() {
     if (_timeRunning) {
+      // Pause.
       _timer?.cancel();
+      _cancelNativeCountdown();
       setState(() => _timeRunning = false);
       return;
     }
+    final secs = _timeRemaining;
+    final end = clock.now().add(Duration(seconds: secs));
+    _timeEndTime = end;
+    // Already at/past the target (re-running an over-completed set): the buzz
+    // point is behind us, so don't schedule a native fire or a fallback buzz.
+    _timeTargetBuzzed = secs <= 0;
     setState(() => _timeRunning = true);
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted || !_timeRunning) {
-        t.cancel();
-        return;
-      }
-      setState(() => _timeRemaining -= 1);
-      if (_timeRemaining == 0) {
-        HapticFeedback.mediumImpact();
-      }
-    });
+    _armNativeTimer(kTimerKindTime, end, schedule: secs > 0);
+    _startUiTicker();
   }
 
   // --- Discard ------------------------------------------------------------
@@ -571,6 +718,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       if (navigator.canPop()) navigator.pop();
     });
     unawaited(db.deleteWorkout(workoutId));
+    _serviceStopped = true;
     unawaited(WorkoutBridge.instance.stop());
   }
 
@@ -603,6 +751,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage> {
       maxHeartRate: workoutMax,
     );
     unawaited(ref.read(syncServiceProvider).pushWorkout(workoutId));
+    _serviceStopped = true;
     unawaited(WorkoutBridge.instance.stop());
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

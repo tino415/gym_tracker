@@ -21,6 +21,12 @@ class HeartRateSample {
   }
 }
 
+/// Countdown kinds exchanged with the native workout service over [setTimer]
+/// and the `timerDone` event. Mirror `WorkoutService.KIND_REST` / `KIND_TIME`
+/// on the Kotlin side — keep the three in sync.
+const String kTimerKindRest = 'rest';
+const String kTimerKindTime = 'time';
+
 /// Dart side of the Wear OS foreground workout service. Mirrors the
 /// `WearBridge` pattern: a singleton with lazy channel binding.
 class WorkoutBridge {
@@ -33,12 +39,18 @@ class WorkoutBridge {
 
   final StreamController<HeartRateSample> _heartRate =
       StreamController<HeartRateSample>.broadcast();
+  // Emits the kind ('rest' | 'time') of a countdown that the native service
+  // fired (and vibrated for), so the watch run page advances even if its own
+  // periodic ticker was frozen by the screen sleeping.
+  final StreamController<String> _timerDone =
+      StreamController<String>.broadcast();
   HeartRateSample? _lastSample;
   // ignore: unused_field
   StreamSubscription<Object?>? _eventsSub;
   bool _bound = false;
 
   Stream<HeartRateSample> get heartRateStream => _heartRate.stream;
+  Stream<String> get timerDoneStream => _timerDone.stream;
   HeartRateSample? get lastSample => _lastSample;
 
   void _ensureBound() {
@@ -57,39 +69,80 @@ class WorkoutBridge {
     if (raw is! Map) return;
     final type = raw['type'];
     final payload = raw['payload'];
-    if (type != 'heartRate' || payload is! Map) return;
-    final bpm = payload['bpm'];
-    final ts = payload['timestampMs'];
-    if (bpm is! int || ts is! int) return;
-    final sample = HeartRateSample(bpm: bpm, timestampMs: ts);
-    _lastSample = sample;
-    _heartRate.add(sample);
+    if (payload is! Map) return;
+    if (type == 'heartRate') {
+      final bpm = payload['bpm'];
+      final ts = payload['timestampMs'];
+      if (bpm is! int || ts is! int) return;
+      final sample = HeartRateSample(bpm: bpm, timestampMs: ts);
+      _lastSample = sample;
+      _heartRate.add(sample);
+    } else if (type == 'timerDone') {
+      final kind = payload['kind'];
+      if (kind is String) _timerDone.add(kind);
+    }
+  }
+
+  /// Fire-and-forget method call shared by the void-returning commands. Skips
+  /// the platform under web / non-Android / `flutter test`, and swallows the
+  /// no-native-handler case.
+  Future<void> _invokeVoid(String method, [Map<String, Object?>? args]) async {
+    if (kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        _skipPlatformCalls) {
+      return;
+    }
+    try {
+      await _method.invokeMethod<void>(method, args);
+    } on MissingPluginException {
+      // No native handler. Silently no-op.
+    }
   }
 
   /// Spin up the foreground service + Health Services subscription. Safe to
   /// call multiple times — the service deduplicates.
   Future<void> start({required String routineName}) async {
     _ensureBound();
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    if (_skipPlatformCalls) return;
-    try {
-      await _method.invokeMethod<void>('start', <String, Object?>{
-        'routineName': routineName,
-      });
-    } on MissingPluginException {
-      // No native handler. Silently no-op.
-    }
+    await _invokeVoid('start', <String, Object?>{'routineName': routineName});
   }
 
   Future<void> stop() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    if (_skipPlatformCalls) return;
-    try {
-      await _method.invokeMethod<void>('stop');
-    } on MissingPluginException {
-      // No-op.
-    }
+    await _invokeVoid('stop');
     _lastSample = null;
+  }
+
+  /// Schedule a native vibration at [endTimeMs] (epoch millis) for a countdown
+  /// of [kind] ([kTimerKindRest] | [kTimerKindTime]). The native service holds
+  /// a wake lock so this fires even with the screen off; it then emits a
+  /// `timerDone` event. Returns true iff the native call was dispatched — the
+  /// caller falls back to a Dart haptic when it returns false (no bridge,
+  /// platform error, or test/web) so a completion buzz is never lost.
+  Future<bool> setTimer({
+    required String kind,
+    required int endTimeMs,
+  }) async {
+    if (kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        _skipPlatformCalls) {
+      return false;
+    }
+    try {
+      await _method.invokeMethod<void>('setTimer', <String, Object?>{
+        'kind': kind,
+        'endTimeMs': endTimeMs,
+      });
+      return true;
+    } catch (_) {
+      // MissingPluginException (no handler) or any PlatformException (bridge /
+      // service error). Report failure so the caller buzzes in Dart instead.
+      return false;
+    }
+  }
+
+  /// Cancel a pending native countdown vibration (skip / bump-reschedule /
+  /// teardown).
+  Future<void> clearTimer() async {
+    await _invokeVoid('clearTimer');
   }
 
   Future<bool> hasBodySensorsPermission() async {
