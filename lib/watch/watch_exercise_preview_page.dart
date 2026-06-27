@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'set_target_format.dart';
 import 'widgets/round_safe_area.dart';
 
 /// Read-only preview of a single exercise on the watch: its name, kind, rest
@@ -238,26 +239,12 @@ class _SetLine extends StatelessWidget {
     );
   }
 
-  static String _formatTarget(_PreviewSet s, String kind) {
-    if (kind == exerciseKindTime) {
-      final seconds = s.targetSeconds;
-      if (seconds == null) return '—';
-      final w = s.targetWeightKg;
-      if (w != null && w > 0) {
-        return '${seconds}s • ${_formatWeight(w)} kg';
-      }
-      return '${seconds}s';
-    }
-    final reps = s.targetReps;
-    final w = s.targetWeightKg;
-    if (reps == null) return '—';
-    if (w == null) return '$reps reps';
-    return '$reps × ${_formatWeight(w)} kg';
-  }
-
-  static String _formatWeight(double w) {
-    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
-  }
+  static String _formatTarget(_PreviewSet s, String kind) => formatSetTarget(
+        kind: kind,
+        reps: s.targetReps,
+        weightKg: s.targetWeightKg,
+        seconds: s.targetSeconds,
+      );
 }
 
 class _MetaChip extends StatelessWidget {

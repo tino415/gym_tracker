@@ -136,6 +136,41 @@ void main() {
     });
   });
 
+  group('Watch run page — rest up-next', () {
+    testWidgets('rest view shows the next set name and its target', (
+      tester,
+    ) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Legs',
+        restSeconds: 5,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Squat',
+            sets: [
+              _SetFixture(reps: 10, weight: 80),
+              _SetFixture(reps: 10, weight: 80),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      // Completing set 1/2 starts the rest before set 2/2.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+
+      // The upcoming set's name and target are both visible during rest.
+      expect(find.text('Up next: Squat'), findsOneWidget);
+      expect(find.text('10 × 80 kg'), findsOneWidget);
+    });
+  });
+
   group('Watch run page — superset alternation', () {
     testWidgets('A.set0 → B.set0 has no rest; round end starts rest then A.set1',
         (tester) async {

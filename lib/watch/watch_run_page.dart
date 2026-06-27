@@ -11,6 +11,7 @@ import '../data/database.dart';
 import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
+import 'set_target_format.dart';
 import 'superset_nav.dart';
 import 'watch_alternative_picker_page.dart';
 import 'watch_exercise_preview_page.dart';
@@ -833,13 +834,36 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   // --- Build --------------------------------------------------------------
 
-  String? _upNextLabel() {
+  /// The next set's exercise name plus its formatted target (weight/reps or
+  /// seconds), shown during rest so the user can see what's coming. Null when
+  /// the current set is the last one.
+  ({String name, String target})? _upNextDetail() {
     final next = _nextAfter(_exerciseIdx, _setIdx);
     if (next == null) return null;
     if (_snapshot != null) {
-      return _snapshot!.exercises[next.eIdx].workoutExercise.exerciseName;
+      final ex = _snapshot!.exercises[next.eIdx];
+      final ws = ex.sets[next.sIdx].workoutSet;
+      return (
+        name: ex.workoutExercise.exerciseName,
+        target: formatSetTarget(
+          kind: ex.kind,
+          reps: ws.targetReps,
+          weightKg: ws.targetWeightKg,
+          seconds: ws.targetSeconds,
+        ),
+      );
     }
-    return widget.routine!.exercises[next.eIdx].exercise.name;
+    final ex = widget.routine!.exercises[next.eIdx];
+    final ps = ex.plannedSets[next.sIdx];
+    return (
+      name: ex.exercise.name,
+      target: formatSetTarget(
+        kind: ex.kind,
+        reps: ps.targetReps,
+        weightKg: ps.targetWeightKg,
+        seconds: ps.targetSeconds,
+      ),
+    );
   }
 
   bool _hasAnySets() {
@@ -950,9 +974,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   Widget _buildRunPane(BuildContext context) {
     if (_phase == _Phase.rest) {
+      final upNext = _upNextDetail();
       return _RestView(
         secondsLeft: _restSecondsLeft,
-        upNext: _upNextLabel(),
+        upNextName: upNext?.name,
+        upNextTarget: upNext?.target,
         ambient: widget.ambient,
         onSkip: _skipRest,
         onAdd15: () => _bumpRest(15),
@@ -1598,7 +1624,8 @@ Widget _doneButton({
 class _RestView extends StatelessWidget {
   const _RestView({
     required this.secondsLeft,
-    required this.upNext,
+    required this.upNextName,
+    required this.upNextTarget,
     required this.ambient,
     required this.onSkip,
     required this.onAdd15,
@@ -1606,7 +1633,8 @@ class _RestView extends StatelessWidget {
   });
 
   final int secondsLeft;
-  final String? upNext;
+  final String? upNextName;
+  final String? upNextTarget;
   final bool ambient;
   final VoidCallback onSkip;
   final VoidCallback onAdd15;
@@ -1661,15 +1689,25 @@ class _RestView extends StatelessWidget {
                 ),
               ],
             ),
-          if (upNext != null) ...[
+          if (upNextName != null) ...[
             const SizedBox(height: 8),
             Text(
-              'Up next: $upNext',
+              'Up next: $upNextName',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
+            if (upNextTarget != null && upNextTarget != '—')
+              Text(
+                upNextTarget!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
           ],
           const Spacer(),
           if (!ambient)
