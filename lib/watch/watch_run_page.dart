@@ -1326,60 +1326,76 @@ class _TimeSetView extends StatelessWidget {
         setIndex: setIndex,
         totalSets: totalSets,
         heartRateBpm: heartRateBpm,
-        child: Stack(
+        // Column (not Stack) so the header, the centred controls and the Done
+        // button each get their own vertical band — the taller time-set
+        // content (countdown + weight + Start/Pause) can't slide under Done or
+        // up into the name. Only the big number scales to fit; the steppers and
+        // buttons need a bounded width, which Expanded/Center provide.
+        child: Column(
           children: [
-            Align(
-              alignment: Alignment.topCenter,
-              child: _setHeader(
-                context,
-                exerciseName: exerciseName,
-                lastTimeText: lastTimeText,
-              ),
+            _setHeader(
+              context,
+              exerciseName: exerciseName,
+              lastTimeText: lastTimeText,
             ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FittedBox(
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Center(
+                  // scaleDown shrinks the whole control group to fit a short
+                  // band rather than overflowing into Done. The SizedBox pins
+                  // the width so the steppers/buttons still lay out against a
+                  // bounded width (a bare FittedBox gives unbounded width and
+                  // breaks them).
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('${secondsRemaining}s', style: big),
-                  ),
-                  const SizedBox(height: 8),
-                  StepperValue<double>(
-                    value: weightKg,
-                    step: 2.5,
-                    min: 0,
-                    formatter: _formatWeight,
-                    suffix: 'kg',
-                    onChanged: onWeightChanged,
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: hInset),
-                    child: OutlinedButton.icon(
-                      onPressed: onToggleRun,
-                      icon: Icon(
-                        running ? Icons.pause : Icons.play_arrow,
-                        size: 16,
-                      ),
-                      label: Text(running ? 'Pause' : 'Start'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(26),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        visualDensity: VisualDensity.compact,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${secondsRemaining}s',
+                            style: big,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          StepperValue<double>(
+                            value: weightKg,
+                            step: 2.5,
+                            min: 0,
+                            formatter: _formatWeight,
+                            suffix: 'kg',
+                            onChanged: onWeightChanged,
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: hInset),
+                            child: OutlinedButton.icon(
+                              onPressed: onToggleRun,
+                              icon: Icon(
+                                running ? Icons.pause : Icons.play_arrow,
+                                size: 16,
+                              ),
+                              label: Text(running ? 'Pause' : 'Start'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(26),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: _doneButton(
-                context: context,
-                completed: completed,
-                onTap: onToggleDone,
-              ),
+            _doneButton(
+              context: context,
+              completed: completed,
+              onTap: onToggleDone,
             ),
           ],
         ),

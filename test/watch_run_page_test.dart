@@ -231,6 +231,40 @@ void main() {
   });
 
   group('Watch run page — time-based exercise', () {
+    testWidgets('Start button sits above Done at watch size (no overlap)', (
+      tester,
+    ) async {
+      // Render at the watch's logical size — the default 800x600 test surface
+      // is too tall to surface the cramped-layout overlap.
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Core',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Plank',
+            kind: exerciseKindTime,
+            sets: [_SetFixture(seconds: 30, weight: 10)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      // The countdown, the Start/Pause control and Done are all present...
+      expect(find.text('30s'), findsOneWidget);
+      final startRect = tester.getRect(
+        find.widgetWithText(OutlinedButton, 'Start'),
+      );
+      final doneRect = tester.getRect(find.widgetWithText(FilledButton, 'Done'));
+      // ...and the Start control is fully above the Done button.
+      expect(startRect.bottom, lessThanOrEqualTo(doneRect.top));
+    });
+
     testWidgets('countdown decrements each second after Start tap',
         (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
