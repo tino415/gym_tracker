@@ -8,6 +8,7 @@ import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'watch_run_page.dart';
+import 'watch_snack.dart';
 import 'widgets/discard_dialog.dart';
 import 'widgets/round_safe_area.dart';
 
@@ -156,17 +157,13 @@ class WatchPickRoutinePage extends ConsumerWidget {
     final full = await db.loadFullRoutine(routine.id);
     if (full == null || full.exercises.isEmpty) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Routine has no exercises')));
+      showWatchSnack(context, 'Routine has no exercises');
       return;
     }
     final hasSets = full.exercises.any((e) => e.plannedSets.isNotEmpty);
     if (!hasSets) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Routine has no planned sets')),
-      );
+      showWatchSnack(context, 'Routine has no planned sets');
       return;
     }
     if (!context.mounted) return;
@@ -176,10 +173,9 @@ class WatchPickRoutinePage extends ConsumerWidget {
   }
 
   Future<void> _sync(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
     await ref.read(syncServiceProvider).pushAll();
     if (!context.mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('Sync pushed')));
+    showWatchSnack(context, 'Sync pushed');
   }
 }
 
