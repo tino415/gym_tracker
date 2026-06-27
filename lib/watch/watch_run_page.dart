@@ -1598,15 +1598,21 @@ Widget _setHeader(
   return Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text(
-        exerciseName,
-        style: theme.textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.w600,
-          height: 1.1,
+      // Shrink a long name to fit the narrow round face rather than clipping
+      // it — the same scaleDown idiom the countdown numbers use. FittedBox
+      // gives the text unbounded width so it lays out on one line and is then
+      // scaled down to the available width; short names render at full size.
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          exerciseName,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            height: 1.1,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
         ),
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
       ),
       if (lastTimeText != null)
         Padding(
