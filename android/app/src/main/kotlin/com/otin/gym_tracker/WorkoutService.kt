@@ -23,9 +23,11 @@ import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.MeasureClient
 import androidx.health.services.client.data.Availability
+import androidx.health.services.client.data.DataPointAccuracy
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.data.HeartRateAccuracy
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
 import kotlinx.coroutines.CoroutineScope
@@ -73,13 +75,29 @@ class WorkoutService : Service() {
 
         override fun onDataReceived(data: DataPointContainer) {
             val samples = data.getData(DataType.HEART_RATE_BPM)
-            // Health Services emits 0 during sensor warm-up or off-body — drop
-            // those so the watch / aggregates never see a phantom 0 BPM.
-            val latest = samples.lastOrNull { it.value > 0.0 } ?: return
+            // Drop phantom 0s (warm-up / off-body) and low-confidence reads.
+            // Optical PPG under load (weight training) produces motion-artifact
+            // samples that read low; gating on accuracy keeps the average from
+            // being dragged down the way it was vs. Samsung Health / Hevy.
+            val latest = samples.lastOrNull {
+                it.value > 0.0 && isAcceptableAccuracy(it.accuracy)
+            } ?: return
             _heartRate.value = HeartRateSample(
                 bpm = latest.value.toInt(),
                 timestampMs = System.currentTimeMillis(),
             )
+        }
+
+        // Reject NO_CONTACT / UNRELIABLE / ACCURACY_LOW. Accept UNKNOWN/missing
+        // accuracy so hardware that doesn't report it still surfaces HR.
+        private fun isAcceptableAccuracy(accuracy: DataPointAccuracy?): Boolean {
+            val hr = accuracy as? HeartRateAccuracy ?: return true
+            return when (hr.sensorStatus) {
+                HeartRateAccuracy.SensorStatus.NO_CONTACT,
+                HeartRateAccuracy.SensorStatus.UNRELIABLE,
+                HeartRateAccuracy.SensorStatus.ACCURACY_LOW -> false
+                else -> true
+            }
         }
     }
 

@@ -115,6 +115,17 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   // the active set changes; consumed on Done to compute per-set avg + max.
   final List<int> _setHrBpms = [];
 
+  // Session-wide, time-weighted HR aggregate (spans every phase, never cleared
+  // on set nav). Each sample contributes `prevBpm * dt` where dt is the gap
+  // since the previous sample, capped so a dropout can't dominate. Yields a
+  // session average that tracks effort like Samsung Health / Hevy rather than
+  // the old mean-of-per-set-means. `_sessionMaxHr` is the session peak.
+  double _hrWeightedSum = 0;
+  int _hrWeightedMs = 0;
+  int? _lastHrTsMs;
+  int? _lastHrBpm;
+  int? _sessionMaxHr;
+
   final _pageController = PageController();
 
   @override
@@ -144,11 +155,26 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   void _onHeartRate(HeartRateSample sample) {
     if (!mounted) return;
     _hrStaleTimer?.cancel();
-    // Only collect samples while actively logging a set (not during rest, not
-    // before the workout starts) so per-set aggregates reflect the work
-    // interval rather than the recovery window.
-    if (_workoutId != null && _phase == _Phase.logSet) {
-      _setHrBpms.add(sample.bpm);
+    if (_workoutId != null) {
+      // Per-set aggregate stays the work-interval mean: only the logSet phase
+      // (not rest, not pre-start) so it reflects effort, not recovery.
+      if (_phase == _Phase.logSet) _setHrBpms.add(sample.bpm);
+      // Session aggregate spans every phase, weighted by the gap each reading
+      // held. Cap the gap so a long sensor dropout isn't counted as steady HR.
+      final now = sample.timestampMs;
+      final lastTs = _lastHrTsMs;
+      final lastBpm = _lastHrBpm;
+      if (lastTs != null && lastBpm != null) {
+        final dt = now - lastTs;
+        if (dt > 0 && dt <= 10000) {
+          _hrWeightedSum += lastBpm * dt;
+          _hrWeightedMs += dt;
+        }
+      }
+      _lastHrTsMs = now;
+      _lastHrBpm = sample.bpm;
+      _sessionMaxHr =
+          _sessionMaxHr == null ? sample.bpm : max(_sessionMaxHr!, sample.bpm);
     }
     setState(() => _hrSample = sample);
     _hrStaleTimer = Timer(const Duration(seconds: 12), () {
@@ -730,22 +756,31 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     if (workoutId == null) return;
     _timer?.cancel();
     final db = ref.read(databaseProvider);
-    // Roll workout-level HR aggregates up from per-set completions. Mean of
-    // per-set means (not population mean — samples per set are uneven and
-    // we don't store sample counts), and max of per-set maxes.
-    final completions = await db.completionsForWorkout(workoutId);
-    final avgs = [
-      for (final c in completions)
-        if (c.avgHeartRate != null) c.avgHeartRate!,
-    ];
-    final maxes = [
-      for (final c in completions)
-        if (c.maxHeartRate != null) c.maxHeartRate!,
-    ];
-    final int? workoutAvg = avgs.isEmpty
-        ? null
-        : (avgs.reduce((a, b) => a + b) / avgs.length).round();
-    final int? workoutMax = maxes.isEmpty ? null : maxes.reduce(max);
+    // Prefer the live time-weighted session aggregate — it spans the whole
+    // session and tracks effort like Samsung Health / Hevy. Fall back to
+    // rolling up stored per-set completions (mean of per-set means, max of
+    // maxes) when the in-memory accumulator is empty, e.g. a resumed workout
+    // whose earlier samples this page never observed.
+    int? workoutAvg;
+    int? workoutMax;
+    if (_hrWeightedMs > 0) {
+      workoutAvg = (_hrWeightedSum / _hrWeightedMs).round();
+      workoutMax = _sessionMaxHr;
+    } else {
+      final completions = await db.completionsForWorkout(workoutId);
+      final avgs = [
+        for (final c in completions)
+          if (c.avgHeartRate != null) c.avgHeartRate!,
+      ];
+      final maxes = [
+        for (final c in completions)
+          if (c.maxHeartRate != null) c.maxHeartRate!,
+      ];
+      workoutAvg = avgs.isEmpty
+          ? null
+          : (avgs.reduce((a, b) => a + b) / avgs.length).round();
+      workoutMax = maxes.isEmpty ? null : maxes.reduce(max);
+    }
     await db.finishWorkout(
       workoutId,
       avgHeartRate: workoutAvg,
