@@ -168,6 +168,10 @@ void main() {
       // The upcoming set's name and target are both visible during rest.
       expect(find.text('Up next: Squat'), findsOneWidget);
       expect(find.text('10 × 80 kg'), findsOneWidget);
+
+      // The HR slot renders during rest too — placeholder without a sample.
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+      expect(find.text('—'), findsOneWidget);
     });
   });
 

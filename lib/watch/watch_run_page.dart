@@ -1015,6 +1015,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         upNextName: upNext?.name,
         upNextTarget: upNext?.target,
         ambient: widget.ambient,
+        heartRateBpm: _liveHeartRateBpm(),
         onSkip: _skipRest,
         onAdd15: () => _bumpRest(15),
         onSub15: () => _bumpRest(-15),
@@ -1687,6 +1688,7 @@ class _RestView extends StatelessWidget {
     required this.onSkip,
     required this.onAdd15,
     required this.onSub15,
+    this.heartRateBpm,
   });
 
   final int secondsLeft;
@@ -1696,6 +1698,7 @@ class _RestView extends StatelessWidget {
   final VoidCallback onSkip;
   final VoidCallback onAdd15;
   final VoidCallback onSub15;
+  final int? heartRateBpm;
 
   @override
   Widget build(BuildContext context) {
@@ -1716,6 +1719,33 @@ class _RestView extends StatelessWidget {
       child: Column(
         children: [
           Text('Rest', style: Theme.of(context).textTheme.bodySmall),
+          if (!ambient) ...[
+            const SizedBox(height: 2),
+            // Same always-rendered HR slot as the set-view rail, so the
+            // layout doesn't jump when the sensor warms up mid-rest.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.favorite,
+                  size: 12,
+                  color: heartRateBpm != null
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.outlineVariant,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  heartRateBpm?.toString() ?? '—',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: heartRateBpm != null
+                            ? null
+                            : Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                ),
+              ],
+            ),
+          ],
           const Spacer(),
           if (ambient)
             Text('${secondsLeft}s', style: big)
