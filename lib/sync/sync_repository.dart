@@ -111,7 +111,12 @@ class SyncRepository {
     final existing = await (_db.select(
       _db.routines,
     )..where((t) => t.syncId.equals(dto.syncId))).getSingleOrNull();
-    if (existing != null && existing.version >= dto.version) return;
+    // Only strictly older bundles are dropped (out-of-order delivery guard).
+    // Equal versions re-apply: exercise-level edits on the phone (rename,
+    // kind) don't bump any routine version, and a lost push would otherwise
+    // leave the watch permanently stale with no way for the manual "Sync
+    // now" to repair it. The upsert below is idempotent, so this is safe.
+    if (existing != null && existing.version > dto.version) return;
 
     final int routineId;
     if (existing == null) {
@@ -371,6 +376,20 @@ class SyncRepository {
         )..where((t) => t.id.equals(existing.id))).write(
           ExercisesCompanion(kind: Value(kind)),
         );
+      }
+      // Same for the name — the authority may have renamed the exercise. A
+      // different local exercise can already hold the target name (UNIQUE);
+      // keep the old name in that case rather than failing the whole bundle.
+      if (existing.name != name) {
+        try {
+          await (_db.update(
+            _db.exercises,
+          )..where((t) => t.id.equals(existing.id))).write(
+            ExercisesCompanion(name: Value(name)),
+          );
+        } catch (_) {
+          // name taken locally — leave as is
+        }
       }
       return existing.id;
     }
