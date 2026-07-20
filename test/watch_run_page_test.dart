@@ -400,5 +400,68 @@ void main() {
       expect(find.text('Bench'), findsWidgets);
       expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
     });
+
+    testWidgets('after skipping ahead, completion stays in the new exercise',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Skip stay',
+        restSeconds: 2,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+            ],
+          ),
+          _ExerciseFixture(
+            name: 'Row',
+            sets: [
+              _SetFixture(reps: 8, weight: 40),
+              _SetFixture(reps: 8, weight: 40),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      // Skip past both Bench sets to Row set 1/2.
+      await tester.tap(find.byTooltip('Next set'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Next set'));
+      await tester.pumpAndSettle();
+      expect(find.text('Row'), findsWidgets);
+
+      // Complete Row set 1 — must continue with Row set 2, not bounce back
+      // to the skipped Bench.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+      expect(find.text('Up next: Row'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Row'), findsWidgets);
+      expect(find.text('2/2'), findsOneWidget);
+
+      // Completing Row's last set returns to the skipped Bench set 1.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+      expect(find.text('Up next: Bench'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Bench'), findsWidgets);
+      expect(find.text('1/2'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
+    });
   });
 }

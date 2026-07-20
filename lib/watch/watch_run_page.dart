@@ -337,6 +337,18 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   ({int eIdx, int sIdx})? _nextAfter(int eIdx, int sIdx) =>
       _seq.nextAfter(eIdx, sIdx);
 
+  bool _isCompletedAt(int eIdx, int sIdx) {
+    final snap = _snapshot;
+    if (snap == null) return false;
+    return snap.exercises[eIdx].sets[sIdx].completion != null;
+  }
+
+  /// Completion-aware advance target from the current position. Used by the
+  /// Done flow, the post-rest advance and the rest screen's up-next label so
+  /// all three agree.
+  ({int eIdx, int sIdx})? _nextForCompletion() =>
+      _seq.nextForCompletion(_exerciseIdx, _setIdx, _isCompletedAt);
+
   ({int eIdx, int sIdx})? _prevBefore(int eIdx, int sIdx) =>
       _seq.prevBefore(eIdx, sIdx);
 
@@ -526,25 +538,19 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       );
     }
     HapticFeedback.heavyImpact();
-    final next = _nextAfter(_exerciseIdx, _setIdx);
+    final next = _nextForCompletion();
     if (next != null) {
-      if (next.sIdx == _setIdx) {
-        // Same round, different exercise (superset) — immediate advance.
+      final sameRoundInGroup = next.sIdx == _setIdx &&
+          next.eIdx > _exerciseIdx &&
+          _supersetGroupAt(next.eIdx) != null &&
+          _supersetGroupAt(next.eIdx) == _supersetGroupAt(_exerciseIdx);
+      if (sameRoundInGroup) {
+        // Same round, next superset member — immediate advance.
         _goTo(next.eIdx, next.sIdx);
       } else {
-        // New round (or new standalone exercise) — rest first.
+        // New round, new exercise, or a return to skipped work — rest first.
         _startRest(_currentRestSeconds());
       }
-      return;
-    }
-    // Forward sequence exhausted — wrap back to the first set still missing
-    // a completion (skipped earlier in the workout). Excluding `wsId` is
-    // defensive: the snapshot stream may not yet reflect the upsert we just
-    // performed.
-    final snap = _snapshot;
-    if (snap != null &&
-        _firstIncompleteSnapshotExcept(snap, wsId) != null) {
-      _startRest(_currentRestSeconds());
       return;
     }
     // Workout is genuinely complete — stay on logSet so the user can Finish.
@@ -681,20 +687,14 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   void _advanceAfterRest() {
     _restEndTime = null;
-    var next = _nextAfter(_exerciseIdx, _setIdx);
-    if (next == null) {
-      final snap = _snapshot;
-      if (snap != null) {
-        next = _firstIncompleteSnapshotExcept(snap, _currentWorkoutSetId());
-      }
-    }
+    final next = _nextForCompletion();
     if (next == null) {
       setState(() => _phase = _Phase.logSet);
       return;
     }
     _setHrBpms.clear();
     setState(() {
-      _exerciseIdx = next!.eIdx;
+      _exerciseIdx = next.eIdx;
       _setIdx = next.sIdx;
       _phase = _Phase.logSet;
       _loadCurrentSetTargets();
@@ -873,7 +873,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   /// seconds), shown during rest so the user can see what's coming. Null when
   /// the current set is the last one.
   ({String name, String target})? _upNextDetail() {
-    final next = _nextAfter(_exerciseIdx, _setIdx);
+    final next = _nextForCompletion();
     if (next == null) return null;
     if (_snapshot != null) {
       final ex = _snapshot!.exercises[next.eIdx];
