@@ -1,0 +1,25 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*"],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+          { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
+        ]
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "hosting": { "port": 4117 },
+    "ui": { "enabled": true, "port": 4118 },
+    "auth": { "port": 4119 },
+    "firestore": { "port": 4120 },
+    "singleProjectMode": true
+  }
+}
