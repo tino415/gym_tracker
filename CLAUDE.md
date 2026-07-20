@@ -19,6 +19,19 @@ flutter pub run build_runner build --force-jit
 
 `--force-jit` is mandatory: `sqlite3_flutter_libs` ≥ 3.0 has a build hook that breaks `dart compile`, which `build_runner` uses by default.
 
+## Web / PWA
+
+`flutter build web` produces an installable PWA (Flutter generates the service
+worker). Two committed binaries in `web/` must stay in step with pubspec when
+upgrading drift/sqlite3: `sqlite3.wasm` (from the sqlite3.dart GitHub release
+matching the `sqlite3` package version) and `drift_worker.js` (from the drift
+release matching `drift`). A mismatch fails only at runtime in the browser.
+
+Hosting needs `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` headers, otherwise drift silently
+falls back from OPFS to IndexedDB. PWA icons are generated, not hand-drawn —
+edit `tool/generate_web_icons.py` and re-run it rather than replacing the PNGs.
+
 ## Architecture
 
 Single Flutter app shipped to both phone and Wear OS — the same binary, with a runtime branch.
