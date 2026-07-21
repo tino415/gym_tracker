@@ -185,4 +185,25 @@ void main() {
       expect(decoded.workout.routineSyncId, isNull);
     });
   });
+
+  group('RoutineDeletedMessage', () {
+    test('round-trips sync ids through payload', () {
+      final decoded = RoutineDeletedMessage.fromPayload(
+        const RoutineDeletedMessage(['a', 'b']).toPayload(),
+      );
+      expect(decoded.syncIds, ['a', 'b']);
+    });
+
+    test('skips non-string ids instead of throwing on a malformed payload', () {
+      final decoded = RoutineDeletedMessage.fromPayload({
+        'syncIds': <Object?>['keep-1', 42, null, 'keep-2'],
+      });
+      expect(decoded.syncIds, ['keep-1', 'keep-2']);
+    });
+
+    test('tolerates a missing syncIds key', () {
+      final decoded = RoutineDeletedMessage.fromPayload(const {});
+      expect(decoded.syncIds, isEmpty);
+    });
+  });
 }

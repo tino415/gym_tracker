@@ -4,6 +4,16 @@ const routineBundleType = 'routine_bundle';
 const workoutCompletedType = 'workout_completed';
 const syncRequestType = 'sync_request';
 
+/// Non-destructive routine upsert. Unlike [routineBundleType] — which is an
+/// authoritative full snapshot that deletes local routines not present — this
+/// carries one or more routines to merge, leaving others untouched. Used by
+/// the Firestore transport, where each device owns a shared document set and
+/// deletions arrive separately as [routineDeletedType].
+const routineUpsertType = 'routine_upsert';
+
+/// Explicit deletion of routines by sync id (payload: {'syncIds': [...]}).
+const routineDeletedType = 'routine_deleted';
+
 class RoutineBundleMessage {
   const RoutineBundleMessage(this.routines);
 
@@ -22,6 +32,21 @@ class RoutineBundleMessage {
         )
         .toList();
     return RoutineBundleMessage(list);
+  }
+}
+
+class RoutineDeletedMessage {
+  const RoutineDeletedMessage(this.syncIds);
+
+  final List<String> syncIds;
+
+  Map<String, Object?> toPayload() => {'syncIds': syncIds};
+
+  static RoutineDeletedMessage fromPayload(Map<String, Object?> json) {
+    final raw = (json['syncIds'] as List?)?.cast<Object?>() ?? const [];
+    // Skip non-string ids rather than throwing, so one malformed entry doesn't
+    // sink the whole deletion batch (the caller swallows exceptions).
+    return RoutineDeletedMessage(raw.whereType<String>().toList());
   }
 }
 

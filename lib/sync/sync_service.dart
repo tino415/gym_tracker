@@ -8,10 +8,15 @@ import '../data/providers.dart';
 import '../main.dart';
 import 'sync_codec.dart';
 import 'sync_repository.dart';
-import 'wear_bridge.dart';
+import 'sync_transport.dart';
 
 class SyncService {
-  SyncService(this._db, this._repo, {required this.isRoutineAuthority});
+  SyncService(
+    this._db,
+    this._repo, {
+    required this.isRoutineAuthority,
+    required List<SyncTransport> transports,
+  }) : _transports = List.of(transports);
 
   final AppDatabase _db;
   final SyncRepository _repo;
@@ -21,17 +26,26 @@ class SyncService {
   /// deleted on the phone doesn't resurrect itself on the next sync.
   final bool isRoutineAuthority;
 
+  final List<SyncTransport> _transports;
+  final List<StreamSubscription<SyncMessage>> _messageSubs = [];
   StreamSubscription<Set<TableUpdate>>? _localUpdatesSub;
-  StreamSubscription<WearMessage>? _messagesSub;
   Timer? _debounce;
   bool _started = false;
+
+  /// Sync ids present at the previous context push, used to derive which
+  /// routines were deleted since. Null until the first push so we never
+  /// fabricate a deletion for routines a peer holds that we simply haven't
+  /// pushed yet. See [_pushContext].
+  Set<String>? _lastPushedRoutineSyncIds;
 
   void start() {
     if (_started) return;
     _started = true;
 
-    final bridge = WearBridge.instance;
-    bridge.start();
+    for (final transport in _transports) {
+      transport.start();
+      _messageSubs.add(transport.messages.listen(_onIncoming));
+    }
 
     if (isRoutineAuthority) {
       _localUpdatesSub = _db
@@ -46,30 +60,52 @@ class SyncService {
           .listen((_) => _scheduleContextPush());
     }
 
-    _messagesSub = bridge.messages.listen(_onIncoming);
-
     if (isRoutineAuthority) {
       _scheduleContextPush();
     }
     // Ask the peer for their state when we come up. Best-effort — fails
-    // silently if the bridge isn't reachable yet.
-    unawaited(_requestPeerSync());
+    // silently if a transport isn't reachable yet.
+    unawaited(_sendAll(type: syncRequestType, payload: const {}));
   }
 
-  Future<void> _requestPeerSync() async {
-    try {
-      await WearBridge.instance.send(type: syncRequestType, payload: const {});
-    } catch (_) {
-      // best-effort
+  /// Register an extra transport after start (e.g. the server transport once
+  /// the user signs in). Immediately pushes local state so the new channel
+  /// catches up; existing transports just receive an idempotent re-push.
+  void addTransport(SyncTransport transport) {
+    _transports.add(transport);
+    if (!_started) return;
+    transport.start();
+    _messageSubs.add(transport.messages.listen(_onIncoming));
+    unawaited(pushAll());
+  }
+
+  /// Send one message to every transport, swallowing per-transport failures —
+  /// an unreachable watch must not stop a server push and vice versa.
+  Future<void> _sendAll({
+    required String type,
+    required Map<String, Object?> payload,
+  }) async {
+    for (final transport in _transports) {
+      try {
+        await transport.send(type: type, payload: payload);
+      } catch (_) {
+        // best-effort
+      }
     }
   }
 
-  Future<void> _onIncoming(WearMessage msg) async {
+  Future<void> _onIncoming(SyncMessage msg) async {
     try {
       switch (msg.type) {
         case routineBundleType:
           final bundle = RoutineBundleMessage.fromPayload(msg.payload);
           await _repo.applyRoutineBundle(bundle);
+        case routineUpsertType:
+          final bundle = RoutineBundleMessage.fromPayload(msg.payload);
+          await _repo.applyRoutineBundleUpsert(bundle);
+        case routineDeletedType:
+          final del = RoutineDeletedMessage.fromPayload(msg.payload);
+          await _repo.deleteRoutinesBySyncId(del.syncIds);
         case workoutCompletedType:
           final workout = WorkoutCompletedMessage.fromPayload(msg.payload);
           await _repo.applyWorkoutCompleted(workout);
@@ -101,11 +137,30 @@ class SyncService {
   Future<void> _pushContext() async {
     try {
       final routines = await _repo.exportAllRoutines();
+      final currentIds = routines.map((r) => r.syncId).toSet();
+
+      // Propagate deletions explicitly rather than by omission. A transport
+      // like Firestore holds a shared document set, so "push my whole set and
+      // delete anything else" would let one authority wipe another's routines
+      // (a peer's routine we simply haven't received yet looks the same as a
+      // deleted one). Instead we send a routineDeleted only for ids that were
+      // present at our last push and are now gone. Skipped on the first push
+      // (no baseline). Deletions that happen while the app is closed aren't
+      // re-derived here; the Wear bundle stays authoritative for the watch.
+      final previous = _lastPushedRoutineSyncIds;
+      if (previous != null) {
+        final deleted = previous.difference(currentIds);
+        if (deleted.isNotEmpty) {
+          await _sendAll(
+            type: routineDeletedType,
+            payload: RoutineDeletedMessage(deleted.toList()).toPayload(),
+          );
+        }
+      }
+      _lastPushedRoutineSyncIds = currentIds;
+
       final msg = RoutineBundleMessage(routines);
-      await WearBridge.instance.send(
-        type: routineBundleType,
-        payload: msg.toPayload(),
-      );
+      await _sendAll(type: routineBundleType, payload: msg.toPayload());
     } catch (_) {
       // best-effort
     }
@@ -125,31 +180,26 @@ class SyncService {
       await pushWorkout(w.id);
     }
     // Ask the peer to push their side back to us. Best-effort.
-    try {
-      await WearBridge.instance.send(type: syncRequestType, payload: const {});
-    } catch (_) {
-      // best-effort
-    }
+    await _sendAll(type: syncRequestType, payload: const {});
   }
 
   Future<void> pushWorkout(int workoutId) async {
     final dto = await _repo.exportWorkout(workoutId);
     if (dto == null) return;
-    try {
-      final msg = WorkoutCompletedMessage(dto);
-      await WearBridge.instance.send(
-        type: workoutCompletedType,
-        payload: msg.toPayload(),
-      );
-    } catch (_) {
-      // best-effort
-    }
+    final msg = WorkoutCompletedMessage(dto);
+    await _sendAll(type: workoutCompletedType, payload: msg.toPayload());
   }
 
   Future<void> dispose() async {
     _debounce?.cancel();
     await _localUpdatesSub?.cancel();
-    await _messagesSub?.cancel();
+    for (final sub in _messageSubs) {
+      await sub.cancel();
+    }
+    _messageSubs.clear();
+    for (final transport in _transports) {
+      await transport.dispose();
+    }
     _started = false;
   }
 }
@@ -164,6 +214,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     ref.watch(syncRepositoryProvider),
     // Phone is the authority for routine state; the watch only consumes them.
     isRoutineAuthority: !ref.watch(isWatchProvider),
+    transports: [WearSyncTransport()],
   );
   svc.start();
   ref.onDispose(() => svc.dispose());

@@ -32,6 +32,16 @@ Hosting needs `Cross-Origin-Opener-Policy: same-origin` and
 falls back from OPFS to IndexedDB. PWA icons are generated, not hand-drawn —
 edit `tool/generate_web_icons.py` and re-run it rather than replacing the PNGs.
 
+**Service-worker stale cache while iterating.** The generated service worker
+serves the *previous* `main.dart.js` across reloads (it also serves its own
+old `flutter_service_worker.js`, so the new version is never detected, and
+`flutter_bootstrap.js` re-registers it every load) — a rebuilt bundle looks
+like it never took effect. To test a fresh build: unregister the SW + clear
+caches + reload in a *fresh tab* (the old active worker keeps controlling
+existing clients until they close), or just build with `--pwa-strategy=none`
+during dev iteration. Drift's OPFS DB survives cache clears; it's separate from
+the SW app-shell cache.
+
 ## Architecture
 
 Single Flutter app shipped to both phone and Wear OS — the same binary, with a runtime branch.
@@ -61,6 +71,40 @@ Phone ↔ watch over the Wear Data Layer (`MessageClient`). The native bridge `G
 - `sync_codec.dart` — DTOs. `WorkoutDto` carries the snapshot (`exercises: [WorkoutExerciseDto{ sets: [...] }]`), so a workout received over sync is self-contained — the receiver doesn't need the source routine to exist.
 - `sync_repository.dart` — `applyWorkoutCompleted` inserts the snapshot tables first, then binds completions to the new `workoutSet` ids. Idempotent on `sync_id`.
 - `sync_service.dart` — Phone is `isRoutineAuthority: true`; it pushes routine bundles on every local change to routines/exercises/planned_sets (500 ms debounce). Watch never pushes routines (so a phone-deleted routine doesn't get resurrected). Both sides push completed workouts. `pushAll()` is the manual "Sync now" entry point and sends a `syncRequest` to ask the peer for theirs back.
+
+#### Transport abstraction
+
+`SyncService` is transport-agnostic: it fans every send out to a `List<SyncTransport>` and merges their inbound streams (`sync_transport.dart`). It does not know or care whether a message went over the Wear bridge or a server.
+
+- `WearSyncTransport` wraps `WearBridge` (the phone↔watch path above). Always present.
+- `addTransport()` attaches a transport at runtime (e.g. the server transport once the user is signed in) and immediately `pushAll()`s so the new channel catches up.
+- Message vocabulary lives in `sync_codec.dart`: `routine_bundle` (authoritative full snapshot — the receiver deletes local routines not present; this is what the **watch** applies), `routine_upsert` (non-destructive merge), `routine_deleted` (explicit id list), `workout_completed` (append-only), `sync_request`.
+
+#### Firestore backend — `firestore_transport.dart`, `firestore_backend.dart`
+
+Optional server-backed sync, **off unless built with `--dart-define=SYNC_BACKEND=firestore`** — a normal phone/watch/test build pulls in no Firebase runtime. Layout: `users/{uid}/routines|workouts/{syncId}` hold the plain DTO JSON, so the server is only a document store. Data-loss traps that shaped the design:
+
+- **Push is upsert-only.** It never deletes a doc just because it's absent from the local set — with two authorities (phone *and* web are `isRoutineAuthority`) that would let each wipe the other's routines. Deletions travel **explicitly**: `SyncService._pushContext` diffs successive pushes and emits `routine_deleted` for ids that vanished. `_lastPushedRoutineSyncIds` is the baseline (null on first push, so we never fabricate a deletion for a peer routine we haven't merged yet).
+- **Receive is document-granular and non-destructive.** Snapshot listeners turn added/modified docs into `routine_upsert` and removed docs into `routine_deleted`; workouts are append-only. An empty or stale server snapshot can therefore never wipe local routines.
+- In-memory caches (`_lastWrittenRoutine`, `_knownWorkouts`) suppress the push→own-snapshot→apply→push echo and avoid a per-push collection read / per-workout existence read.
+- Sign-in is **anonymous** for now (uid is per-install, so cross-device sync isn't real yet — real Google/email auth is the next step). `FIREBASE_USE_EMULATOR` defaults **off**; a prod build must not silently dial localhost.
+
+#### Emulator dev loop
+
+Config in `firebase.json` (`demo-gym-tracker` = fully offline, no real project/billing). The Auth/Firestore emulators need a JRE — the nix env sets `JAVA_HOME` but not `java` on PATH, so start with:
+
+```bash
+nx bash -c 'export PATH="$JAVA_HOME/bin:$PATH"; firebase emulators:start \
+  --only hosting,auth,firestore --project demo-gym-tracker'
+```
+
+Ports: hosting 4117, UI 4118, auth 4119, firestore 4120. Build + serve the release PWA against it, and reach it over the nginx TLS vhost (`https://gym.dev.localhost`, needed for `crossOriginIsolated` → OPFS):
+
+```bash
+flutter build web --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true
+```
+
+Inspect emulator data over REST with the admin bypass header `Authorization: Bearer owner` (rules are otherwise enforced, even locally).
 
 ### Phone UI conventions
 - Routine creation is **deferred**: `_ensurePersisted()` only writes the `Routines` row on first save or first add-exercise. The explicit ✓ in the app bar is the save action; on-blur autosave was removed.

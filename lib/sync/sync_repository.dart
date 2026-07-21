@@ -107,6 +107,28 @@ class SyncRepository {
     });
   }
 
+  /// Apply routines as a non-destructive merge: each is upserted, but local
+  /// routines absent from the message are left untouched (unlike
+  /// [applyRoutineBundle]). Deletions are carried separately by
+  /// [deleteRoutinesBySyncId]. Used by the Firestore transport, where a lost
+  /// or empty snapshot must never wipe local routines.
+  Future<void> applyRoutineBundleUpsert(RoutineBundleMessage bundle) async {
+    await _db.transaction(() async {
+      for (final dto in bundle.routines) {
+        await _upsertOneRoutine(dto);
+      }
+    });
+  }
+
+  /// Delete local routines by sync id. Workouts survive (routine_id is SET
+  /// NULL). No-op for ids not present locally.
+  Future<void> deleteRoutinesBySyncId(List<String> syncIds) async {
+    if (syncIds.isEmpty) return;
+    await (_db.delete(
+      _db.routines,
+    )..where((t) => t.syncId.isIn(syncIds))).go();
+  }
+
   Future<void> _upsertOneRoutine(RoutineTemplateDto dto) async {
     final existing = await (_db.select(
       _db.routines,
