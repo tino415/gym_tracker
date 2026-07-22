@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../../sync/auth_service.dart';
 import '../../sync/sync_service.dart';
 
 class RoutinesListPage extends ConsumerWidget {
@@ -12,7 +13,10 @@ class RoutinesListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final routinesAsync = ref.watch(routineSummariesStreamProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Routines')),
+      appBar: AppBar(
+        title: const Text('Routines'),
+        actions: const [_AccountAction()],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/routines/new'),
         child: const Icon(Icons.add),
@@ -51,6 +55,30 @@ class RoutinesListPage extends ConsumerWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Account entry point for the Routines app bar. Its own [Consumer] so that
+/// auth-state changes rebuild only this icon, not the whole routines list;
+/// `.select` further narrows the rebuild to the signed-in/out transition
+/// (ignoring token refreshes). Renders nothing when the backend isn't compiled
+/// in, keeping plain phone/watch builds free of auth UI.
+class _AccountAction extends ConsumerWidget {
+  const _AccountAction();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(authBackendEnabledProvider)) return const SizedBox.shrink();
+    final signedIn = ref.watch(
+      authStateProvider.select((v) => v.valueOrNull != null),
+    );
+    return IconButton(
+      tooltip: 'Account',
+      icon: Icon(
+        signedIn ? Icons.account_circle : Icons.account_circle_outlined,
+      ),
+      onPressed: () => context.push('/account'),
     );
   }
 }

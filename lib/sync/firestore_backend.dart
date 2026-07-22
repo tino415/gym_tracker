@@ -4,14 +4,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'firestore_transport.dart';
-import 'sync_service.dart';
-
 /// Which sync backend to enable, chosen at build time:
 /// `--dart-define=SYNC_BACKEND=firestore`. Empty (the default) keeps the app
 /// on Wear-only sync, so ordinary phone/watch builds and tests pull in no
 /// Firebase runtime.
 const _backend = String.fromEnvironment('SYNC_BACKEND');
+
+/// True only for `--dart-define=SYNC_BACKEND=firestore` builds. UI and auth
+/// providers gate on this so plain phone/watch builds never touch FirebaseAuth.
+const bool syncBackendEnabled = _backend == 'firestore';
 
 /// Emulator target. Defaults match `firebase.json`. Host is `localhost` so a
 /// web build served from the machine reaches the loopback-bound emulator; an
@@ -45,12 +46,13 @@ const _demoOptions = FirebaseOptions(
   projectId: 'demo-gym-tracker',
 );
 
-/// Initialize Firebase, point the SDKs at the emulator, and sign in so a uid
-/// is available, then hand back a transport bound to that uid. Returns null
-/// when the backend is disabled or initialization fails — sync then stays
-/// Wear-only and the app is otherwise unaffected.
-Future<FirestoreSyncTransport?> initFirestoreBackend() async {
-  if (_backend != 'firestore') return null;
+/// Initialize Firebase and point the SDKs at the emulator. Does **not** sign
+/// in — auth is opt-in (see `auth_service.dart`), so a signed-out session makes
+/// no Firestore calls at all. Returns true once the app is initialized, false
+/// when the backend is disabled or initialization fails (sync then stays
+/// Wear-only and the app is otherwise unaffected).
+Future<bool> initFirebaseApp() async {
+  if (!syncBackendEnabled) return false;
   try {
     await Firebase.initializeApp(options: _demoOptions);
 
@@ -61,27 +63,14 @@ Future<FirestoreSyncTransport?> initFirestoreBackend() async {
       );
       await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, _authPort);
     }
-
-    // Sign-in is anonymous for now; the opt-in Google / email flow is a later
-    // epic step. A stable uid per install is enough to exercise the transport.
-    final auth = FirebaseAuth.instance;
-    final user =
-        auth.currentUser ?? (await auth.signInAnonymously()).user;
-    if (user == null) return null;
-
-    return FirestoreSyncTransport(uid: user.uid);
+    return true;
   } catch (e, st) {
-    debugPrint('Firestore backend init failed: $e\n$st');
-    return null;
+    debugPrint('Firebase init failed: $e\n$st');
+    return false;
   }
 }
 
-/// Drives one-time backend initialization and attaches the resulting transport
-/// to the running [SyncService]. Watched (fire-and-forget) from the app root;
-/// its error/loading states are intentionally not surfaced in the UI.
-final firestoreBackendProvider = FutureProvider<bool>((ref) async {
-  final transport = await initFirestoreBackend();
-  if (transport == null) return false;
-  ref.read(syncServiceProvider).addTransport(transport);
-  return true;
-});
+/// One-shot Firebase initialization. Resolves true once the app is ready (or
+/// false when the backend is off / init fails). Everything auth-related gates
+/// on this so no [FirebaseAuth] call fires before [Firebase.initializeApp].
+final firebaseReadyProvider = FutureProvider<bool>((ref) => initFirebaseApp());

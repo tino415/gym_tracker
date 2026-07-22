@@ -27,7 +27,7 @@ class SyncService {
   final bool isRoutineAuthority;
 
   final List<SyncTransport> _transports;
-  final List<StreamSubscription<SyncMessage>> _messageSubs = [];
+  final Map<SyncTransport, StreamSubscription<SyncMessage>> _messageSubs = {};
   StreamSubscription<Set<TableUpdate>>? _localUpdatesSub;
   Timer? _debounce;
   bool _started = false;
@@ -44,7 +44,7 @@ class SyncService {
 
     for (final transport in _transports) {
       transport.start();
-      _messageSubs.add(transport.messages.listen(_onIncoming));
+      _messageSubs[transport] = transport.messages.listen(_onIncoming);
     }
 
     if (isRoutineAuthority) {
@@ -68,15 +68,41 @@ class SyncService {
     unawaited(_sendAll(type: syncRequestType, payload: const {}));
   }
 
-  /// Register an extra transport after start (e.g. the server transport once
-  /// the user signs in). Immediately pushes local state so the new channel
-  /// catches up; existing transports just receive an idempotent re-push.
-  void addTransport(SyncTransport transport) {
+  /// Register an extra transport after start (e.g. the Firestore channel once
+  /// the user signs in). Idempotent — re-adding a transport already present is
+  /// a no-op.
+  ///
+  /// When [pushOnAttach] is true (the default) the local state is immediately
+  /// pushed so the new channel catches up; existing transports just receive an
+  /// idempotent re-push. Pass false to attach receive-only — used on an account
+  /// *switch*, where auto-pushing this device's local data (which may hold the
+  /// previous account's routines) into a different account would leak it.
+  void addTransport(SyncTransport transport, {bool pushOnAttach = true}) {
+    if (_transports.contains(transport)) return;
     _transports.add(transport);
     if (!_started) return;
     transport.start();
-    _messageSubs.add(transport.messages.listen(_onIncoming));
-    unawaited(pushAll());
+    _messageSubs[transport] = transport.messages.listen(_onIncoming);
+    if (pushOnAttach) unawaited(pushAll());
+  }
+
+  /// Detach a transport that was added after start (e.g. the Firestore channel
+  /// on sign-out or account switch). The collection mutations happen
+  /// synchronously before the first await, so a rapid remove(old)+add(new)
+  /// swap never interleaves. Cancels the inbound subscription *before*
+  /// disposing the transport, so no in-flight snapshot lands in a torn-down
+  /// [_onIncoming]. Teardown is best-effort — a throw is swallowed so the
+  /// caller (often unawaited from the auth binder) never sees an unhandled
+  /// rejection. No-op for a transport that isn't attached.
+  Future<void> removeTransport(SyncTransport transport) async {
+    if (!_transports.remove(transport)) return;
+    final sub = _messageSubs.remove(transport);
+    try {
+      await sub?.cancel();
+      await transport.dispose();
+    } catch (_) {
+      // best-effort
+    }
   }
 
   /// Send one message to every transport, swallowing per-transport failures —
@@ -85,7 +111,11 @@ class SyncService {
     required String type,
     required Map<String, Object?> payload,
   }) async {
-    for (final transport in _transports) {
+    // Iterate a snapshot: a transport may attach or detach (addTransport /
+    // removeTransport, driven by sign-in/out) while we're awaiting a send, and
+    // mutating the live list mid-iteration would throw. A transport removed
+    // mid-send just gets one last best-effort message it can ignore.
+    for (final transport in List<SyncTransport>.of(_transports)) {
       try {
         await transport.send(type: type, payload: payload);
       } catch (_) {
@@ -193,13 +223,14 @@ class SyncService {
   Future<void> dispose() async {
     _debounce?.cancel();
     await _localUpdatesSub?.cancel();
-    for (final sub in _messageSubs) {
+    for (final sub in _messageSubs.values) {
       await sub.cancel();
     }
     _messageSubs.clear();
     for (final transport in _transports) {
       await transport.dispose();
     }
+    _transports.clear();
     _started = false;
   }
 }

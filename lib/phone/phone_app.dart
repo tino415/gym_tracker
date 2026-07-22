@@ -9,6 +9,7 @@ import 'home_shell.dart';
 import 'routines/routine_edit_page.dart';
 import 'routines/routine_exercise_detail_page.dart';
 import 'routines/routines_list_page.dart';
+import 'settings/account_page.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
 
@@ -93,6 +94,11 @@ final _router = GoRouter(
           ],
         ),
       ],
+    ),
+    GoRoute(
+      path: '/account',
+      parentNavigatorKey: _rootKey,
+      builder: (context, state) => const AccountPage(),
     ),
   ],
 );

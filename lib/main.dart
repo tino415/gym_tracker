@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wear_plus/wear_plus.dart';
 
 import 'phone/phone_app.dart';
-import 'sync/firestore_backend.dart';
+import 'sync/auth_service.dart';
 import 'sync/sync_service.dart';
 import 'watch/watch_app.dart';
 import 'watch/widgets/round_safe_area.dart';
@@ -49,9 +49,10 @@ class GymTrackerRoot extends ConsumerWidget {
     // and inbound messages even before any UI route reads it.
     ref.watch(syncServiceProvider);
     // Kick off optional server-backed sync (no-op unless built with
-    // --dart-define=SYNC_BACKEND=firestore). Never on the watch, which reaches
-    // the server through the phone.
-    if (!isWatch) ref.watch(firestoreBackendProvider);
+    // --dart-define=SYNC_BACKEND=firestore). The binder attaches a Firestore
+    // transport reactively when the user signs in, and detaches on sign-out.
+    // Never on the watch, which reaches the server through the phone.
+    if (!isWatch) ref.watch(firestoreSyncBinderProvider);
     if (isWatch) return const _WearShell();
     return const PhoneApp();
   }

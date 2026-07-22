@@ -310,4 +310,85 @@ void main() {
 
     expect(t.disposed, isTrue);
   });
+
+  test('addTransport with pushOnAttach:false attaches receive-only', () async {
+    // The account-switch guard: a transport attached for a different account
+    // must not have this device's local routines auto-pushed into it.
+    await _seedRoutine(db);
+    final wear = FakeTransport();
+    final svc = serviceWith([wear], isRoutineAuthority: true);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    final switched = FakeTransport();
+    svc.addTransport(switched, pushOnAttach: false);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(switched.started, isTrue, reason: 'still listens for inbound state');
+    expect(
+      switched.sent.where((m) => m.type == routineBundleType),
+      isEmpty,
+      reason: 'no local routines pushed into the switched-to account',
+    );
+    await svc.dispose();
+  });
+
+  test('removeTransport disposes it and stops fanning sends to it', () async {
+    await _seedRoutine(db);
+    final wear = FakeTransport();
+    final svc = serviceWith([wear], isRoutineAuthority: true);
+    svc.start();
+    final firestore = FakeTransport();
+    svc.addTransport(firestore);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    await svc.removeTransport(firestore);
+    expect(firestore.disposed, isTrue);
+
+    wear.sent.clear();
+    firestore.sent.clear();
+    await svc.pushAll();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // The detached transport receives nothing; the remaining one still does.
+    expect(firestore.sent, isEmpty);
+    expect(wear.sent.where((m) => m.type == routineBundleType), isNotEmpty);
+    await svc.dispose();
+  });
+
+  test('removeTransport of an unknown transport is a no-op', () async {
+    final t = FakeTransport();
+    final svc = serviceWith([t], isRoutineAuthority: false);
+    svc.start();
+
+    final stranger = FakeTransport();
+    await svc.removeTransport(stranger); // must not throw
+    expect(stranger.disposed, isFalse);
+    await svc.dispose();
+  });
+
+  test('attach -> detach -> re-attach re-pushes state (account switch)',
+      () async {
+    // Mirrors a uid A -> sign out -> uid B swap at the SyncService layer: each
+    // freshly attached transport gets the full local routine set pushed to it.
+    await _seedRoutine(db);
+    final wear = FakeTransport();
+    final svc = serviceWith([wear], isRoutineAuthority: true);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    final accountA = FakeTransport();
+    svc.addTransport(accountA);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(accountA.sent.where((m) => m.type == routineBundleType), isNotEmpty);
+
+    await svc.removeTransport(accountA);
+    final accountB = FakeTransport();
+    svc.addTransport(accountB);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(accountA.disposed, isTrue);
+    expect(accountB.sent.where((m) => m.type == routineBundleType), isNotEmpty);
+    await svc.dispose();
+  });
 }

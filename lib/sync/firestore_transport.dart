@@ -32,6 +32,7 @@ class FirestoreSyncTransport implements SyncTransport {
       StreamController<SyncMessage>.broadcast();
   final List<StreamSubscription<QuerySnapshot<Map<String, Object?>>>> _subs = [];
   bool _started = false;
+  bool _disposed = false;
 
   /// Last content we wrote per routine doc, so an idempotent re-push writes
   /// nothing (echo suppression) without re-reading the collection from the
@@ -105,6 +106,10 @@ class FirestoreSyncTransport implements SyncTransport {
     required String type,
     required Map<String, Object?> payload,
   }) async {
+    // Once disposed (e.g. detached on sign-out), never write again — the uid
+    // this transport is bound to is no longer the signed-in user, so a straggler
+    // send from an in-flight fan-out must not touch that account's documents.
+    if (_disposed) return;
     switch (type) {
       case routineBundleType:
         await _pushRoutines(payload);
@@ -171,6 +176,7 @@ class FirestoreSyncTransport implements SyncTransport {
 
   @override
   Future<void> dispose() async {
+    _disposed = true;
     for (final s in _subs) {
       await s.cancel();
     }
