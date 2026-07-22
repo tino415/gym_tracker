@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'firestore_backend.dart';
 import 'firestore_transport.dart';
+import 'sync_ownership.dart';
 import 'sync_service.dart';
 
 /// Thin wrapper over [FirebaseAuth]. Only ever exercised when the backend is
@@ -70,54 +71,61 @@ final authStateProvider = StreamProvider<User?>((ref) {
 /// The reactive attach/detach binder — the heart of opt-in server sync.
 ///
 /// Watched (fire-and-forget) from the app root on phone/web only. It listens to
-/// [authStateProvider] and keeps exactly one [FirestoreSyncTransport] bound to
-/// the current uid attached to the running [SyncService]: attach on sign-in,
-/// detach+dispose on sign-out, and swap old→new on account switch. Signed out,
-/// no transport is attached, so the app makes zero Firestore calls.
+/// [authStateProvider] and keeps at most one [FirestoreSyncTransport] attached
+/// to the running [SyncService]. Whether it attaches depends on the persisted
+/// sync *owner* of this install's local store (see [SyncOwnershipStore] /
+/// [decideSyncOwnership]): the first account to sign in adopts the store and
+/// syncs, the same account keeps syncing, but a *different* account leaves the
+/// transport detached — sync paused — so this device never pushes the owner's
+/// data into another account or pulls another account's data on top of it.
+/// Signed out, nothing is attached, so the app makes zero Firestore calls.
+/// The paused state is recoverable: the account page lets the user claim the
+/// device for the current account (persist the new owner + invalidate this
+/// provider so it re-attaches).
 ///
-/// The body deliberately depends on nothing that changes (it only reads
-/// [syncServiceProvider] and *listens* to [authStateProvider], which itself
-/// gates on Firebase init), so it runs exactly once — the attach state below
-/// lives in closure locals that must survive for the app's lifetime.
+/// The body runs once; the attach state lives in closure locals for the app's
+/// lifetime. The owner marker is read asynchronously and cached, so the
+/// auth-listener callback awaits it before deciding — guarding the async gap
+/// with a [currentUid] recheck so a superseded sign-in can't land a transport.
 final firestoreSyncBinderProvider = Provider<void>((ref) {
   if (!syncBackendEnabled) return; // backend not compiled in; stay inert
 
   final svc = ref.read(syncServiceProvider);
+  final store = ref.watch(syncOwnershipStoreProvider);
+  // Read the persisted owner once; the auth callback awaits this.
+  final ownerFuture = store.read();
+
   FirestoreSyncTransport? current;
   String? currentUid;
-  // Sticky across sign-out (unlike [currentUid]): the last uid we attached a
-  // transport for. Lets us detect an account *switch* so we don't auto-push
-  // this device's local data — which may include a previous account's routines
-  // synced down earlier — up into a different account. First sign-in (null) and
-  // re-sign-in to the same account still push, so local-first backup is intact.
-  String? lastAttachedUid;
+
+  Future<void> attachForUid(String uid) async {
+    final owner = await ownerFuture;
+    // A newer auth change may have won while we awaited the marker; if so, this
+    // attach is stale — bail rather than land a transport for a past uid.
+    if (currentUid != uid) return;
+
+    final decision = decideSyncOwnership(owner, uid);
+    if (!decision.attach) return; // a different account owns the store: paused
+    if (decision.newOwner != null) await store.write(decision.newOwner!);
+    if (currentUid != uid) return; // recheck after the (possible) write await
+
+    final t = FirestoreSyncTransport(uid: uid);
+    current = t;
+    svc.addTransport(t); // pushOnAttach defaults true — backup + catch-up
+  }
 
   ref.listen<AsyncValue<User?>>(authStateProvider, (prev, next) {
     final uid = next.valueOrNull?.uid;
     if (uid == currentUid) return; // no change (also ignores token refresh)
 
     // Detach the old transport (uid changed or signed out). removeTransport
-    // mutates SyncService's collections synchronously before its first await,
-    // so the remove(old)+add(new) pair below never interleaves.
+    // mutates SyncService's collections synchronously before its first await.
     final old = current;
-    if (old != null) {
-      current = null;
-      currentUid = null;
-      unawaited(svc.removeTransport(old));
-    }
-    // Attach a fresh transport for the new uid. On first sign-in / same-account
-    // re-sign-in, addTransport pushes local data up (backup). On an account
-    // switch it attaches receive-only, so account B doesn't silently inherit
-    // account A's routines (the user can still push explicitly via Sync now).
-    if (uid != null) {
-      final switchingAccount =
-          lastAttachedUid != null && lastAttachedUid != uid;
-      final t = FirestoreSyncTransport(uid: uid);
-      current = t;
-      currentUid = uid;
-      lastAttachedUid = uid;
-      svc.addTransport(t, pushOnAttach: !switchingAccount);
-    }
+    current = null;
+    currentUid = uid;
+    if (old != null) unawaited(svc.removeTransport(old));
+
+    if (uid != null) unawaited(attachForUid(uid));
   }, fireImmediately: true);
 
   ref.onDispose(() {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../sync/auth_service.dart';
+import '../../sync/sync_ownership.dart';
 
 /// Opt-in "Sync & backup" account screen. Signed out, it offers email/password
 /// sign-in (a Google button appears only when [googleSignInSupported], which is
@@ -174,6 +175,10 @@ class _AccountPageState extends ConsumerState<AccountPage> {
 
   Widget _buildSignedIn(User user) {
     final auth = ref.read(authServiceProvider);
+    // Whether server sync is paused because this device's local data belongs to
+    // a different account. Owner null (unclaimed) or matching means active sync.
+    final owner = ref.watch(syncOwnerProvider).valueOrNull;
+    final paused = owner != null && owner != user.uid;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -182,12 +187,107 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           title: Text(user.email ?? 'Signed in'),
           subtitle: SelectableText(user.uid),
         ),
+        if (paused) ...[
+          const SizedBox(height: 16),
+          _PausedSyncCard(
+            onClaim: _busy ? null : () => _claimDevice(user.uid),
+          ),
+        ],
         const SizedBox(height: 16),
         FilledButton(
           onPressed: _busy ? null : () => _run(auth.signOut, validate: false),
           child: const Text('Sign out'),
         ),
       ],
+    );
+  }
+
+  /// Take over this device for the signed-in account: persist it as the sync
+  /// owner and rebuild the binder so a full transport attaches and pushes the
+  /// local data up. Nothing local is deleted — the data (which may still hold
+  /// the previous owner's rows) is merged up into this account.
+  Future<void> _claimDevice(String uid) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Use this account here?'),
+        content: const Text(
+          'This starts syncing the data currently on this device to the '
+          'signed-in account. If the device was previously used by another '
+          'account, that account\'s routines and history may be uploaded too. '
+          'Nothing is deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Use this account'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(syncOwnershipStoreProvider).write(uid);
+      // Rebuild the binder (re-reads the owner, now this uid, and attaches a
+      // pushing transport) and refresh the owner the notice reads.
+      ref.invalidate(firestoreSyncBinderProvider);
+      ref.invalidate(syncOwnerProvider);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}
+
+/// Notice shown when server sync is paused because the local data belongs to a
+/// different account, with the action to claim the device for the current one.
+class _PausedSyncCard extends StatelessWidget {
+  const _PausedSyncCard({required this.onClaim});
+
+  final VoidCallback? onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sync_disabled, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text(
+                  'Cloud sync is paused',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This device\'s data belongs to a different account, so nothing '
+              'syncs while you\'re signed in here. Use this account on this '
+              'device to start syncing.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: onClaim,
+                child: const Text('Use this account on this device'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

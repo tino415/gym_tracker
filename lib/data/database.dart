@@ -286,6 +286,18 @@ class WorkoutImprovement {
   final int? newSeconds;
 }
 
+/// Small key/value store for sync bookkeeping that isn't domain data — e.g. the
+/// account that owns this install's local store (see `sync_ownership.dart`).
+/// Lives in Drift rather than a separate plugin so it works on every platform
+/// the app already persists on (native, web IndexedDB/OPFS) and in tests.
+class SyncMeta extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 @DriftDatabase(
   tables: [
     Exercises,
@@ -300,6 +312,7 @@ class WorkoutImprovement {
     WorkoutExercises,
     WorkoutSets,
     SetCompletions,
+    SyncMeta,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -307,7 +320,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -376,6 +389,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) {
         // v6 → v7: per-alternative planned sets.
         await m.createTable(alternativePlannedSets);
+      }
+      if (from < 8) {
+        // v7 → v8: sync bookkeeping key/value store (owner marker).
+        await m.createTable(syncMeta);
       }
     },
   );
@@ -567,6 +584,23 @@ class AppDatabase extends _$AppDatabase {
     await customStatement('DROP TABLE _workout_sets_v3');
     await customStatement('DROP TABLE _workout_exercises_v3');
     await customStatement('PRAGMA foreign_keys = ON');
+  }
+
+  // -- Sync metadata (key/value) ----------------------------------------
+
+  /// Read a sync-metadata value by key, or null if unset.
+  Future<String?> getSyncMeta(String key) async {
+    final row = await (select(
+      syncMeta,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
+    return row?.value;
+  }
+
+  /// Upsert a sync-metadata value.
+  Future<void> setSyncMeta(String key, String value) async {
+    await into(syncMeta).insertOnConflictUpdate(
+      SyncMetaCompanion.insert(key: key, value: value),
+    );
   }
 
   static QueryExecutor _openConnection() => driftDatabase(

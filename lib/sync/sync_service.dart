@@ -74,9 +74,8 @@ class SyncService {
   ///
   /// When [pushOnAttach] is true (the default) the local state is immediately
   /// pushed so the new channel catches up; existing transports just receive an
-  /// idempotent re-push. Pass false to attach receive-only — used on an account
-  /// *switch*, where auto-pushing this device's local data (which may hold the
-  /// previous account's routines) into a different account would leak it.
+  /// idempotent re-push. Pass false to attach without that initial push (the
+  /// transport still sends on later local changes).
   void addTransport(SyncTransport transport, {bool pushOnAttach = true}) {
     if (_transports.contains(transport)) return;
     _transports.add(transport);
