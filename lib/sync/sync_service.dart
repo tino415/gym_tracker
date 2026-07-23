@@ -32,12 +32,6 @@ class SyncService {
   Timer? _debounce;
   bool _started = false;
 
-  /// Sync ids present at the previous context push, used to derive which
-  /// routines were deleted since. Null until the first push so we never
-  /// fabricate a deletion for routines a peer holds that we simply haven't
-  /// pushed yet. See [_pushContext].
-  Set<String>? _lastPushedRoutineSyncIds;
-
   void start() {
     if (_started) return;
     _started = true;
@@ -165,29 +159,13 @@ class SyncService {
 
   Future<void> _pushContext() async {
     try {
+      // Deletions ride inside the bundle as versioned tombstones (routines
+      // with a non-null deletedAt), so a lost or empty snapshot can't wipe a
+      // peer's routines and there's no per-process deletion diff to maintain.
+      // Version-LWW on the receiver arbitrates a tombstone against a concurrent
+      // edit; the Firestore transport persists it as a tombstone doc rather
+      // than removing the doc, so it survives a stale lower-version upsert.
       final routines = await _repo.exportAllRoutines();
-      final currentIds = routines.map((r) => r.syncId).toSet();
-
-      // Propagate deletions explicitly rather than by omission. A transport
-      // like Firestore holds a shared document set, so "push my whole set and
-      // delete anything else" would let one authority wipe another's routines
-      // (a peer's routine we simply haven't received yet looks the same as a
-      // deleted one). Instead we send a routineDeleted only for ids that were
-      // present at our last push and are now gone. Skipped on the first push
-      // (no baseline). Deletions that happen while the app is closed aren't
-      // re-derived here; the Wear bundle stays authoritative for the watch.
-      final previous = _lastPushedRoutineSyncIds;
-      if (previous != null) {
-        final deleted = previous.difference(currentIds);
-        if (deleted.isNotEmpty) {
-          await _sendAll(
-            type: routineDeletedType,
-            payload: RoutineDeletedMessage(deleted.toList()).toPayload(),
-          );
-        }
-      }
-      _lastPushedRoutineSyncIds = currentIds;
-
       final msg = RoutineBundleMessage(routines);
       await _sendAll(type: routineBundleType, payload: msg.toPayload());
     } catch (_) {

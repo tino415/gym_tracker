@@ -403,8 +403,26 @@ class $RoutinesTable extends Routines with TableInfo<$RoutinesTable, Routine> {
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, syncId, name, createdAt, version];
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    syncId,
+    name,
+    createdAt,
+    version,
+    deletedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -450,6 +468,12 @@ class $RoutinesTable extends Routines with TableInfo<$RoutinesTable, Routine> {
         version.isAcceptableOrUnknown(data['version']!, _versionMeta),
       );
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -479,6 +503,10 @@ class $RoutinesTable extends Routines with TableInfo<$RoutinesTable, Routine> {
         DriftSqlType.int,
         data['${effectivePrefix}version'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -494,12 +522,14 @@ class Routine extends DataClass implements Insertable<Routine> {
   final String name;
   final DateTime createdAt;
   final int version;
+  final DateTime? deletedAt;
   const Routine({
     required this.id,
     required this.syncId,
     required this.name,
     required this.createdAt,
     required this.version,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -509,6 +539,9 @@ class Routine extends DataClass implements Insertable<Routine> {
     map['name'] = Variable<String>(name);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['version'] = Variable<int>(version);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -519,6 +552,9 @@ class Routine extends DataClass implements Insertable<Routine> {
       name: Value(name),
       createdAt: Value(createdAt),
       version: Value(version),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -533,6 +569,7 @@ class Routine extends DataClass implements Insertable<Routine> {
       name: serializer.fromJson<String>(json['name']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       version: serializer.fromJson<int>(json['version']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -544,6 +581,7 @@ class Routine extends DataClass implements Insertable<Routine> {
       'name': serializer.toJson<String>(name),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'version': serializer.toJson<int>(version),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -553,12 +591,14 @@ class Routine extends DataClass implements Insertable<Routine> {
     String? name,
     DateTime? createdAt,
     int? version,
+    Value<DateTime?> deletedAt = const Value.absent(),
   }) => Routine(
     id: id ?? this.id,
     syncId: syncId ?? this.syncId,
     name: name ?? this.name,
     createdAt: createdAt ?? this.createdAt,
     version: version ?? this.version,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Routine copyWithCompanion(RoutinesCompanion data) {
     return Routine(
@@ -567,6 +607,7 @@ class Routine extends DataClass implements Insertable<Routine> {
       name: data.name.present ? data.name.value : this.name,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       version: data.version.present ? data.version.value : this.version,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -577,13 +618,15 @@ class Routine extends DataClass implements Insertable<Routine> {
           ..write('syncId: $syncId, ')
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
-          ..write('version: $version')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, syncId, name, createdAt, version);
+  int get hashCode =>
+      Object.hash(id, syncId, name, createdAt, version, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -592,7 +635,8 @@ class Routine extends DataClass implements Insertable<Routine> {
           other.syncId == this.syncId &&
           other.name == this.name &&
           other.createdAt == this.createdAt &&
-          other.version == this.version);
+          other.version == this.version &&
+          other.deletedAt == this.deletedAt);
 }
 
 class RoutinesCompanion extends UpdateCompanion<Routine> {
@@ -601,12 +645,14 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
   final Value<String> name;
   final Value<DateTime> createdAt;
   final Value<int> version;
+  final Value<DateTime?> deletedAt;
   const RoutinesCompanion({
     this.id = const Value.absent(),
     this.syncId = const Value.absent(),
     this.name = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   RoutinesCompanion.insert({
     this.id = const Value.absent(),
@@ -614,6 +660,7 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
     required String name,
     required DateTime createdAt,
     this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   }) : syncId = Value(syncId),
        name = Value(name),
        createdAt = Value(createdAt);
@@ -623,6 +670,7 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
     Expression<String>? name,
     Expression<DateTime>? createdAt,
     Expression<int>? version,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -630,6 +678,7 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
       if (name != null) 'name': name,
       if (createdAt != null) 'created_at': createdAt,
       if (version != null) 'version': version,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -639,6 +688,7 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
     Value<String>? name,
     Value<DateTime>? createdAt,
     Value<int>? version,
+    Value<DateTime?>? deletedAt,
   }) {
     return RoutinesCompanion(
       id: id ?? this.id,
@@ -646,6 +696,7 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
       version: version ?? this.version,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -667,6 +718,9 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
     if (version.present) {
       map['version'] = Variable<int>(version.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -677,7 +731,8 @@ class RoutinesCompanion extends UpdateCompanion<Routine> {
           ..write('syncId: $syncId, ')
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
-          ..write('version: $version')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -6168,6 +6223,7 @@ typedef $$RoutinesTableCreateCompanionBuilder =
       required String name,
       required DateTime createdAt,
       Value<int> version,
+      Value<DateTime?> deletedAt,
     });
 typedef $$RoutinesTableUpdateCompanionBuilder =
     RoutinesCompanion Function({
@@ -6176,6 +6232,7 @@ typedef $$RoutinesTableUpdateCompanionBuilder =
       Value<String> name,
       Value<DateTime> createdAt,
       Value<int> version,
+      Value<DateTime?> deletedAt,
     });
 
 final class $$RoutinesTableReferences
@@ -6256,6 +6313,11 @@ class $$RoutinesTableFilterComposer
 
   ColumnFilters<int> get version => $composableBuilder(
     column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6343,6 +6405,11 @@ class $$RoutinesTableOrderingComposer
     column: $table.version,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$RoutinesTableAnnotationComposer
@@ -6368,6 +6435,9 @@ class $$RoutinesTableAnnotationComposer
 
   GeneratedColumn<int> get version =>
       $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   Expression<T> routineExercisesRefs<T extends Object>(
     Expression<T> Function($$RoutineExercisesTableAnnotationComposer a) f,
@@ -6453,12 +6523,14 @@ class $$RoutinesTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => RoutinesCompanion(
                 id: id,
                 syncId: syncId,
                 name: name,
                 createdAt: createdAt,
                 version: version,
+                deletedAt: deletedAt,
               ),
           createCompanionCallback:
               ({
@@ -6467,12 +6539,14 @@ class $$RoutinesTableTableManager
                 required String name,
                 required DateTime createdAt,
                 Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => RoutinesCompanion.insert(
                 id: id,
                 syncId: syncId,
                 name: name,
                 createdAt: createdAt,
                 version: version,
+                deletedAt: deletedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(

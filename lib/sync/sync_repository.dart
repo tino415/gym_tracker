@@ -15,6 +15,11 @@ class SyncRepository {
     final all = await _db.select(_db.routines).get();
     final result = <RoutineTemplateDto>[];
     for (final r in all) {
+      // A tombstone travels as a versioned deletion marker, not a full routine.
+      if (r.deletedAt != null) {
+        result.add(RoutineTemplateDto.tombstone(r));
+        continue;
+      }
       final full = await _db.loadFullRoutine(r.id);
       if (full == null) continue;
       // Hydrate each routine exercise with its alternatives. fromFullRoutine
@@ -140,6 +145,14 @@ class SyncRepository {
     // now" to repair it. The upsert below is idempotent, so this is safe.
     if (existing != null && existing.version > dto.version) return;
 
+    // Tombstone: a deletion at version ≥ local wins. Persist the marker (so a
+    // later stale lower-version edit can't resurrect) and drop the template's
+    // child rows. Applies at equal version by arrival order, same as edits.
+    if (dto.deletedAtMs != null) {
+      await _applyTombstone(dto, existing);
+      return;
+    }
+
     final int routineId;
     if (existing == null) {
       routineId = await _db
@@ -163,6 +176,9 @@ class SyncRepository {
             DateTime.fromMillisecondsSinceEpoch(dto.createdAtMs),
           ),
           version: Value(dto.version),
+          // A non-tombstone edit at version ≥ local revives a tombstoned
+          // routine (legitimate re-author); clear the marker.
+          deletedAt: const Value(null),
         ),
       );
     }
@@ -380,6 +396,41 @@ class SyncRepository {
         // best-effort
       }
     }
+  }
+
+  /// Apply an inbound tombstone: mark the routine deleted at [dto]'s version
+  /// and drop its template rows. Inserts a fresh tombstone row when we've never
+  /// seen the routine (so a delete that arrives before the routine ever did
+  /// still suppresses a later stale re-creation). Idempotent.
+  Future<void> _applyTombstone(RoutineTemplateDto dto, Routine? existing) async {
+    final deletedAt = DateTime.fromMillisecondsSinceEpoch(dto.deletedAtMs!);
+    if (existing == null) {
+      await _db
+          .into(_db.routines)
+          .insert(
+            RoutinesCompanion.insert(
+              syncId: dto.syncId,
+              name: dto.name,
+              createdAt: DateTime.fromMillisecondsSinceEpoch(dto.createdAtMs),
+              version: Value(dto.version),
+              deletedAt: Value(deletedAt),
+            ),
+          );
+      return;
+    }
+    // Dropping routine_exercises cascades to planned_sets / alternatives.
+    await (_db.delete(
+      _db.routineExercises,
+    )..where((t) => t.routineId.equals(existing.id))).go();
+    await (_db.update(
+      _db.routines,
+    )..where((t) => t.id.equals(existing.id))).write(
+      RoutinesCompanion(
+        name: Value(dto.name),
+        version: Value(dto.version),
+        deletedAt: Value(deletedAt),
+      ),
+    );
   }
 
   Future<int> _findOrCreateExerciseBySyncId({

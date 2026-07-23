@@ -69,6 +69,7 @@ class RoutineTemplateDto {
     required this.version,
     required this.createdAtMs,
     required this.exercises,
+    this.deletedAtMs,
   });
 
   final String syncId;
@@ -76,6 +77,10 @@ class RoutineTemplateDto {
   final int version;
   final int createdAtMs;
   final List<RoutineExerciseDto> exercises;
+  // Non-null marks a versioned tombstone (the routine was deleted at this
+  // instant). Carried in the ordinary bundle so deletions arbitrate by
+  // [version] like edits; a tombstone's [exercises] is empty.
+  final int? deletedAtMs;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -83,6 +88,7 @@ class RoutineTemplateDto {
     'version': version,
     'createdAtMs': createdAtMs,
     'exercises': exercises.map((e) => e.toJson()).toList(),
+    'deletedAtMs': deletedAtMs,
   };
 
   factory RoutineTemplateDto.fromJson(Map<String, Object?> json) {
@@ -92,6 +98,7 @@ class RoutineTemplateDto {
       name: json['name']! as String,
       version: (json['version']! as num).toInt(),
       createdAtMs: (json['createdAtMs']! as num).toInt(),
+      deletedAtMs: (json['deletedAtMs'] as num?)?.toInt(),
       exercises: raw
           .map(
             (m) =>
@@ -111,6 +118,18 @@ class RoutineTemplateDto {
         for (final re in full.exercises)
           RoutineExerciseDto.fromFullExercise(re),
       ],
+    );
+  }
+
+  /// Tombstone DTO for a soft-deleted routine row (empty exercises).
+  static RoutineTemplateDto tombstone(Routine routine) {
+    return RoutineTemplateDto(
+      syncId: routine.syncId,
+      name: routine.name,
+      version: routine.version,
+      createdAtMs: routine.createdAt.millisecondsSinceEpoch,
+      deletedAtMs: routine.deletedAt?.millisecondsSinceEpoch,
+      exercises: const [],
     );
   }
 }

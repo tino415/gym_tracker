@@ -219,8 +219,8 @@ void main() {
     await svc.dispose();
   });
 
-  test('authority emits routine-deleted when a routine disappears between '
-      'pushes', () async {
+  test('authority pushes a versioned tombstone when a routine is deleted',
+      () async {
     final routineId = await _seedRoutine(db);
     final t = FakeTransport();
     final svc = serviceWith([t], isRoutineAuthority: true);
@@ -228,17 +228,21 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 700)); // baseline
     t.sent.clear();
 
-    // Delete the routine, then force another context push.
-    await (db.delete(db.routines)..where((r) => r.id.equals(routineId))).go();
+    // Soft-delete the routine (leaves a tombstone), then force a context push.
+    await db.deleteRoutine(routineId);
     await svc.pushAll();
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    final deletes = t.sent.where((m) => m.type == routineDeletedType).toList();
-    expect(deletes, isNotEmpty, reason: 'deletion must be sent explicitly');
-    expect(
-      (deletes.first.payload['syncIds'] as List).cast<String>(),
-      contains('routine-1'),
-    );
+    // Deletion rides inside the ordinary bundle as a tombstone — no separate
+    // routine-deleted message.
+    final bundles = t.sent.where((m) => m.type == routineBundleType).toList();
+    expect(bundles, isNotEmpty);
+    final routines =
+        RoutineBundleMessage.fromPayload(bundles.last.payload).routines;
+    final tomb = routines.firstWhere((r) => r.syncId == 'routine-1');
+    expect(tomb.deletedAtMs, isNotNull, reason: 'deletion travels as tombstone');
+    expect(tomb.exercises, isEmpty);
+    expect(t.sent.where((m) => m.type == routineDeletedType), isEmpty);
     await svc.dispose();
   });
 

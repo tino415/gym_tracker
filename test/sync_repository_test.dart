@@ -125,4 +125,80 @@ void main() {
       expect(synced.name, 'Bench Press');
     });
   });
+
+  group('tombstone LWW', () {
+    RoutineBundleMessage tombstone({required int version, int deletedAtMs = 0}) {
+      return RoutineBundleMessage([
+        RoutineTemplateDto(
+          syncId: 'routine-1',
+          name: 'Push day',
+          version: version,
+          createdAtMs: DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+          deletedAtMs: deletedAtMs == 0
+              ? DateTime.utc(2026, 2, 1).millisecondsSinceEpoch
+              : deletedAtMs,
+          exercises: const [],
+        ),
+      ]);
+    }
+
+    test('a tombstone soft-deletes the routine and drops its children',
+        () async {
+      await repo.applyRoutineBundleUpsert(_bundle(version: 1));
+      await repo.applyRoutineBundleUpsert(tombstone(version: 2));
+
+      final routine = await db.select(db.routines).getSingle();
+      expect(routine.deletedAt, isNotNull);
+      expect(routine.version, 2);
+      // Children gone; the routine reads as absent.
+      expect(await db.select(db.routineExercises).get(), isEmpty);
+      expect(await db.select(db.plannedSets).get(), isEmpty);
+      expect(await db.loadFullRoutine(routine.id), isNull);
+    });
+
+    test('a tombstone older than a local edit is ignored (edit wins)',
+        () async {
+      await repo.applyRoutineBundleUpsert(_bundle(version: 3));
+      await repo.applyRoutineBundleUpsert(tombstone(version: 2));
+
+      final routine = await db.select(db.routines).getSingle();
+      expect(routine.deletedAt, isNull, reason: 'newer edit outranks delete');
+      expect(await db.select(db.routineExercises).get(), hasLength(1));
+    });
+
+    test('a newer non-tombstone edit revives a tombstoned routine', () async {
+      await repo.applyRoutineBundleUpsert(_bundle(version: 1));
+      await repo.applyRoutineBundleUpsert(tombstone(version: 2));
+      await repo.applyRoutineBundleUpsert(_bundle(version: 3, routineName: 'v3'));
+
+      final routine = await db.select(db.routines).getSingle();
+      expect(routine.deletedAt, isNull);
+      expect(routine.name, 'v3');
+      expect(await db.loadFullRoutine(routine.id), isNotNull);
+    });
+
+    test('a tombstone for an unseen routine suppresses a stale re-creation',
+        () async {
+      // Delete arrives before we ever saw the routine (out-of-order delivery).
+      await repo.applyRoutineBundleUpsert(tombstone(version: 2));
+      // A stale, strictly-older upsert must not resurrect it.
+      await repo.applyRoutineBundleUpsert(_bundle(version: 1));
+
+      final routine = await db.select(db.routines).getSingle();
+      expect(routine.deletedAt, isNotNull);
+      expect(await db.select(db.routineExercises).get(), isEmpty);
+    });
+
+    test('exportAllRoutines emits a tombstone for a soft-deleted routine',
+        () async {
+      final r = await db.createRoutine('Legs');
+      await db.deleteRoutine(r.id);
+
+      final exported = await repo.exportAllRoutines();
+      expect(exported, hasLength(1));
+      expect(exported.single.syncId, r.syncId);
+      expect(exported.single.deletedAtMs, isNotNull);
+      expect(exported.single.exercises, isEmpty);
+    });
+  });
 }

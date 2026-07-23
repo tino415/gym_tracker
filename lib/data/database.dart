@@ -26,6 +26,12 @@ class Routines extends Table {
   TextColumn get name => text()();
   DateTimeColumn get createdAt => dateTime()();
   IntColumn get version => integer().withDefault(const Constant(1))();
+  // Non-null marks a versioned tombstone: the routine was deleted at this
+  // instant, but the row survives (with a bumped [version]) so the deletion
+  // participates in version-LWW sync instead of travelling out-of-band. Reads
+  // skip tombstoned rows; a later higher-or-equal-version non-tombstone edit
+  // clears it (a legitimate revive). See lib/sync/sync_repository.dart.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
 }
 
 class RoutineExercises extends Table {
@@ -320,7 +326,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -393,6 +399,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 8) {
         // v7 → v8: sync bookkeeping key/value store (owner marker).
         await m.createTable(syncMeta);
+      }
+      if (from < 9) {
+        // v8 → v9: versioned tombstones for routine deletion (version-LWW).
+        await m.addColumn(routines, routines.deletedAt);
       }
     },
   );
@@ -698,6 +708,7 @@ class AppDatabase extends _$AppDatabase {
               routineExercises.routineId.equalsExp(routines.id),
             ),
           ])
+          ..where(routines.deletedAt.isNull()) // hide tombstones
           ..addColumns([countExpr])
           ..groupBy([routines.id])
           ..orderBy([OrderingTerm.desc(routines.createdAt)]);
@@ -728,18 +739,36 @@ class AppDatabase extends _$AppDatabase {
     await _bumpRoutineVersion(id);
   }
 
+  /// Soft-delete: leave a versioned tombstone (`deletedAt` set + bumped
+  /// version) so the deletion travels through version-LWW sync like any other
+  /// edit, instead of out-of-band. The template's child rows are dropped
+  /// (routine_exercises → planned_sets / alternatives) so a tombstone stays
+  /// lightweight; reads skip tombstoned routines, so it reads as deleted.
+  /// Past workouts keep their own snapshot (they read it, not the routine), so
+  /// the surviving backref is harmless.
   Future<void> deleteRoutine(int id) async {
-    // Workouts.routine_id is SET NULL on delete now — past workouts keep
-    // their own snapshot and just lose their backref. Cascade through
-    // routine_exercises → planned_sets cleans up template data.
-    await (delete(routines)..where((t) => t.id.equals(id))).go();
+    await transaction(() async {
+      await (delete(routineExercises)..where((t) => t.routineId.equals(id)))
+          .go();
+      // Sever workout backrefs, matching the old ON DELETE SET NULL: past
+      // workouts keep their self-contained snapshot and just lose the link, so
+      // history never resolves back to a tombstoned routine.
+      await (update(workouts)..where((t) => t.routineId.equals(id))).write(
+        const WorkoutsCompanion(routineId: Value(null)),
+      );
+      await (update(routines)..where((t) => t.id.equals(id))).write(
+        RoutinesCompanion(deletedAt: Value(DateTime.now())),
+      );
+      await _bumpRoutineVersion(id);
+    });
   }
 
   Future<FullRoutine?> loadFullRoutine(int routineId) async {
     final r = await (select(
       routines,
     )..where((t) => t.id.equals(routineId))).getSingleOrNull();
-    if (r == null) return null;
+    // Tombstoned routines read as absent (callers already treat null as gone).
+    if (r == null || r.deletedAt != null) return null;
     final res =
         await (select(routineExercises)
               ..where((t) => t.routineId.equals(routineId))
@@ -1262,11 +1291,13 @@ class AppDatabase extends _$AppDatabase {
       workouts,
     )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
     if (w == null) return null;
+    // A routine tombstoned via sync (backref not severed locally) reads as
+    // gone here too, matching a locally-deleted routine's null backref.
     final routine = w.routineId == null
         ? null
-        : await (select(
-            routines,
-          )..where((t) => t.id.equals(w.routineId!))).getSingleOrNull();
+        : await (select(routines)
+                ..where((t) => t.id.equals(w.routineId!) & t.deletedAt.isNull()))
+              .getSingleOrNull();
     final wes =
         await (select(workoutExercises)
               ..where((t) => t.workoutId.equals(workoutId))
