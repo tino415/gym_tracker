@@ -38,7 +38,8 @@ class SyncService {
 
     for (final transport in _transports) {
       transport.start();
-      _messageSubs[transport] = transport.messages.listen(_onIncoming);
+      _messageSubs[transport] =
+          transport.messages.listen((msg) => _onIncoming(msg, transport));
     }
 
     if (isRoutineAuthority) {
@@ -75,7 +76,8 @@ class SyncService {
     _transports.add(transport);
     if (!_started) return;
     transport.start();
-    _messageSubs[transport] = transport.messages.listen(_onIncoming);
+    _messageSubs[transport] =
+        transport.messages.listen((msg) => _onIncoming(msg, transport));
     if (pushOnAttach) unawaited(pushAll());
   }
 
@@ -117,7 +119,7 @@ class SyncService {
     }
   }
 
-  Future<void> _onIncoming(SyncMessage msg) async {
+  Future<void> _onIncoming(SyncMessage msg, SyncTransport source) async {
     try {
       switch (msg.type) {
         case routineBundleType:
@@ -132,11 +134,39 @@ class SyncService {
         case workoutCompletedType:
           final workout = WorkoutCompletedMessage.fromPayload(msg.payload);
           await _repo.applyWorkoutCompleted(workout);
+          // Relay onward so a workout finished on the watch (arriving over the
+          // Wear bridge) reaches Firestore immediately, instead of waiting for
+          // the next manual pushAll. The phone is the only multi-transport hub;
+          // a single-transport peer relays to nothing. Routines don't need this
+          // — the routine table watcher re-pushes them on apply.
+          await _relayToOthers(source, type: msg.type, payload: msg.payload);
         case syncRequestType:
           unawaited(_respondToSyncRequest());
       }
     } catch (_) {
       // best-effort: malformed inbound messages should not crash the app.
+    }
+  }
+
+  /// Forward an inbound message to every transport except the one it arrived
+  /// on. Loop-safe: the source is skipped, and workouts are append-only +
+  /// idempotent on syncId (both [SyncRepository.applyWorkoutCompleted] and the
+  /// Firestore transport's `_knownWorkouts` cache skip a known id), so an echo
+  /// (Firestore snapshot → apply → relay to Wear → watch applies, idempotent)
+  /// terminates within one bounded hop. Per-transport failures are swallowed,
+  /// and the list is snapshotted so a concurrent attach/detach can't throw.
+  Future<void> _relayToOthers(
+    SyncTransport source, {
+    required String type,
+    required Map<String, Object?> payload,
+  }) async {
+    for (final transport in List<SyncTransport>.of(_transports)) {
+      if (identical(transport, source)) continue;
+      try {
+        await transport.send(type: type, payload: payload);
+      } catch (_) {
+        // best-effort
+      }
     }
   }
 

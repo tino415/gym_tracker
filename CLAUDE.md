@@ -70,7 +70,7 @@ Phone ↔ watch over the Wear Data Layer (`MessageClient`). The native bridge `G
 
 - `sync_codec.dart` — DTOs. `WorkoutDto` carries the snapshot (`exercises: [WorkoutExerciseDto{ sets: [...] }]`), so a workout received over sync is self-contained — the receiver doesn't need the source routine to exist.
 - `sync_repository.dart` — `applyWorkoutCompleted` inserts the snapshot tables first, then binds completions to the new `workoutSet` ids. Idempotent on `sync_id`.
-- `sync_service.dart` — Phone is `isRoutineAuthority: true`; it pushes routine bundles on every local change to routines/exercises/planned_sets (500 ms debounce). Watch never pushes routines (so a phone-deleted routine doesn't get resurrected). Both sides push completed workouts. `pushAll()` is the manual "Sync now" entry point and sends a `syncRequest` to ask the peer for theirs back.
+- `sync_service.dart` — Phone is `isRoutineAuthority: true`; it pushes routine bundles on every local change to routines/exercises/planned_sets (500 ms debounce). Watch never pushes routines (so a phone-deleted routine doesn't get resurrected). Both sides push completed workouts. An **inbound `workout_completed` is relayed to the other transports** (`_relayToOthers`, skipping its source), so a workout finished on the watch reaches Firestore the moment it arrives over the Wear bridge — the phone is the only multi-transport hub, and append-only/idempotent workouts make the relay loop-safe. `pushAll()` is the manual "Sync now" entry point and sends a `syncRequest` to ask the peer for theirs back.
 
 #### Transport abstraction
 

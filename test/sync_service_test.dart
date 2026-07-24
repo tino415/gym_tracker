@@ -219,6 +219,79 @@ void main() {
     await svc.dispose();
   });
 
+  test('a watch-completed workout is applied and relayed to the other transport',
+      () async {
+    final wear = FakeTransport();
+    final server = FakeTransport();
+    final svc = serviceWith([wear, server], isRoutineAuthority: true);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    wear.sent.clear();
+    server.sent.clear();
+
+    final dto = WorkoutDto(
+      syncId: 'w-1',
+      routineSyncId: null,
+      startedAtMs: DateTime.utc(2026, 1, 2).millisecondsSinceEpoch,
+      endedAtMs: DateTime.utc(2026, 1, 2, 1).millisecondsSinceEpoch,
+      exercises: const [],
+      completions: const [],
+    );
+    // Arrives over the Wear bridge, as if finished on the watch.
+    wear.deliver(
+      SyncMessage(
+        type: workoutCompletedType,
+        payload: WorkoutCompletedMessage(dto).toPayload(),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // Applied locally...
+    final workouts = await db.select(db.workouts).get();
+    expect(workouts.where((w) => w.syncId == 'w-1'), hasLength(1));
+    // ...relayed to the server, but never echoed back to its source (wear).
+    final relayed =
+        server.sent.where((m) => m.type == workoutCompletedType).toList();
+    expect(relayed, hasLength(1));
+    expect(relayed.first.payload['syncId'], 'w-1');
+    expect(wear.sent.where((m) => m.type == workoutCompletedType), isEmpty);
+    await svc.dispose();
+  });
+
+  test('a server-received workout relays to the watch, not back to the server',
+      () async {
+    final wear = FakeTransport();
+    final server = FakeTransport();
+    final svc = serviceWith([wear, server], isRoutineAuthority: true);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    wear.sent.clear();
+    server.sent.clear();
+
+    final dto = WorkoutDto(
+      syncId: 'w-2',
+      routineSyncId: null,
+      startedAtMs: DateTime.utc(2026, 1, 3).millisecondsSinceEpoch,
+      endedAtMs: DateTime.utc(2026, 1, 3, 1).millisecondsSinceEpoch,
+      exercises: const [],
+      completions: const [],
+    );
+    server.deliver(
+      SyncMessage(
+        type: workoutCompletedType,
+        payload: WorkoutCompletedMessage(dto).toPayload(),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final relayed =
+        wear.sent.where((m) => m.type == workoutCompletedType).toList();
+    expect(relayed, hasLength(1));
+    expect(relayed.first.payload['syncId'], 'w-2');
+    expect(server.sent.where((m) => m.type == workoutCompletedType), isEmpty);
+    await svc.dispose();
+  });
+
   test('authority pushes a versioned tombstone when a routine is deleted',
       () async {
     final routineId = await _seedRoutine(db);
