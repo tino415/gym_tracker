@@ -201,4 +201,123 @@ void main() {
       expect(exported.single.exercises, isEmpty);
     });
   });
+
+  group('exercise library sync (version-LWW)', () {
+    ExerciseDto exDto({
+      required int version,
+      String syncId = 'ex-lib-1',
+      String name = 'Overhead Press',
+      String kind = exerciseKindReps,
+      List<String> muscles = const [],
+      int? deletedAtMs,
+    }) {
+      return ExerciseDto(
+        syncId: syncId,
+        name: name,
+        kind: kind,
+        version: version,
+        createdAtMs: DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+        muscleSyncIds: muscles,
+        deletedAtMs: deletedAtMs,
+      );
+    }
+
+    test('exportAllExercises carries live exercises with muscle tags', () async {
+      final ex = await db.createExercise('Row');
+      final m = await (db.select(db.muscles)..limit(1)).getSingle();
+      await db.setExerciseMuscles(ex.id, [m.id]);
+
+      final exported = await repo.exportAllExercises();
+      final dto = exported.firstWhere((e) => e.syncId == ex.syncId);
+      expect(dto.name, 'Row');
+      expect(dto.deletedAtMs, isNull);
+      expect(dto.muscleSyncIds, contains(m.syncId));
+    });
+
+    test('exportAllExercises emits a tombstone for a soft-deleted exercise',
+        () async {
+      final ex = await db.createExercise('Row');
+      await db.deleteExercise(ex.id);
+      final exported = await repo.exportAllExercises();
+      final dto = exported.firstWhere((e) => e.syncId == ex.syncId);
+      expect(dto.deletedAtMs, isNotNull);
+      expect(dto.muscleSyncIds, isEmpty);
+    });
+
+    test('applyExerciseBundle inserts a new exercise with its muscle tags',
+        () async {
+      final m = await (db.select(db.muscles)..limit(1)).getSingle();
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([
+          exDto(version: 1, muscles: [m.syncId]),
+        ]),
+      );
+
+      final lib = await db.loadExercisesWithMuscles();
+      final entry = lib.firstWhere((e) => e.exercise.syncId == 'ex-lib-1');
+      expect(entry.exercise.name, 'Overhead Press');
+      expect(entry.muscles.map((x) => x.id), contains(m.id));
+    });
+
+    test('a strictly older bundle is ignored; equal/newer applies', () async {
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 3, name: 'V3')]),
+      );
+      // Older loses.
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 2, name: 'V2')]),
+      );
+      var row = await (db.select(db.exercises)
+            ..where((t) => t.syncId.equals('ex-lib-1')))
+          .getSingle();
+      expect(row.name, 'V3');
+      // Newer wins.
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 4, name: 'V4')]),
+      );
+      row = await (db.select(db.exercises)
+            ..where((t) => t.syncId.equals('ex-lib-1')))
+          .getSingle();
+      expect(row.name, 'V4');
+    });
+
+    test('a tombstone deletes locally; a strictly-newer edit revives it',
+        () async {
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 1)]),
+      );
+      // Delete at v2.
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 2, deletedAtMs: 111)]),
+      );
+      expect(
+        (await db.watchExercises().first).where((e) => e.syncId == 'ex-lib-1'),
+        isEmpty,
+      );
+      // Revive with a newer live edit.
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 3, name: 'Revived')]),
+      );
+      final row = await (db.select(db.exercises)
+            ..where((t) => t.syncId.equals('ex-lib-1')))
+          .getSingle();
+      expect(row.deletedAt, isNull);
+      expect(row.name, 'Revived');
+    });
+
+    test('a same-name collision from a different syncId is skipped, not fatal',
+        () async {
+      await db.createExercise('Squat'); // local, its own syncId
+      // Incoming exercise with a DIFFERENT syncId but the same (UNIQUE) name.
+      await repo.applyExerciseBundle(
+        ExerciseBundleMessage([exDto(version: 1, syncId: 'other', name: 'Squat')]),
+      );
+      // No crash, no duplicate; the incoming syncId got no row.
+      final rows = await (db.select(db.exercises)
+            ..where((t) => t.name.equals('Squat')))
+          .get();
+      expect(rows, hasLength(1));
+      expect(rows.single.syncId, isNot('other'));
+    });
+  });
 }

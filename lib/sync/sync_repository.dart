@@ -90,6 +90,129 @@ class SyncRepository {
     return result;
   }
 
+  /// Export the whole exercise library (canonical exercises + muscle tags),
+  /// tombstones included. A tombstone travels as a versioned deletion marker
+  /// with empty muscle tags; a live exercise carries its muscle syncIds.
+  Future<List<ExerciseDto>> exportAllExercises() async {
+    final all = await _db.select(_db.exercises).get();
+    final result = <ExerciseDto>[];
+    for (final e in all) {
+      if (e.deletedAt != null) {
+        result.add(ExerciseDto.tombstone(e));
+        continue;
+      }
+      final muscles = await _db.musclesForExercise(e.id);
+      result.add(
+        ExerciseDto.fromRow(e, [for (final m in muscles) m.syncId]),
+      );
+    }
+    return result;
+  }
+
+  /// Apply an inbound exercise bundle non-destructively with version-LWW.
+  /// Each exercise is upserted by syncId; deletions ride as tombstones inside
+  /// the list. Local exercises absent from the bundle are left untouched (a
+  /// lost or partial bundle must never wipe the library).
+  Future<void> applyExerciseBundle(ExerciseBundleMessage bundle) async {
+    await _db.transaction(() async {
+      for (final dto in bundle.exercises) {
+        await _upsertOneExercise(dto);
+      }
+    });
+  }
+
+  Future<void> _upsertOneExercise(ExerciseDto dto) async {
+    final existing = await (_db.select(
+      _db.exercises,
+    )..where((t) => t.syncId.equals(dto.syncId))).getSingleOrNull();
+    // Strictly older loses (out-of-order delivery guard); equal versions
+    // re-apply (idempotent), matching the routine path.
+    if (existing != null && existing.version > dto.version) return;
+
+    final deletedAt = dto.deletedAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(dto.deletedAtMs!);
+
+    if (existing == null) {
+      // Guard the UNIQUE(name): if a *different* local exercise already holds
+      // this name, leave it as-is rather than failing the whole bundle. The
+      // incoming syncId then has no local row — a name-based identity merge
+      // (reconciling syncIds) is out of scope, same pragmatic stance as
+      // [_findOrCreateExerciseBySyncId].
+      final byName = await (_db.select(
+        _db.exercises,
+      )..where((t) => t.name.equals(dto.name))).getSingleOrNull();
+      if (byName != null) return;
+      final id = await _db.into(_db.exercises).insert(
+            ExercisesCompanion.insert(
+              syncId: dto.syncId,
+              name: dto.name,
+              createdAt: DateTime.fromMillisecondsSinceEpoch(dto.createdAtMs),
+              kind: Value(dto.kind),
+              version: Value(dto.version),
+              deletedAt: Value(deletedAt),
+            ),
+          );
+      if (deletedAt == null) {
+        await _applyExerciseMuscles(id, dto.muscleSyncIds);
+      }
+      return;
+    }
+
+    // Update in place. `deletedAt` is set for a tombstone and cleared (revive)
+    // for a live edit at version ≥ local. The name is UNIQUE, so a colliding
+    // rename is retried without the name (keep the local one) rather than
+    // sinking the bundle.
+    final companion = ExercisesCompanion(
+      name: Value(dto.name),
+      kind: Value(dto.kind),
+      version: Value(dto.version),
+      deletedAt: Value(deletedAt),
+    );
+    try {
+      await (_db.update(
+        _db.exercises,
+      )..where((t) => t.id.equals(existing.id))).write(companion);
+    } catch (_) {
+      await (_db.update(_db.exercises)..where((t) => t.id.equals(existing.id)))
+          .write(
+        ExercisesCompanion(
+          kind: Value(dto.kind),
+          version: Value(dto.version),
+          deletedAt: Value(deletedAt),
+        ),
+      );
+    }
+    if (deletedAt == null) {
+      await _applyExerciseMuscles(existing.id, dto.muscleSyncIds);
+    }
+  }
+
+  /// Replace an exercise's muscle tags from deterministic muscle syncIds,
+  /// writing the join directly so the exercise version is NOT bumped (the
+  /// version is authoritative from the DTO; bumping here would echo a push).
+  /// Unknown muscle syncIds are skipped.
+  Future<void> _applyExerciseMuscles(
+    int exerciseId,
+    List<String> muscleSyncIds,
+  ) async {
+    await (_db.delete(
+      _db.exerciseMuscles,
+    )..where((t) => t.exerciseId.equals(exerciseId))).go();
+    if (muscleSyncIds.isEmpty) return;
+    final rows = await (_db.select(
+      _db.muscles,
+    )..where((t) => t.syncId.isIn(muscleSyncIds))).get();
+    for (final m in rows) {
+      await _db.into(_db.exerciseMuscles).insert(
+            ExerciseMusclesCompanion.insert(
+              exerciseId: exerciseId,
+              muscleId: m.id,
+            ),
+          );
+    }
+  }
+
   /// Apply an inbound routine bundle to the local DB.
   ///
   /// The bundle is treated as an authoritative snapshot: any local routine

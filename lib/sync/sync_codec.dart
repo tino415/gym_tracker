@@ -14,6 +14,12 @@ const routineUpsertType = 'routine_upsert';
 /// Explicit deletion of routines by sync id (payload: {'syncIds': [...]}).
 const routineDeletedType = 'routine_deleted';
 
+/// Exercise-library sync (payload: {'exercises': [...]}). Applied
+/// non-destructively with version-LWW; deletions ride as tombstones inside the
+/// list (an [ExerciseDto] with a non-null `deletedAtMs`), so no destructive
+/// "delete absent" variant is needed.
+const exerciseBundleType = 'exercise_bundle';
+
 class RoutineBundleMessage {
   const RoutineBundleMessage(this.routines);
 
@@ -306,6 +312,94 @@ class PlannedSetDto {
       targetWeightKg: ps.targetWeightKg,
       targetSeconds: ps.targetSeconds,
     );
+  }
+}
+
+/// One exercise-library entry (the canonical exercise, not a routine slot).
+/// Carries its muscle tags as deterministic muscle syncIds. A non-null
+/// [deletedAtMs] marks a versioned tombstone (empty muscle tags).
+class ExerciseDto {
+  ExerciseDto({
+    required this.syncId,
+    required this.name,
+    required this.kind,
+    required this.version,
+    required this.createdAtMs,
+    this.muscleSyncIds = const [],
+    this.deletedAtMs,
+  });
+
+  final String syncId;
+  final String name;
+  final String kind;
+  final int version;
+  final int createdAtMs;
+  final List<String> muscleSyncIds;
+  final int? deletedAtMs;
+
+  Map<String, Object?> toJson() => {
+    'syncId': syncId,
+    'name': name,
+    'kind': kind,
+    'version': version,
+    'createdAtMs': createdAtMs,
+    'muscleSyncIds': muscleSyncIds,
+    'deletedAtMs': deletedAtMs,
+  };
+
+  factory ExerciseDto.fromJson(Map<String, Object?> json) {
+    final rawMuscles =
+        (json['muscleSyncIds'] as List?)?.cast<Object?>() ?? const [];
+    return ExerciseDto(
+      syncId: json['syncId']! as String,
+      name: json['name']! as String,
+      kind: (json['kind'] as String?) ?? exerciseKindReps,
+      version: (json['version']! as num).toInt(),
+      createdAtMs: (json['createdAtMs']! as num).toInt(),
+      deletedAtMs: (json['deletedAtMs'] as num?)?.toInt(),
+      muscleSyncIds: rawMuscles.map((s) => s as String).toList(),
+    );
+  }
+
+  static ExerciseDto fromRow(Exercise e, List<String> muscleSyncIds) {
+    return ExerciseDto(
+      syncId: e.syncId,
+      name: e.name,
+      kind: e.kind,
+      version: e.version,
+      createdAtMs: e.createdAt.millisecondsSinceEpoch,
+      muscleSyncIds: muscleSyncIds,
+    );
+  }
+
+  /// Tombstone DTO for a soft-deleted exercise row (empty muscle tags).
+  static ExerciseDto tombstone(Exercise e) {
+    return ExerciseDto(
+      syncId: e.syncId,
+      name: e.name,
+      kind: e.kind,
+      version: e.version,
+      createdAtMs: e.createdAt.millisecondsSinceEpoch,
+      deletedAtMs: e.deletedAt?.millisecondsSinceEpoch,
+    );
+  }
+}
+
+class ExerciseBundleMessage {
+  const ExerciseBundleMessage(this.exercises);
+
+  final List<ExerciseDto> exercises;
+
+  Map<String, Object?> toPayload() => {
+    'exercises': exercises.map((e) => e.toJson()).toList(),
+  };
+
+  static ExerciseBundleMessage fromPayload(Map<String, Object?> json) {
+    final raw = (json['exercises'] as List?)?.cast<Object?>() ?? const [];
+    final list = raw
+        .map((m) => ExerciseDto.fromJson((m as Map).cast<String, Object?>()))
+        .toList();
+    return ExerciseBundleMessage(list);
   }
 }
 

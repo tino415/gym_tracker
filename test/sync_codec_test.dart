@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_tracker/data/database.dart' show exerciseKindReps, exerciseKindTime;
 import 'package:gym_tracker/sync/sync_codec.dart';
 
 void main() {
@@ -204,6 +205,45 @@ void main() {
     test('tolerates a missing syncIds key', () {
       final decoded = RoutineDeletedMessage.fromPayload(const {});
       expect(decoded.syncIds, isEmpty);
+    });
+  });
+
+  group('ExerciseBundleMessage', () {
+    test('round-trips live exercises and tombstones through payload', () {
+      final msg = ExerciseBundleMessage([
+        ExerciseDto(
+          syncId: 'ex-1',
+          name: 'Bench Press',
+          kind: exerciseKindReps,
+          version: 3,
+          createdAtMs: 1000,
+          muscleSyncIds: const ['muscle:chest', 'muscle:triceps'],
+        ),
+        ExerciseDto(
+          syncId: 'ex-2',
+          name: 'Plank',
+          kind: exerciseKindTime,
+          version: 5,
+          createdAtMs: 2000,
+          deletedAtMs: 9999,
+        ),
+      ]);
+
+      final decoded = ExerciseBundleMessage.fromPayload(msg.toPayload());
+      expect(decoded.exercises, hasLength(2));
+
+      final live = decoded.exercises[0];
+      expect(live.syncId, 'ex-1');
+      expect(live.kind, exerciseKindReps);
+      expect(live.version, 3);
+      expect(live.muscleSyncIds, ['muscle:chest', 'muscle:triceps']);
+      expect(live.deletedAtMs, isNull);
+
+      final tomb = decoded.exercises[1];
+      expect(tomb.syncId, 'ex-2');
+      expect(tomb.kind, exerciseKindTime);
+      expect(tomb.deletedAtMs, 9999);
+      expect(tomb.muscleSyncIds, isEmpty);
     });
   });
 }
