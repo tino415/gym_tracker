@@ -36,14 +36,27 @@ const _authPort = int.fromEnvironment(
 /// `--dart-define=FIREBASE_USE_EMULATOR=true`.
 const _useEmulator = bool.fromEnvironment('FIREBASE_USE_EMULATOR');
 
-/// Placeholder credentials. The `demo-` project id makes every emulator run
-/// fully offline — no real Google project, account, or billing. Replaced with
-/// generated FirebaseOptions when production hosting is set up.
+/// Emulator credentials. The `demo-` project id makes every emulator run fully
+/// offline — no real Google project, account, or billing. Used only when
+/// [_useEmulator] is set; production builds use [_prodOptions].
 const _demoOptions = FirebaseOptions(
   apiKey: 'demo-api-key',
   appId: '1:000000000000:web:0000000000000000000000',
   messagingSenderId: '000000000000',
   projectId: 'demo-gym-tracker',
+);
+
+/// Production web credentials for the `gym-tracker-44a5f` Firebase project.
+/// These are public client identifiers (they ship in the web bundle); access
+/// is gated by Firebase Auth + the Firestore rules, not by keeping them secret.
+/// `measurementId` is intentionally omitted — Analytics isn't wired up.
+const _prodOptions = FirebaseOptions(
+  apiKey: 'AIzaSyBv9VFgndG4TTmTqhYy7_xcJUvb76bJqwo',
+  appId: '1:15728358407:web:c69d0b9de43bf54da3e6a2',
+  messagingSenderId: '15728358407',
+  projectId: 'gym-tracker-44a5f',
+  authDomain: 'gym-tracker-44a5f.firebaseapp.com',
+  storageBucket: 'gym-tracker-44a5f.firebasestorage.app',
 );
 
 /// Initialize Firebase and point the SDKs at the emulator. Does **not** sign
@@ -54,7 +67,9 @@ const _demoOptions = FirebaseOptions(
 Future<bool> initFirebaseApp() async {
   if (!syncBackendEnabled) return false;
   try {
-    await Firebase.initializeApp(options: _demoOptions);
+    await Firebase.initializeApp(
+      options: _useEmulator ? _demoOptions : _prodOptions,
+    );
 
     if (_useEmulator) {
       FirebaseFirestore.instance.useFirestoreEmulator(
