@@ -50,6 +50,7 @@ class SyncService {
               _db.routineExercises,
               _db.plannedSets,
               _db.exercises,
+              _db.exerciseMuscles,
             ]),
           )
           .listen((_) => _scheduleContextPush());
@@ -131,6 +132,9 @@ class SyncService {
         case routineDeletedType:
           final del = RoutineDeletedMessage.fromPayload(msg.payload);
           await _repo.deleteRoutinesBySyncId(del.syncIds);
+        case exerciseBundleType:
+          final bundle = ExerciseBundleMessage.fromPayload(msg.payload);
+          await _repo.applyExerciseBundle(bundle);
         case workoutCompletedType:
           final workout = WorkoutCompletedMessage.fromPayload(msg.payload);
           await _repo.applyWorkoutCompleted(workout);
@@ -198,6 +202,16 @@ class SyncService {
       final routines = await _repo.exportAllRoutines();
       final msg = RoutineBundleMessage(routines);
       await _sendAll(type: routineBundleType, payload: msg.toPayload());
+
+      // The exercise library rides alongside routines: it's authority-owned
+      // (phone/web push, watch doesn't) and versioned-LWW like routines, so a
+      // lost or empty bundle can't wipe a peer's library. Deletions travel as
+      // tombstones inside the bundle.
+      final exercises = await _repo.exportAllExercises();
+      await _sendAll(
+        type: exerciseBundleType,
+        payload: ExerciseBundleMessage(exercises).toPayload(),
+      );
     } catch (_) {
       // best-effort
     }

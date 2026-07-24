@@ -39,6 +39,9 @@ class FirestoreSyncTransport implements SyncTransport {
   /// server on every push.
   final Map<String, Map<String, Object?>> _lastWrittenRoutine = {};
 
+  /// Same echo-suppression cache for exercise-library docs.
+  final Map<String, Map<String, Object?>> _lastWrittenExercise = {};
+
   /// Sync ids of workouts known to already exist on the server — populated by
   /// both our own writes and the inbound snapshot — so repeated pushAll()s skip
   /// them without a per-workout existence read.
@@ -48,6 +51,8 @@ class FirestoreSyncTransport implements SyncTransport {
       _fs.collection('users').doc(uid).collection('routines');
   CollectionReference<Map<String, Object?>> get _workouts =>
       _fs.collection('users').doc(uid).collection('workouts');
+  CollectionReference<Map<String, Object?>> get _exercises =>
+      _fs.collection('users').doc(uid).collection('exercises');
 
   @override
   Stream<SyncMessage> get messages => _messages.stream;
@@ -58,6 +63,26 @@ class FirestoreSyncTransport implements SyncTransport {
     _started = true;
     _subs.add(_routines.snapshots().listen(_onRoutinesSnapshot));
     _subs.add(_workouts.snapshots().listen(_onWorkoutsSnapshot));
+    _subs.add(_exercises.snapshots().listen(_onExercisesSnapshot));
+  }
+
+  /// Added/modified exercise docs (including tombstones) become a non-destructive
+  /// [exerciseBundleType]; the receiver applies them with version-LWW. A genuine
+  /// doc removal is ignored — deletions ride as tombstone docs, not removals.
+  void _onExercisesSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
+    final upserted = <Map<String, Object?>>[];
+    for (final change in snap.docChanges) {
+      if (change.type == DocumentChangeType.removed) continue;
+      upserted.add(change.doc.data()!);
+    }
+    if (upserted.isNotEmpty) {
+      _messages.add(
+        SyncMessage(
+          type: exerciseBundleType,
+          payload: {'exercises': upserted},
+        ),
+      );
+    }
   }
 
   void _onRoutinesSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
@@ -115,6 +140,8 @@ class FirestoreSyncTransport implements SyncTransport {
         await _pushRoutines(payload);
       case routineDeletedType:
         await _deleteRoutines(payload);
+      case exerciseBundleType:
+        await _pushExercises(payload);
       case workoutCompletedType:
         await _pushWorkout(payload);
       case syncRequestType:
@@ -140,6 +167,25 @@ class FirestoreSyncTransport implements SyncTransport {
       if (_jsonEquals(_lastWrittenRoutine[syncId], data)) continue;
       batch.set(_routines.doc(syncId), data);
       _lastWrittenRoutine[syncId] = data;
+      writes++;
+    }
+    if (writes > 0) await batch.commit();
+  }
+
+  /// Upsert exercise-library docs by syncId. Like [_pushRoutines], this is
+  /// upsert-only (never deletes a doc for being absent) and skips docs whose
+  /// content we already wrote, so the push → own-snapshot → apply → push echo
+  /// terminates without a Firestore read. Deletions ride as tombstone docs.
+  Future<void> _pushExercises(Map<String, Object?> payload) async {
+    final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
+    final batch = _fs.batch();
+    var writes = 0;
+    for (final e in raw) {
+      final data = (e as Map).cast<String, Object?>();
+      final syncId = data['syncId'] as String;
+      if (_jsonEquals(_lastWrittenExercise[syncId], data)) continue;
+      batch.set(_exercises.doc(syncId), data);
+      _lastWrittenExercise[syncId] = data;
       writes++;
     }
     if (writes > 0) await batch.commit();

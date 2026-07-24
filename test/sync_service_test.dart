@@ -147,6 +147,61 @@ void main() {
     await svc.dispose();
   });
 
+  test('authority pushes its exercise-library bundle on start', () async {
+    await db.createExercise('Bench Press');
+    final t = FakeTransport();
+    final svc = serviceWith([t], isRoutineAuthority: true);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    final bundles = t.sent.where((m) => m.type == exerciseBundleType).toList();
+    expect(bundles, isNotEmpty, reason: 'exercise library rides alongside routines');
+    final decoded = ExerciseBundleMessage.fromPayload(bundles.last.payload);
+    expect(decoded.exercises.any((e) => e.name == 'Bench Press'), isTrue);
+    await svc.dispose();
+  });
+
+  test('a non-authority (watch) never pushes exercise bundles', () async {
+    await db.createExercise('Bench Press');
+    final t = FakeTransport();
+    final svc = serviceWith([t], isRoutineAuthority: false);
+    svc.start();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    expect(t.sent.where((m) => m.type == exerciseBundleType), isEmpty);
+    await svc.dispose();
+  });
+
+  test('inbound exercise bundle from a transport is applied to the db',
+      () async {
+    final t = FakeTransport();
+    final svc = serviceWith([t], isRoutineAuthority: false);
+    svc.start();
+
+    t.deliver(
+      SyncMessage(
+        type: exerciseBundleType,
+        payload: ExerciseBundleMessage([
+          ExerciseDto(
+            syncId: 'ex-remote',
+            name: 'Remote Curl',
+            kind: exerciseKindReps,
+            version: 1,
+            createdAtMs: DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+          ),
+        ]).toPayload(),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final rows = await (db.select(db.exercises)
+          ..where((t) => t.syncId.equals('ex-remote')))
+        .get();
+    expect(rows, hasLength(1));
+    expect(rows.single.name, 'Remote Curl');
+    await svc.dispose();
+  });
+
   test('inbound routine bundle from a transport is applied to the db',
       () async {
     final t = FakeTransport();
