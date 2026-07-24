@@ -99,7 +99,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
     await ref.read(databaseProvider).deleteRoutine(_routineId!);
     if (!mounted) return;
     context.pop();
@@ -116,7 +116,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     }
     if (!mounted) return;
     final picked = await showExercisePicker(context, ref);
-    if (picked == null || _routineId == null) return;
+    if (picked == null || _routineId == null || !mounted) return;
     await ref.read(databaseProvider).addExerciseToRoutine(
           routineId: _routineId!,
           exerciseId: picked.id,

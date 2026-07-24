@@ -275,7 +275,9 @@ Future<void> _editRest(
       ],
     ),
   );
-  if (result != null && result > 0) {
+  // Guard against the page unmounting during the dialog await (e.g. a
+  // concurrent sync bundle-apply pops it): using ref/context afterwards throws.
+  if (result != null && result > 0 && context.mounted) {
     await ref.read(databaseProvider).setRestSeconds(re.id, result);
   }
 }
@@ -324,7 +326,9 @@ Future<void> _addAlternative(
     ref,
     excludeIds: excludeIds,
   );
-  if (picked == null) return;
+  // Guard: the picker await may outlive the page (a concurrent sync
+  // bundle-apply can pop it), and ref.read on a defunct ref throws.
+  if (picked == null || !context.mounted) return;
   await ref.read(databaseProvider).addRoutineExerciseAlternative(
         routineExerciseId: re.routineExercise.id,
         exerciseId: picked.id,
@@ -408,7 +412,9 @@ Future<void> _editSetDialog(
       ],
     ),
   );
-  if (saved != true) return;
+  // Guard: the dialog await may outlive the page (a concurrent sync
+  // bundle-apply can pop it), and ref.read on a defunct ref throws.
+  if (saved != true || !context.mounted) return;
   final db = ref.read(databaseProvider);
   if (isTime) {
     final seconds = int.tryParse(secondsController.text.trim());
@@ -524,7 +530,9 @@ Future<void> _editAltSetDialog(
       ],
     ),
   );
-  if (saved != true) return;
+  // Guard: the dialog await may outlive the page (a concurrent sync
+  // bundle-apply can pop it), and ref.read on a defunct ref throws.
+  if (saved != true || !context.mounted) return;
   final db = ref.read(databaseProvider);
   if (isTime) {
     final seconds = int.tryParse(secondsController.text.trim());
