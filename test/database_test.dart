@@ -135,7 +135,7 @@ void main() {
       expect(snap.exercises.single.sets, hasLength(1));
     });
 
-    test('deleting the underlying exercise nulls exercise_id but keeps name',
+    test('soft-deleting the underlying exercise keeps the workout snapshot name',
         () async {
       final ex = await db.createExercise('Curl');
       final routine = await db.createRoutine('Arms');
@@ -150,15 +150,19 @@ void main() {
       );
       final workout = await db.startWorkout(routine.id);
 
-      // RESTRICT on routine_exercises.exercise_id prevents this while the
-      // routine references it; drop the routine first.
       await db.deleteRoutine(routine.id);
       await db.deleteExercise(ex.id);
 
+      // Exercise deletion is now a soft tombstone (version-LWW), so the row
+      // survives: the workout snapshot still resolves it (exercise_id kept) and
+      // renders its name. The exercise is only hidden from the library reads.
       final snap = await db.loadFullWorkout(workout.id);
       expect(snap, isNotNull);
-      expect(snap!.exercises.single.workoutExercise.exerciseId, isNull);
+      expect(snap!.exercises.single.workoutExercise.exerciseId, isNotNull);
       expect(snap.exercises.single.workoutExercise.exerciseName, 'Curl');
+
+      final library = await db.loadExercisesWithMuscles();
+      expect(library.where((e) => e.exercise.id == ex.id), isEmpty);
     });
   });
 
@@ -1592,6 +1596,70 @@ void main() {
           .getSingle();
       expect(r2Row.orderIndex, r2eaBefore);
       expect(r2Row.routineId, r2.id);
+    });
+  });
+
+  group('exercise tombstones (version-LWW)', () {
+    test('deleteExercise hides from the library but keeps the row + bumps version',
+        () async {
+      final ex = await db.createExercise('Curl');
+      final before = await (db.select(db.exercises)
+            ..where((t) => t.id.equals(ex.id)))
+          .getSingle();
+      expect(before.version, 1);
+      expect(before.deletedAt, isNull);
+
+      await db.deleteExercise(ex.id);
+
+      // Row survives as a tombstone with a bumped version.
+      final after = await (db.select(db.exercises)
+            ..where((t) => t.id.equals(ex.id)))
+          .getSingle();
+      expect(after.deletedAt, isNotNull);
+      expect(after.version, greaterThan(before.version));
+
+      // Hidden from both library reads.
+      expect(await db.watchExercises().first, isEmpty);
+      expect(await db.loadExercisesWithMuscles(), isEmpty);
+    });
+
+    test('rename / setKind / setMuscles each bump the version', () async {
+      final ex = await db.createExercise('Curl');
+      final m = await (db.select(db.muscles)..limit(1)).getSingle();
+
+      await db.renameExercise(ex.id, 'Bicep Curl');
+      final v1 = (await (db.select(db.exercises)
+                ..where((t) => t.id.equals(ex.id)))
+              .getSingle())
+          .version;
+      expect(v1, greaterThan(1));
+
+      await db.setExerciseKind(ex.id, exerciseKindTime);
+      final v2 = (await (db.select(db.exercises)
+                ..where((t) => t.id.equals(ex.id)))
+              .getSingle())
+          .version;
+      expect(v2, greaterThan(v1));
+
+      await db.setExerciseMuscles(ex.id, [m.id]);
+      final v3 = (await (db.select(db.exercises)
+                ..where((t) => t.id.equals(ex.id)))
+              .getSingle())
+          .version;
+      expect(v3, greaterThan(v2));
+    });
+
+    test('a tombstoned exercise still resolves inside a routine', () async {
+      final ex = await db.createExercise('Curl');
+      final routine = await db.createRoutine('Arms');
+      await db.addExerciseToRoutine(routineId: routine.id, exerciseId: ex.id);
+
+      await db.deleteExercise(ex.id);
+
+      // The library hides it, but the routine join must still render it.
+      final full = await db.loadFullRoutine(routine.id);
+      expect(full!.exercises.single.exercise.id, ex.id);
+      expect(full.exercises.single.exercise.name, 'Curl');
     });
   });
 }

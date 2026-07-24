@@ -2,6 +2,8 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'muscle_seeds.dart';
+
 part 'database.g.dart';
 
 const _uuid = Uuid();
@@ -18,6 +20,14 @@ class Exercises extends Table {
   DateTimeColumn get createdAt => dateTime()();
   TextColumn get kind =>
       text().withDefault(const Constant(exerciseKindReps))();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  // Non-null marks a versioned tombstone: the exercise was deleted at this
+  // instant, but the row survives (with a bumped [version]) so the deletion
+  // participates in version-LWW sync. Library reads (watchExercises,
+  // loadExercisesWithMuscles, the exercise picker) skip tombstoned rows;
+  // routine/workout joins deliberately do NOT, so a routine that still
+  // references a deleted exercise keeps rendering its name.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
 }
 
 class Routines extends Table {
@@ -326,7 +336,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -404,31 +414,24 @@ class AppDatabase extends _$AppDatabase {
         // v8 → v9: versioned tombstones for routine deletion (version-LWW).
         await m.addColumn(routines, routines.deletedAt);
       }
+      if (from < 10) {
+        // v9 → v10: versioned tombstones for the exercise library (version-LWW),
+        // so exercise edits/deletions can sync to the server-backed web build.
+        await m.addColumn(exercises, exercises.version);
+        await m.addColumn(exercises, exercises.deletedAt);
+      }
     },
   );
 
-  // Standard muscle list. Seeded idempotently on every open so a fresh DB and
-  // an upgraded one both end up with the same row ids (deterministic syncIds
-  // mean phone and watch agree without sync round-trips).
-  static const _muscleSeeds = [
-    'Chest',
-    'Back',
-    'Shoulders',
-    'Biceps',
-    'Triceps',
-    'Forearms',
-    'Abs',
-    'Quads',
-    'Hamstrings',
-    'Glutes',
-    'Calves',
-  ];
-
+  // Standard muscle list (shared constant in muscle_seeds.dart). Seeded
+  // idempotently on every open so a fresh DB and an upgraded one both end up
+  // with the same row ids (deterministic syncIds mean phone, watch, and web
+  // agree without sync round-trips).
   Future<void> _seedMuscles() async {
-    for (final name in _muscleSeeds) {
+    for (final name in muscleSeeds) {
       await customStatement(
         'INSERT OR IGNORE INTO muscles (sync_id, name) VALUES (?, ?)',
-        ['muscle:${name.toLowerCase()}', name],
+        [muscleSyncId(name), name],
       );
     }
   }
@@ -624,18 +627,20 @@ class AppDatabase extends _$AppDatabase {
   // -- Exercises --------------------------------------------------------
 
   Stream<List<Exercise>> watchExercises() {
-    return (select(
-      exercises,
-    )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
+    return (select(exercises)
+          ..where((t) => t.deletedAt.isNull()) // hide tombstones
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+        .watch();
   }
 
   /// One-shot fetch of every exercise with its muscle tags, in name order.
   /// Used by the exercise registry list — the call is cheap (small N) and
   /// avoids one query per row on rebuild.
   Future<List<ExerciseWithMuscles>> loadExercisesWithMuscles() async {
-    final exs = await (select(
-      exercises,
-    )..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
+    final exs = await (select(exercises)
+          ..where((t) => t.deletedAt.isNull()) // hide tombstones
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+        .get();
     if (exs.isEmpty) return const [];
     final rows = await (select(exerciseMuscles).join([
           innerJoin(muscles, muscles.id.equalsExp(exerciseMuscles.muscleId)),
@@ -685,16 +690,35 @@ class AppDatabase extends _$AppDatabase {
     await (update(
       exercises,
     )..where((t) => t.id.equals(id))).write(ExercisesCompanion(name: Value(name)));
+    await _bumpExerciseVersion(id);
   }
 
   Future<void> setExerciseKind(int id, String kind) async {
     await (update(
       exercises,
     )..where((t) => t.id.equals(id))).write(ExercisesCompanion(kind: Value(kind)));
+    await _bumpExerciseVersion(id);
   }
 
+  /// Soft-delete: leave a versioned tombstone (`deletedAt` set + bumped
+  /// version) so the deletion travels through version-LWW sync. The row
+  /// survives, so routines/workouts still referencing this exercise (by FK id)
+  /// keep resolving it; only the library reads hide it.
   Future<void> deleteExercise(int id) async {
-    await (delete(exercises)..where((t) => t.id.equals(id))).go();
+    await transaction(() async {
+      await (update(exercises)..where((t) => t.id.equals(id))).write(
+        ExercisesCompanion(deletedAt: Value(DateTime.now())),
+      );
+      await _bumpExerciseVersion(id);
+    });
+  }
+
+  Future<void> _bumpExerciseVersion(int id) async {
+    await customUpdate(
+      'UPDATE exercises SET version = version + 1 WHERE id = ?',
+      variables: [Variable.withInt(id)],
+      updates: {exercises},
+    );
   }
 
   // -- Routines ---------------------------------------------------------
@@ -1184,6 +1208,7 @@ class AppDatabase extends _$AppDatabase {
           ),
         );
       }
+      await _bumpExerciseVersion(exerciseId);
     });
   }
 

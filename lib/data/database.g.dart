@@ -63,8 +63,39 @@ class $ExercisesTable extends Exercises
     requiredDuringInsert: false,
     defaultValue: const Constant(exerciseKindReps),
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, syncId, name, createdAt, kind];
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    syncId,
+    name,
+    createdAt,
+    kind,
+    version,
+    deletedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -110,6 +141,18 @@ class $ExercisesTable extends Exercises
         kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
       );
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -139,6 +182,14 @@ class $ExercisesTable extends Exercises
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -154,12 +205,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final String name;
   final DateTime createdAt;
   final String kind;
+  final int version;
+  final DateTime? deletedAt;
   const Exercise({
     required this.id,
     required this.syncId,
     required this.name,
     required this.createdAt,
     required this.kind,
+    required this.version,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -169,6 +224,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     map['name'] = Variable<String>(name);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['kind'] = Variable<String>(kind);
+    map['version'] = Variable<int>(version);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -179,6 +238,10 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       name: Value(name),
       createdAt: Value(createdAt),
       kind: Value(kind),
+      version: Value(version),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -193,6 +256,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       name: serializer.fromJson<String>(json['name']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       kind: serializer.fromJson<String>(json['kind']),
+      version: serializer.fromJson<int>(json['version']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -204,6 +269,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'name': serializer.toJson<String>(name),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'kind': serializer.toJson<String>(kind),
+      'version': serializer.toJson<int>(version),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -213,12 +280,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     String? name,
     DateTime? createdAt,
     String? kind,
+    int? version,
+    Value<DateTime?> deletedAt = const Value.absent(),
   }) => Exercise(
     id: id ?? this.id,
     syncId: syncId ?? this.syncId,
     name: name ?? this.name,
     createdAt: createdAt ?? this.createdAt,
     kind: kind ?? this.kind,
+    version: version ?? this.version,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -227,6 +298,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       name: data.name.present ? data.name.value : this.name,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       kind: data.kind.present ? data.kind.value : this.kind,
+      version: data.version.present ? data.version.value : this.version,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -237,13 +310,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('syncId: $syncId, ')
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
-          ..write('kind: $kind')
+          ..write('kind: $kind, ')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, syncId, name, createdAt, kind);
+  int get hashCode =>
+      Object.hash(id, syncId, name, createdAt, kind, version, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -252,7 +328,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.syncId == this.syncId &&
           other.name == this.name &&
           other.createdAt == this.createdAt &&
-          other.kind == this.kind);
+          other.kind == this.kind &&
+          other.version == this.version &&
+          other.deletedAt == this.deletedAt);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -261,12 +339,16 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<String> name;
   final Value<DateTime> createdAt;
   final Value<String> kind;
+  final Value<int> version;
+  final Value<DateTime?> deletedAt;
   const ExercisesCompanion({
     this.id = const Value.absent(),
     this.syncId = const Value.absent(),
     this.name = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.kind = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   ExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -274,6 +356,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     required String name,
     required DateTime createdAt,
     this.kind = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   }) : syncId = Value(syncId),
        name = Value(name),
        createdAt = Value(createdAt);
@@ -283,6 +367,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<String>? name,
     Expression<DateTime>? createdAt,
     Expression<String>? kind,
+    Expression<int>? version,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -290,6 +376,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (name != null) 'name': name,
       if (createdAt != null) 'created_at': createdAt,
       if (kind != null) 'kind': kind,
+      if (version != null) 'version': version,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -299,6 +387,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<String>? name,
     Value<DateTime>? createdAt,
     Value<String>? kind,
+    Value<int>? version,
+    Value<DateTime?>? deletedAt,
   }) {
     return ExercisesCompanion(
       id: id ?? this.id,
@@ -306,6 +396,8 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
       kind: kind ?? this.kind,
+      version: version ?? this.version,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -327,6 +419,12 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -337,7 +435,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('syncId: $syncId, ')
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
-          ..write('kind: $kind')
+          ..write('kind: $kind, ')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -5604,6 +5704,8 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       required String name,
       required DateTime createdAt,
       Value<String> kind,
+      Value<int> version,
+      Value<DateTime?> deletedAt,
     });
 typedef $$ExercisesTableUpdateCompanionBuilder =
     ExercisesCompanion Function({
@@ -5612,6 +5714,8 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<String> name,
       Value<DateTime> createdAt,
       Value<String> kind,
+      Value<int> version,
+      Value<DateTime?> deletedAt,
     });
 
 final class $$ExercisesTableReferences
@@ -5747,6 +5851,16 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get kind => $composableBuilder(
     column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5888,6 +6002,16 @@ class $$ExercisesTableOrderingComposer
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -5913,6 +6037,12 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   Expression<T> routineExercisesRefs<T extends Object>(
     Expression<T> Function($$RoutineExercisesTableAnnotationComposer a) f,
@@ -6057,12 +6187,16 @@ class $$ExercisesTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => ExercisesCompanion(
                 id: id,
                 syncId: syncId,
                 name: name,
                 createdAt: createdAt,
                 kind: kind,
+                version: version,
+                deletedAt: deletedAt,
               ),
           createCompanionCallback:
               ({
@@ -6071,12 +6205,16 @@ class $$ExercisesTableTableManager
                 required String name,
                 required DateTime createdAt,
                 Value<String> kind = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 id: id,
                 syncId: syncId,
                 name: name,
                 createdAt: createdAt,
                 kind: kind,
+                version: version,
+                deletedAt: deletedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
