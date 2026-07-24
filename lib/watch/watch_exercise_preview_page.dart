@@ -20,7 +20,9 @@ class WatchExercisePreviewPage extends StatelessWidget {
     required this.activeMode,
     this.restCountdown,
     this.onSwitchActive,
-  }) : _sets = sets;
+    List<_PreviewAlt> alternatives = const [],
+  })  : _sets = sets,
+        _alternatives = alternatives;
 
   factory WatchExercisePreviewPage.fromRoutine(FullRoutineExercise re) {
     return WatchExercisePreviewPage._(
@@ -37,6 +39,12 @@ class WatchExercisePreviewPage extends StatelessWidget {
             targetSeconds: re.plannedSets[i].targetSeconds,
             completed: false,
           ),
+      ],
+      // Only the routine preview surfaces alternatives; during a workout the
+      // swap picker (WatchAlternativePickerPage) already owns that job.
+      alternatives: [
+        for (final a in re.alternatives)
+          _PreviewAlt(name: a.exercise.name, kind: a.exercise.kind),
       ],
       activeMode: false,
     );
@@ -73,6 +81,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
   final int restSeconds;
   final int? supersetGroup;
   final List<_PreviewSet> _sets;
+  final List<_PreviewAlt> _alternatives;
   final bool activeMode;
   final ValueListenable<int>? restCountdown;
   final VoidCallback? onSwitchActive;
@@ -155,6 +164,44 @@ class WatchExercisePreviewPage extends StatelessWidget {
                           activeMode: activeMode,
                         ),
                       ),
+                  if (_alternatives.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Alternatives',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    for (final a in _alternatives)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              a.kind == exerciseKindTime
+                                  ? Icons.timer_outlined
+                                  : Icons.repeat,
+                              size: 14,
+                              color: theme.colorScheme.outline,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                a.name,
+                                style: theme.textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -195,6 +242,13 @@ class _PreviewSet {
   final double? targetWeightKg;
   final int? targetSeconds;
   final bool completed;
+}
+
+class _PreviewAlt {
+  const _PreviewAlt({required this.name, required this.kind});
+
+  final String name;
+  final String kind;
 }
 
 class _SetLine extends StatelessWidget {
