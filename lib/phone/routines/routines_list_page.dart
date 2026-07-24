@@ -48,7 +48,7 @@ class RoutinesListPage extends ConsumerWidget {
                         : '${s.exerciseCount} exercises',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/routines/${s.routine.id}'),
+                  onTap: () => context.push('/routines/${s.routine.syncId}'),
                 );
               },
             );

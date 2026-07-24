@@ -19,17 +19,17 @@ void main() {
   setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));
   tearDown(() => db.close());
 
-  Future<(int routineId, int reId)> seed({String kind = exerciseKindReps}) async {
+  Future<(String routineId, String reId)> seed({String kind = exerciseKindReps}) async {
     final routine = await db.createRoutine('R');
     final ex = await db.createExercise('Bench', kind: kind);
     final re = await db.addExerciseToRoutine(
-      routineId: routine.id,
-      exerciseId: ex.id,
+      routineId: routine.syncId,
+      exerciseId: ex.syncId,
     );
-    return (routine.id, re.id);
+    return (routine.syncId, re.syncId);
   }
 
-  Future<void> pumpDetail(WidgetTester tester, int routineId, int reId) async {
+  Future<void> pumpDetail(WidgetTester tester, String routineId, String reId) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [databaseProvider.overrideWithValue(db)],

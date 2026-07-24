@@ -17,8 +17,8 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
     required this.routineExerciseId,
   });
 
-  final int routineId;
-  final int routineExerciseId;
+  final String routineId;
+  final String routineExerciseId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,7 +58,7 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
   FullRoutineExercise? _find(FullRoutine? full) {
     if (full == null) return null;
     for (final e in full.exercises) {
-      if (e.routineExercise.id == routineExerciseId) return e;
+      if (e.routineExercise.syncId == routineExerciseId) return e;
     }
     return null;
   }
@@ -74,7 +74,7 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final idx = full.exercises.indexWhere(
-      (e) => e.routineExercise.id == re.routineExercise.id,
+      (e) => e.routineExercise.syncId == re.routineExercise.syncId,
     );
     final isFirst = idx == 0;
     final groupedWithPrev = !isFirst &&
@@ -147,7 +147,7 @@ class _Body extends ConsumerWidget {
         else
           for (var i = 0; i < re.plannedSets.length; i++)
             PlannedSetRow(
-              key: ValueKey(re.plannedSets[i].id),
+              key: ValueKey(re.plannedSets[i].syncId),
               setIndex: i,
               plannedSet: re.plannedSets[i],
               kind: re.kind,
@@ -159,7 +159,7 @@ class _Body extends ConsumerWidget {
               ),
               onDelete: () => ref
                   .read(routineRepositoryProvider)
-                  .deletePlannedSet(re.plannedSets[i].id),
+                  .deletePlannedSet(re.plannedSets[i].syncId),
             ),
         const Divider(height: 24),
         Row(
@@ -192,13 +192,13 @@ class _Body extends ConsumerWidget {
               alternative: alt,
               onDelete: () => ref
                   .read(routineRepositoryProvider)
-                  .removeRoutineExerciseAlternative(alt.join.id),
+                  .removeRoutineExerciseAlternative(alt.join.syncId),
               onAddSet: () => _editAltSetDialog(context, ref, alt: alt),
               onEditSet: (s) =>
                   _editAltSetDialog(context, ref, alt: alt, existing: s),
               onDeleteSet: (s) => ref
                   .read(routineRepositoryProvider)
-                  .deleteAlternativePlannedSet(s.id),
+                  .deleteAlternativePlannedSet(s.syncId),
             ),
         const Divider(height: 32),
         OutlinedButton.icon(
@@ -239,7 +239,7 @@ Future<void> _confirmRemove(
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  await ref.read(routineRepositoryProvider).removeRoutineExercise(re.routineExercise.id);
+  await ref.read(routineRepositoryProvider).removeRoutineExercise(re.routineExercise.syncId);
   if (!context.mounted) return;
   context.pop();
 }
@@ -278,7 +278,7 @@ Future<void> _editRest(
   // Guard against the page unmounting during the dialog await (e.g. a
   // concurrent sync bundle-apply pops it): using ref/context afterwards throws.
   if (result != null && result > 0 && context.mounted) {
-    await ref.read(routineRepositoryProvider).setRestSeconds(re.id, result);
+    await ref.read(routineRepositoryProvider).setRestSeconds(re.syncId, result);
   }
 }
 
@@ -294,7 +294,7 @@ Future<void> _toggleSuperset(
   final currentGroup = current.routineExercise.supersetGroup;
   if (currentGroup != null &&
       currentGroup == prev.routineExercise.supersetGroup) {
-    await db.setSupersetGroup(current.routineExercise.id, null);
+    await db.setSupersetGroup(current.routineExercise.syncId, null);
     return;
   }
   int group;
@@ -307,9 +307,9 @@ Future<void> _toggleSuperset(
       if (g != null && g > max) max = g;
     }
     group = max + 1;
-    await db.setSupersetGroup(prev.routineExercise.id, group);
+    await db.setSupersetGroup(prev.routineExercise.syncId, group);
   }
-  await db.setSupersetGroup(current.routineExercise.id, group);
+  await db.setSupersetGroup(current.routineExercise.syncId, group);
 }
 
 Future<void> _addAlternative(
@@ -317,9 +317,9 @@ Future<void> _addAlternative(
   WidgetRef ref,
   FullRoutineExercise re,
 ) async {
-  final excludeIds = <int>{
-    re.exercise.id,
-    ...re.alternatives.map((a) => a.exercise.id),
+  final excludeIds = <String>{
+    re.exercise.syncId,
+    ...re.alternatives.map((a) => a.exercise.syncId),
   };
   final picked = await showExercisePicker(
     context,
@@ -330,8 +330,8 @@ Future<void> _addAlternative(
   // bundle-apply can pop it), and ref.read on a defunct ref throws.
   if (picked == null || !context.mounted) return;
   await ref.read(routineRepositoryProvider).addRoutineExerciseAlternative(
-        routineExerciseId: re.routineExercise.id,
-        exerciseId: picked.id,
+        routineExerciseId: re.routineExercise.syncId,
+        exerciseId: picked.syncId,
       );
 }
 
@@ -422,13 +422,13 @@ Future<void> _editSetDialog(
     final weight = double.tryParse(weightController.text.trim());
     if (existing == null) {
       await db.addPlannedSet(
-        routineExerciseId: re.routineExercise.id,
+        routineExerciseId: re.routineExercise.syncId,
         targetSeconds: seconds,
         targetWeightKg: weight,
       );
     } else {
       await db.updatePlannedSet(
-        id: existing.id,
+        id: existing.syncId,
         targetSeconds: seconds,
         targetWeightKg: weight,
       );
@@ -439,13 +439,13 @@ Future<void> _editSetDialog(
     if (reps == null || weight == null) return;
     if (existing == null) {
       await db.addPlannedSet(
-        routineExerciseId: re.routineExercise.id,
+        routineExerciseId: re.routineExercise.syncId,
         targetReps: reps,
         targetWeightKg: weight,
       );
     } else {
       await db.updatePlannedSet(
-        id: existing.id,
+        id: existing.syncId,
         targetReps: reps,
         targetWeightKg: weight,
       );
@@ -540,13 +540,13 @@ Future<void> _editAltSetDialog(
     final weight = double.tryParse(weightController.text.trim());
     if (existing == null) {
       await db.addAlternativePlannedSet(
-        alternativeId: alt.join.id,
+        alternativeId: alt.join.syncId,
         targetSeconds: seconds,
         targetWeightKg: weight,
       );
     } else {
       await db.updateAlternativePlannedSet(
-        id: existing.id,
+        id: existing.syncId,
         targetSeconds: seconds,
         targetWeightKg: weight,
       );
@@ -557,13 +557,13 @@ Future<void> _editAltSetDialog(
     if (reps == null || weight == null) return;
     if (existing == null) {
       await db.addAlternativePlannedSet(
-        alternativeId: alt.join.id,
+        alternativeId: alt.join.syncId,
         targetReps: reps,
         targetWeightKg: weight,
       );
     } else {
       await db.updateAlternativePlannedSet(
-        id: existing.id,
+        id: existing.syncId,
         targetReps: reps,
         targetWeightKg: weight,
       );

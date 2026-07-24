@@ -38,7 +38,7 @@ class HistoryListPage extends ConsumerWidget {
                     w.endedAt == null ? 'In progress' : 'Completed',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/history/${w.id}'),
+                  onTap: () => context.push('/history/${w.syncId}'),
                 );
               },
             );

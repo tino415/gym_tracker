@@ -16,52 +16,52 @@ class DriftRoutineRepository implements RoutineRepository {
       _db.watchRoutineSummaries();
 
   @override
-  Stream<FullRoutine?> watchFullRoutine(int routineId) =>
+  Stream<FullRoutine?> watchFullRoutine(String routineId) =>
       _db.watchFullRoutine(routineId);
 
   @override
-  Future<FullRoutine?> loadFullRoutine(int routineId) =>
+  Future<FullRoutine?> loadFullRoutine(String routineId) =>
       _db.loadFullRoutine(routineId);
 
   @override
   Future<Routine> createRoutine(String name) => _db.createRoutine(name);
 
   @override
-  Future<void> renameRoutine(int id, String name) =>
+  Future<void> renameRoutine(String id, String name) =>
       _db.renameRoutine(id, name);
 
   @override
-  Future<void> deleteRoutine(int id) => _db.deleteRoutine(id);
+  Future<void> deleteRoutine(String id) => _db.deleteRoutine(id);
 
   @override
   Future<RoutineExercise> addExerciseToRoutine({
-    required int routineId,
-    required int exerciseId,
+    required String routineId,
+    required String exerciseId,
   }) =>
       _db.addExerciseToRoutine(routineId: routineId, exerciseId: exerciseId);
 
   @override
-  Future<void> removeRoutineExercise(int routineExerciseId) =>
+  Future<void> removeRoutineExercise(String routineExerciseId) =>
       _db.removeRoutineExercise(routineExerciseId);
 
   @override
   Future<void> reorderRoutineExercises({
-    required int routineId,
-    required List<int> orderedIds,
+    required String routineId,
+    required List<String> orderedIds,
   }) =>
       _db.reorderRoutineExercises(routineId: routineId, orderedIds: orderedIds);
 
   @override
-  Future<void> setRestSeconds(int routineExerciseId, int seconds) =>
+  Future<void> setRestSeconds(String routineExerciseId, int seconds) =>
       _db.setRestSeconds(routineExerciseId, seconds);
 
   @override
-  Future<void> setSupersetGroup(int routineExerciseId, int? group) =>
+  Future<void> setSupersetGroup(String routineExerciseId, int? group) =>
       _db.setSupersetGroup(routineExerciseId, group);
 
   @override
   Future<PlannedSet> addPlannedSet({
-    required int routineExerciseId,
+    required String routineExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -75,7 +75,7 @@ class DriftRoutineRepository implements RoutineRepository {
 
   @override
   Future<void> updatePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -88,12 +88,12 @@ class DriftRoutineRepository implements RoutineRepository {
       );
 
   @override
-  Future<void> deletePlannedSet(int id) => _db.deletePlannedSet(id);
+  Future<void> deletePlannedSet(String id) => _db.deletePlannedSet(id);
 
   @override
   Future<RoutineExerciseAlternative> addRoutineExerciseAlternative({
-    required int routineExerciseId,
-    required int exerciseId,
+    required String routineExerciseId,
+    required String exerciseId,
   }) =>
       _db.addRoutineExerciseAlternative(
         routineExerciseId: routineExerciseId,
@@ -102,7 +102,7 @@ class DriftRoutineRepository implements RoutineRepository {
 
   @override
   Future<AlternativePlannedSet> addAlternativePlannedSet({
-    required int alternativeId,
+    required String alternativeId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -116,7 +116,7 @@ class DriftRoutineRepository implements RoutineRepository {
 
   @override
   Future<void> updateAlternativePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -129,11 +129,11 @@ class DriftRoutineRepository implements RoutineRepository {
       );
 
   @override
-  Future<void> deleteAlternativePlannedSet(int id) =>
+  Future<void> deleteAlternativePlannedSet(String id) =>
       _db.deleteAlternativePlannedSet(id);
 
   @override
-  Future<void> removeRoutineExerciseAlternative(int alternativeId) =>
+  Future<void> removeRoutineExerciseAlternative(String alternativeId) =>
       _db.removeRoutineExerciseAlternative(alternativeId);
 }
 
@@ -153,7 +153,7 @@ class DriftExerciseRepository implements ExerciseRepository {
   Stream<List<Muscle>> watchMuscles() => _db.watchMuscles();
 
   @override
-  Future<List<Muscle>> musclesForExercise(int exerciseId) =>
+  Future<List<Muscle>> musclesForExercise(String exerciseId) =>
       _db.musclesForExercise(exerciseId);
 
   @override
@@ -164,18 +164,18 @@ class DriftExerciseRepository implements ExerciseRepository {
       _db.createExercise(name, kind: kind);
 
   @override
-  Future<void> renameExercise(int id, String name) =>
+  Future<void> renameExercise(String id, String name) =>
       _db.renameExercise(id, name);
 
   @override
-  Future<void> deleteExercise(int id) => _db.deleteExercise(id);
+  Future<void> deleteExercise(String id) => _db.deleteExercise(id);
 
   @override
-  Future<void> setExerciseKind(int id, String kind) =>
+  Future<void> setExerciseKind(String id, String kind) =>
       _db.setExerciseKind(id, kind);
 
   @override
-  Future<void> setExerciseMuscles(int exerciseId, List<int> muscleIds) =>
+  Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds) =>
       _db.setExerciseMuscles(exerciseId, muscleIds);
 }
 
@@ -191,20 +191,20 @@ class DriftWorkoutRepository implements WorkoutRepository {
   Stream<Workout?> watchInProgressWorkout() => _db.watchInProgressWorkout();
 
   @override
-  Stream<FullWorkout?> watchFullWorkout(int workoutId) =>
+  Stream<FullWorkout?> watchFullWorkout(String workoutId) =>
       _db.watchFullWorkout(workoutId);
 
   @override
-  Future<List<WorkoutImprovement>> findWorkoutImprovements(int workoutId) =>
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId) =>
       _db.findWorkoutImprovements(workoutId);
 
   @override
-  Future<void> applyWorkoutImprovements(int workoutId) =>
+  Future<void> applyWorkoutImprovements(String workoutId) =>
       _db.applyWorkoutImprovements(workoutId);
 
   @override
   Future<void> updateWorkoutTimes({
-    required int workoutId,
+    required String workoutId,
     required DateTime startedAt,
     required DateTime? endedAt,
   }) =>
@@ -215,22 +215,22 @@ class DriftWorkoutRepository implements WorkoutRepository {
       );
 
   @override
-  Future<void> deleteWorkout(int workoutId) => _db.deleteWorkout(workoutId);
+  Future<void> deleteWorkout(String workoutId) => _db.deleteWorkout(workoutId);
 
   @override
   Future<WorkoutExercise> addWorkoutExercise({
-    required int workoutId,
-    required int exerciseId,
+    required String workoutId,
+    required String exerciseId,
   }) =>
       _db.addWorkoutExercise(workoutId: workoutId, exerciseId: exerciseId);
 
   @override
-  Future<void> removeWorkoutExercise(int workoutExerciseId) =>
+  Future<void> removeWorkoutExercise(String workoutExerciseId) =>
       _db.removeWorkoutExercise(workoutExerciseId);
 
   @override
   Future<WorkoutSet> addWorkoutSet({
-    required int workoutExerciseId,
+    required String workoutExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -243,13 +243,13 @@ class DriftWorkoutRepository implements WorkoutRepository {
       );
 
   @override
-  Future<void> removeWorkoutSet(int workoutSetId) =>
+  Future<void> removeWorkoutSet(String workoutSetId) =>
       _db.removeWorkoutSet(workoutSetId);
 
   @override
   Future<SetCompletion> upsertSetCompletion({
-    required int workoutId,
-    required int workoutSetId,
+    required String workoutId,
+    required String workoutSetId,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
@@ -268,7 +268,7 @@ class DriftWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> updateCompletion({
-    required int id,
+    required String id,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
@@ -283,5 +283,5 @@ class DriftWorkoutRepository implements WorkoutRepository {
       );
 
   @override
-  Future<void> deleteCompletion(int id) => _db.deleteCompletion(id);
+  Future<void> deleteCompletion(String id) => _db.deleteCompletion(id);
 }

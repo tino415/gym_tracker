@@ -37,7 +37,7 @@ class WatchRunPage extends ConsumerStatefulWidget {
 
   /// When non-null, attach to this existing in-progress workout instead of
   /// starting a new one.
-  final int? resumeWorkoutId;
+  final String? resumeWorkoutId;
 
   /// Display name to use for the ongoing-activity chip before the workout
   /// snapshot has been loaded. Only meaningful when [resumeWorkoutId] is set.
@@ -92,7 +92,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   bool _serviceStopped = false;
   StreamSubscription<String>? _timerDoneSub;
 
-  int? _workoutId;
+  String? _workoutId;
   FullWorkout? _snapshot;
   StreamSubscription<FullWorkout?>? _snapshotSub;
 
@@ -190,13 +190,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     // still proceeds, just without HR/chip.
     await WorkoutBridge.instance.requestPermissions();
     if (!mounted) return;
-    final int workoutId;
+    final String workoutId;
     if (widget.resumeWorkoutId != null) {
       workoutId = widget.resumeWorkoutId!;
     } else {
-      final w = await db.startWorkout(widget.routine!.routine.id);
+      final w = await db.startWorkout(widget.routine!.routine.syncId);
       if (!mounted) return;
-      workoutId = w.id;
+      workoutId = w.syncId;
     }
     unawaited(
       WorkoutBridge.instance.start(routineName: _routineName()),
@@ -298,13 +298,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   /// in the snapshot stream.
   ({int eIdx, int sIdx})? _firstIncompleteSnapshotExcept(
     FullWorkout snap,
-    int? excludeWorkoutSetId,
+    String? excludeWorkoutSetId,
   ) {
     for (var i = 0; i < snap.exercises.length; i++) {
       final ex = snap.exercises[i];
       for (var j = 0; j < ex.sets.length; j++) {
         final s = ex.sets[j];
-        if (s.workoutSet.id == excludeWorkoutSetId) continue;
+        if (s.workoutSet.syncId == excludeWorkoutSetId) continue;
         if (s.completion == null) return (eIdx: i, sIdx: j);
       }
     }
@@ -397,11 +397,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       'Workout';
 
   /// The current set's workoutSetId, if a snapshot has been taken.
-  int? _currentWorkoutSetId() {
+  String? _currentWorkoutSetId() {
     if (_snapshot == null) return null;
     final ex = _snapshot!.exercises[_exerciseIdx];
     if (_setIdx >= ex.sets.length) return null;
-    return ex.sets[_setIdx].workoutSet.id;
+    return ex.sets[_setIdx].workoutSet.syncId;
   }
 
   SetCompletion? _currentCompletion() {
@@ -1098,7 +1098,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final we = _snapshot!.exercises[_exerciseIdx].workoutExercise;
     final swapped = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => WatchAlternativePickerPage(workoutExerciseId: we.id),
+        builder: (_) => WatchAlternativePickerPage(workoutExerciseId: we.syncId),
       ),
     );
     if (swapped != true) return;

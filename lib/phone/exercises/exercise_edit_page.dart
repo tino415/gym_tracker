@@ -8,7 +8,7 @@ import '../../data/providers.dart';
 class ExerciseEditPage extends ConsumerStatefulWidget {
   const ExerciseEditPage({super.key, this.exerciseId});
 
-  final int? exerciseId;
+  final String? exerciseId;
 
   @override
   ConsumerState<ExerciseEditPage> createState() => _ExerciseEditPageState();
@@ -22,7 +22,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   bool _initializing = true;
   // Muscle ids currently selected for the exercise being edited. Resolved from
   // the join table on load; replaced wholesale on save.
-  final Set<int> _selectedMuscleIds = <int>{};
+  final Set<String> _selectedMuscleIds = <String>{};
 
   @override
   void initState() {
@@ -37,17 +37,17 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     }
     final db = ref.read(exerciseRepositoryProvider);
     final list = await db.watchExercises().first;
-    final found = list.where((e) => e.id == widget.exerciseId).firstOrNull;
+    final found = list.where((e) => e.syncId == widget.exerciseId).firstOrNull;
     final mus = found == null
         ? const <Muscle>[]
-        : await db.musclesForExercise(found.id);
+        : await db.musclesForExercise(found.syncId);
     setState(() {
       _loaded = found;
       _nameController.text = found?.name ?? '';
       _kind = found?.kind ?? exerciseKindReps;
       _selectedMuscleIds
         ..clear()
-        ..addAll(mus.map((m) => m.id));
+        ..addAll(mus.map((m) => m.syncId));
       _initializing = false;
     });
   }
@@ -67,13 +67,13 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       if (_loaded == null) {
         exercise = await db.createExercise(name, kind: _kind);
       } else {
-        await db.renameExercise(_loaded!.id, name);
+        await db.renameExercise(_loaded!.syncId, name);
         if (_loaded!.kind != _kind) {
-          await db.setExerciseKind(_loaded!.id, _kind);
+          await db.setExerciseKind(_loaded!.syncId, _kind);
         }
         exercise = _loaded!;
       }
-      await db.setExerciseMuscles(exercise.id, _selectedMuscleIds.toList());
+      await db.setExerciseMuscles(exercise.syncId, _selectedMuscleIds.toList());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -108,7 +108,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     );
     if (confirmed != true) return;
     try {
-      await ref.read(exerciseRepositoryProvider).deleteExercise(_loaded!.id);
+      await ref.read(exerciseRepositoryProvider).deleteExercise(_loaded!.syncId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -200,8 +200,8 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
 class _MuscleSelector extends ConsumerWidget {
   const _MuscleSelector({required this.selectedIds, required this.onToggled});
 
-  final Set<int> selectedIds;
-  final ValueChanged<int> onToggled;
+  final Set<String> selectedIds;
+  final ValueChanged<String> onToggled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -223,8 +223,8 @@ class _MuscleSelector extends ConsumerWidget {
                 for (final m in muscles)
                   FilterChip(
                     label: Text(m.name),
-                    selected: selectedIds.contains(m.id),
-                    onSelected: (_) => onToggled(m.id),
+                    selected: selectedIds.contains(m.syncId),
+                    onSelected: (_) => onToggled(m.syncId),
                   ),
               ],
             ),

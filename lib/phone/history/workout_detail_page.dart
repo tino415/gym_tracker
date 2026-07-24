@@ -8,7 +8,7 @@ import '../../data/providers.dart';
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({super.key, required this.workoutId});
 
-  final int workoutId;
+  final String workoutId;
 
   @override
   ConsumerState<WorkoutDetailPage> createState() => _WorkoutDetailPageState();
@@ -79,7 +79,7 @@ class _Body extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
-        _ImprovementsBanner(workoutId: snap.workout.id),
+        _ImprovementsBanner(workoutId: snap.workout.syncId),
         Card(
           child: Column(
             children: [
@@ -175,7 +175,7 @@ class _Body extends ConsumerWidget {
     );
     final db = ref.read(workoutRepositoryProvider);
     await db.updateWorkoutTimes(
-      workoutId: snap.workout.id,
+      workoutId: snap.workout.syncId,
       startedAt: isStart ? merged : snap.workout.startedAt,
       endedAt: isStart ? snap.workout.endedAt : merged,
     );
@@ -195,7 +195,7 @@ class _Body extends ConsumerWidget {
     );
     if (values == null) return;
     await ref.read(workoutRepositoryProvider).addWorkoutSet(
-          workoutExerciseId: ex.workoutExercise.id,
+          workoutExerciseId: ex.workoutExercise.syncId,
           targetReps: values.$1,
           targetWeightKg: values.$2,
           targetSeconds: values.$3,
@@ -227,7 +227,7 @@ class _Body extends ConsumerWidget {
       ),
     );
     if (ok != true) return;
-    await ref.read(workoutRepositoryProvider).removeWorkoutExercise(ex.workoutExercise.id);
+    await ref.read(workoutRepositoryProvider).removeWorkoutExercise(ex.workoutExercise.syncId);
   }
 
   Future<void> _editCompletion(
@@ -249,15 +249,15 @@ class _Body extends ConsumerWidget {
     final db = ref.read(workoutRepositoryProvider);
     if (c == null) {
       await db.upsertSetCompletion(
-        workoutId: snap.workout.id,
-        workoutSetId: set.workoutSet.id,
+        workoutId: snap.workout.syncId,
+        workoutSetId: set.workoutSet.syncId,
         actualReps: values.$1,
         actualWeightKg: values.$2,
         actualSeconds: values.$3,
       );
     } else {
       await db.updateCompletion(
-        id: c.id,
+        id: c.syncId,
         actualReps: values.$1,
         actualWeightKg: values.$2,
         actualSeconds: values.$3,
@@ -293,8 +293,8 @@ class _Body extends ConsumerWidget {
     );
     if (picked == null) return;
     await workouts.addWorkoutExercise(
-      workoutId: snap.workout.id,
-      exerciseId: picked.id,
+      workoutId: snap.workout.syncId,
+      exerciseId: picked.syncId,
     );
   }
 
@@ -328,8 +328,8 @@ class _ExerciseSection extends ConsumerWidget {
   final VoidCallback onAddSet;
   final VoidCallback onRemoveExercise;
   final void Function(FullWorkoutSet set) onEditCompletion;
-  final void Function(int completionId) onRemoveCompletion;
-  final void Function(int workoutSetId) onRemoveSet;
+  final void Function(String completionId) onRemoveCompletion;
+  final void Function(String workoutSetId) onRemoveSet;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -373,8 +373,8 @@ class _ExerciseSection extends ConsumerWidget {
                 onEdit: () => onEditCompletion(ex.sets[i]),
                 onRemoveCompletion: ex.sets[i].completion == null
                     ? null
-                    : () => onRemoveCompletion(ex.sets[i].completion!.id),
-                onRemoveSet: () => onRemoveSet(ex.sets[i].workoutSet.id),
+                    : () => onRemoveCompletion(ex.sets[i].completion!.syncId),
+                onRemoveSet: () => onRemoveSet(ex.sets[i].workoutSet.syncId),
               ),
             const SizedBox(height: 4),
             Align(
@@ -395,7 +395,7 @@ class _ExerciseSection extends ConsumerWidget {
 class _MuscleChipsRow extends ConsumerWidget {
   const _MuscleChipsRow({required this.exerciseId});
 
-  final int exerciseId;
+  final String exerciseId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -673,7 +673,7 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
 class _ImprovementsBanner extends ConsumerStatefulWidget {
   const _ImprovementsBanner({required this.workoutId});
 
-  final int workoutId;
+  final String workoutId;
 
   @override
   ConsumerState<_ImprovementsBanner> createState() =>

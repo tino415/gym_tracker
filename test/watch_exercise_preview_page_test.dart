@@ -17,11 +17,11 @@ void main() {
     final routine = await db.createRoutine('R');
     final bench = await db.createExercise('Bench', kind: exerciseKindReps);
     final re = await db.addExerciseToRoutine(
-      routineId: routine.id,
-      exerciseId: bench.id,
+      routineId: routine.syncId,
+      exerciseId: bench.syncId,
     );
     await db.addPlannedSet(
-      routineExerciseId: re.id,
+      routineExerciseId: re.syncId,
       targetReps: 8,
       targetWeightKg: 40,
     );
@@ -31,11 +31,11 @@ void main() {
         kind: exerciseKindReps,
       );
       await db.addRoutineExerciseAlternative(
-        routineExerciseId: re.id,
-        exerciseId: alt.id,
+        routineExerciseId: re.syncId,
+        exerciseId: alt.syncId,
       );
     }
-    final full = await db.loadFullRoutine(routine.id);
+    final full = await db.loadFullRoutine(routine.syncId);
     return full!.exercises.single;
   }
 

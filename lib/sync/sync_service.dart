@@ -182,7 +182,7 @@ class SyncService {
       _db.workouts,
     )..where((t) => t.endedAt.isNotNull())).get();
     for (final w in all) {
-      await pushWorkout(w.id);
+      await pushWorkout(w.syncId);
     }
   }
 
@@ -228,13 +228,13 @@ class SyncService {
       _db.workouts,
     )..where((t) => t.endedAt.isNotNull())).get();
     for (final w in all) {
-      await pushWorkout(w.id);
+      await pushWorkout(w.syncId);
     }
     // Ask the peer to push their side back to us. Best-effort.
     await _sendAll(type: syncRequestType, payload: const {});
   }
 
-  Future<void> pushWorkout(int workoutId) async {
+  Future<void> pushWorkout(String workoutId) async {
     final dto = await _repo.exportWorkout(workoutId);
     if (dto == null) return;
     final msg = WorkoutCompletedMessage(dto);

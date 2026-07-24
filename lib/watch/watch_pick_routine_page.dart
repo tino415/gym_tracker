@@ -50,11 +50,11 @@ class WatchPickRoutinePage extends ConsumerWidget {
                   );
                   return _ResumeCard(
                     routineName: name,
-                    onTap: () => _resume(context, inProgress.id),
+                    onTap: () => _resume(context, inProgress.syncId),
                     onLongPress: () => _confirmDiscard(
                       context,
                       ref,
-                      inProgress.id,
+                      inProgress.syncId,
                       name,
                     ),
                   );
@@ -118,15 +118,15 @@ class WatchPickRoutinePage extends ConsumerWidget {
     );
   }
 
-  String _routineNameFor(List<RoutineSummary> summaries, int? routineId) {
+  String _routineNameFor(List<RoutineSummary> summaries, String? routineId) {
     if (routineId == null) return 'Workout';
     for (final s in summaries) {
-      if (s.routine.id == routineId) return s.routine.name;
+      if (s.routine.syncId == routineId) return s.routine.name;
     }
     return 'Workout';
   }
 
-  void _resume(BuildContext context, int workoutId) {
+  void _resume(BuildContext context, String workoutId) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WatchRunPage(resumeWorkoutId: workoutId),
@@ -137,7 +137,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
   Future<void> _confirmDiscard(
     BuildContext context,
     WidgetRef ref,
-    int workoutId,
+    String workoutId,
     String routineName,
   ) async {
     final ok = await DiscardDialog.show(context, routineName: routineName);
@@ -154,7 +154,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
     Routine routine,
   ) async {
     final db = ref.read(databaseProvider);
-    final full = await db.loadFullRoutine(routine.id);
+    final full = await db.loadFullRoutine(routine.syncId);
     if (full == null || full.exercises.isEmpty) {
       if (!context.mounted) return;
       showWatchSnack(context, 'Routine has no exercises');

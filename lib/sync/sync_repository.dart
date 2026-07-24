@@ -20,7 +20,7 @@ class SyncRepository {
         result.add(RoutineTemplateDto.tombstone(r));
         continue;
       }
-      final full = await _db.loadFullRoutine(r.id);
+      final full = await _db.loadFullRoutine(r.syncId);
       if (full == null) continue;
       // Hydrate each routine exercise with its alternatives. fromFullRoutine
       // can't see the canonical exercise rows for alternatives without an
@@ -28,17 +28,17 @@ class SyncRepository {
       final exDtos = <RoutineExerciseDto>[];
       for (final re in full.exercises) {
         final altRows = await (_db.select(_db.routineExerciseAlternatives)
-              ..where((t) => t.routineExerciseId.equals(re.routineExercise.id))
+              ..where((t) => t.routineExerciseId.equals(re.routineExercise.syncId))
               ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
             .get();
         final altDtos = <AlternativeRefDto>[];
         for (final a in altRows) {
           final ex = await (_db.select(
             _db.exercises,
-          )..where((t) => t.id.equals(a.exerciseId))).getSingleOrNull();
+          )..where((t) => t.syncId.equals(a.exerciseId))).getSingleOrNull();
           if (ex == null) continue;
           final altPs = await (_db.select(_db.alternativePlannedSets)
-                ..where((t) => t.alternativeId.equals(a.id))
+                ..where((t) => t.alternativeId.equals(a.syncId))
                 ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
               .get();
           altDtos.add(
@@ -101,7 +101,7 @@ class SyncRepository {
         result.add(ExerciseDto.tombstone(e));
         continue;
       }
-      final muscles = await _db.musclesForExercise(e.id);
+      final muscles = await _db.musclesForExercise(e.syncId);
       result.add(
         ExerciseDto.fromRow(e, [for (final m in muscles) m.syncId]),
       );
@@ -143,7 +143,8 @@ class SyncRepository {
         _db.exercises,
       )..where((t) => t.name.equals(dto.name))).getSingleOrNull();
       if (byName != null) return;
-      final id = await _db.into(_db.exercises).insert(
+      final id = dto.syncId;
+      await _db.into(_db.exercises).insert(
             ExercisesCompanion.insert(
               syncId: dto.syncId,
               name: dto.name,
@@ -172,9 +173,9 @@ class SyncRepository {
     try {
       await (_db.update(
         _db.exercises,
-      )..where((t) => t.id.equals(existing.id))).write(companion);
+      )..where((t) => t.syncId.equals(existing.syncId))).write(companion);
     } catch (_) {
-      await (_db.update(_db.exercises)..where((t) => t.id.equals(existing.id)))
+      await (_db.update(_db.exercises)..where((t) => t.syncId.equals(existing.syncId)))
           .write(
         ExercisesCompanion(
           kind: Value(dto.kind),
@@ -184,7 +185,7 @@ class SyncRepository {
       );
     }
     if (deletedAt == null) {
-      await _applyExerciseMuscles(existing.id, dto.muscleSyncIds);
+      await _applyExerciseMuscles(existing.syncId, dto.muscleSyncIds);
     }
   }
 
@@ -193,7 +194,7 @@ class SyncRepository {
   /// version is authoritative from the DTO; bumping here would echo a push).
   /// Unknown muscle syncIds are skipped.
   Future<void> _applyExerciseMuscles(
-    int exerciseId,
+    String exerciseId,
     List<String> muscleSyncIds,
   ) async {
     await (_db.delete(
@@ -207,7 +208,7 @@ class SyncRepository {
       await _db.into(_db.exerciseMuscles).insert(
             ExerciseMusclesCompanion.insert(
               exerciseId: exerciseId,
-              muscleId: m.id,
+              muscleId: m.syncId,
             ),
           );
     }
@@ -230,7 +231,7 @@ class SyncRepository {
         if (received.contains(r.syncId)) continue;
         await (_db.delete(
           _db.routines,
-        )..where((t) => t.id.equals(r.id))).go();
+        )..where((t) => t.syncId.equals(r.syncId))).go();
       }
     });
   }
@@ -276,9 +277,10 @@ class SyncRepository {
       return;
     }
 
-    final int routineId;
+    final String routineId;
     if (existing == null) {
-      routineId = await _db
+      routineId = dto.syncId;
+      await _db
           .into(_db.routines)
           .insert(
             RoutinesCompanion.insert(
@@ -289,10 +291,10 @@ class SyncRepository {
             ),
           );
     } else {
-      routineId = existing.id;
+      routineId = existing.syncId;
       await (_db.update(
         _db.routines,
-      )..where((t) => t.id.equals(existing.id))).write(
+      )..where((t) => t.syncId.equals(existing.syncId))).write(
         RoutinesCompanion(
           name: Value(dto.name),
           createdAt: Value(
@@ -313,7 +315,7 @@ class SyncRepository {
             _db.routineExercises,
           )..where((t) => t.routineId.equals(routineId))).get();
     final existingREBySync = {for (final re in existingRE) re.syncId: re};
-    final keptREIds = <int>{};
+    final keptREIds = <String>{};
 
     for (final e in dto.exercises) {
       final exerciseId = await _findOrCreateExerciseBySyncId(
@@ -321,10 +323,11 @@ class SyncRepository {
         name: e.exerciseName,
         kind: e.exerciseKind,
       );
-      final int reId;
+      final String reId;
       final existingForE = existingREBySync[e.syncId];
       if (existingForE == null) {
-        reId = await _db
+        reId = e.syncId;
+        await _db
             .into(_db.routineExercises)
             .insert(
               RoutineExercisesCompanion.insert(
@@ -337,10 +340,10 @@ class SyncRepository {
               ),
             );
       } else {
-        reId = existingForE.id;
+        reId = existingForE.syncId;
         await (_db.update(
           _db.routineExercises,
-        )..where((t) => t.id.equals(reId))).write(
+        )..where((t) => t.syncId.equals(reId))).write(
           RoutineExercisesCompanion(
             exerciseId: Value(exerciseId),
             orderIndex: Value(e.orderIndex),
@@ -358,12 +361,13 @@ class SyncRepository {
               _db.plannedSets,
             )..where((t) => t.routineExerciseId.equals(reId))).get();
       final existingPSBySync = {for (final ps in existingPS) ps.syncId: ps};
-      final keptPSIds = <int>{};
+      final keptPSIds = <String>{};
 
       for (final s in e.plannedSets) {
         final existingForS = existingPSBySync[s.syncId];
         if (existingForS == null) {
-          final psId = await _db
+          final psId = s.syncId;
+          await _db
               .into(_db.plannedSets)
               .insert(
                 PlannedSetsCompanion.insert(
@@ -379,7 +383,7 @@ class SyncRepository {
         } else {
           await (_db.update(
             _db.plannedSets,
-          )..where((t) => t.id.equals(existingForS.id))).write(
+          )..where((t) => t.syncId.equals(existingForS.syncId))).write(
             PlannedSetsCompanion(
               setIndex: Value(s.setIndex),
               targetReps: Value(s.targetReps),
@@ -387,16 +391,16 @@ class SyncRepository {
               targetSeconds: Value(s.targetSeconds),
             ),
           );
-          keptPSIds.add(existingForS.id);
+          keptPSIds.add(existingForS.syncId);
         }
       }
 
       for (final ps in existingPS) {
-        if (keptPSIds.contains(ps.id)) continue;
+        if (keptPSIds.contains(ps.syncId)) continue;
         try {
           await (_db.delete(
             _db.plannedSets,
-          )..where((t) => t.id.equals(ps.id))).go();
+          )..where((t) => t.syncId.equals(ps.syncId))).go();
         } catch (_) {
           // No longer needed (set_completions reference workout_sets, not
           // planned_sets) but kept defensively in case of orphan rows.
@@ -410,7 +414,7 @@ class SyncRepository {
       final existingAltsBySync = {
         for (final a in existingAlts) a.syncId: a,
       };
-      final keptAltIds = <int>{};
+      final keptAltIds = <String>{};
       for (final a in e.alternatives) {
         final altExerciseId = await _findOrCreateExerciseBySyncId(
           syncId: a.exerciseSyncId,
@@ -418,9 +422,10 @@ class SyncRepository {
           kind: a.exerciseKind,
         );
         final exA = existingAltsBySync[a.syncId];
-        final int altRowId;
+        final String altRowId;
         if (exA == null) {
-          altRowId = await _db
+          altRowId = a.syncId;
+          await _db
               .into(_db.routineExerciseAlternatives)
               .insert(
                 RoutineExerciseAlternativesCompanion.insert(
@@ -431,9 +436,9 @@ class SyncRepository {
                 ),
               );
         } else {
-          altRowId = exA.id;
+          altRowId = exA.syncId;
           await (_db.update(_db.routineExerciseAlternatives)
-                ..where((t) => t.id.equals(altRowId)))
+                ..where((t) => t.syncId.equals(altRowId)))
               .write(
                 RoutineExerciseAlternativesCompanion(
                   exerciseId: Value(altExerciseId),
@@ -452,11 +457,12 @@ class SyncRepository {
         final existingAltPsBySync = {
           for (final p in existingAltPs) p.syncId: p,
         };
-        final keptAltPsIds = <int>{};
+        final keptAltPsIds = <String>{};
         for (final s in a.plannedSets) {
           final existingForS = existingAltPsBySync[s.syncId];
           if (existingForS == null) {
-            final psId = await _db
+            final psId = s.syncId;
+            await _db
                 .into(_db.alternativePlannedSets)
                 .insert(
                   AlternativePlannedSetsCompanion.insert(
@@ -471,7 +477,7 @@ class SyncRepository {
             keptAltPsIds.add(psId);
           } else {
             await (_db.update(_db.alternativePlannedSets)
-                  ..where((t) => t.id.equals(existingForS.id)))
+                  ..where((t) => t.syncId.equals(existingForS.syncId)))
                 .write(
                   AlternativePlannedSetsCompanion(
                     setIndex: Value(s.setIndex),
@@ -480,20 +486,20 @@ class SyncRepository {
                     targetSeconds: Value(s.targetSeconds),
                   ),
                 );
-            keptAltPsIds.add(existingForS.id);
+            keptAltPsIds.add(existingForS.syncId);
           }
         }
         for (final p in existingAltPs) {
-          if (keptAltPsIds.contains(p.id)) continue;
+          if (keptAltPsIds.contains(p.syncId)) continue;
           await (_db.delete(_db.alternativePlannedSets)
-                ..where((t) => t.id.equals(p.id)))
+                ..where((t) => t.syncId.equals(p.syncId)))
               .go();
         }
       }
       for (final a in existingAlts) {
-        if (keptAltIds.contains(a.id)) continue;
+        if (keptAltIds.contains(a.syncId)) continue;
         await (_db.delete(_db.routineExerciseAlternatives)
-              ..where((t) => t.id.equals(a.id)))
+              ..where((t) => t.syncId.equals(a.syncId)))
             .go();
       }
 
@@ -504,17 +510,17 @@ class SyncRepository {
             .get();
         await _db.setExerciseMuscles(
           exerciseId,
-          [for (final m in muscleRows) m.id],
+          [for (final m in muscleRows) m.syncId],
         );
       }
     }
 
     for (final re in existingRE) {
-      if (keptREIds.contains(re.id)) continue;
+      if (keptREIds.contains(re.syncId)) continue;
       try {
         await (_db.delete(
           _db.routineExercises,
-        )..where((t) => t.id.equals(re.id))).go();
+        )..where((t) => t.syncId.equals(re.syncId))).go();
       } catch (_) {
         // best-effort
       }
@@ -544,10 +550,10 @@ class SyncRepository {
     // Dropping routine_exercises cascades to planned_sets / alternatives.
     await (_db.delete(
       _db.routineExercises,
-    )..where((t) => t.routineId.equals(existing.id))).go();
+    )..where((t) => t.routineId.equals(existing.syncId))).go();
     await (_db.update(
       _db.routines,
-    )..where((t) => t.id.equals(existing.id))).write(
+    )..where((t) => t.syncId.equals(existing.syncId))).write(
       RoutinesCompanion(
         name: Value(dto.name),
         version: Value(dto.version),
@@ -556,7 +562,7 @@ class SyncRepository {
     );
   }
 
-  Future<int> _findOrCreateExerciseBySyncId({
+  Future<String> _findOrCreateExerciseBySyncId({
     required String syncId,
     required String name,
     required String kind,
@@ -569,7 +575,7 @@ class SyncRepository {
       if (existing.kind != kind) {
         await (_db.update(
           _db.exercises,
-        )..where((t) => t.id.equals(existing.id))).write(
+        )..where((t) => t.syncId.equals(existing.syncId))).write(
           ExercisesCompanion(kind: Value(kind)),
         );
       }
@@ -580,20 +586,20 @@ class SyncRepository {
         try {
           await (_db.update(
             _db.exercises,
-          )..where((t) => t.id.equals(existing.id))).write(
+          )..where((t) => t.syncId.equals(existing.syncId))).write(
             ExercisesCompanion(name: Value(name)),
           );
         } catch (_) {
           // name taken locally — leave as is
         }
       }
-      return existing.id;
+      return existing.syncId;
     }
     final byName = await (_db.select(
       _db.exercises,
     )..where((t) => t.name.equals(name))).getSingleOrNull();
-    if (byName != null) return byName.id;
-    return _db
+    if (byName != null) return byName.syncId;
+    await _db
         .into(_db.exercises)
         .insert(
           ExercisesCompanion.insert(
@@ -603,20 +609,21 @@ class SyncRepository {
             kind: Value(kind),
           ),
         );
+    return syncId;
   }
 
   /// Export one workout (its snapshot exercises/sets + every completion) for
   /// outbound sync.
-  Future<WorkoutDto?> exportWorkout(int workoutId) async {
+  Future<WorkoutDto?> exportWorkout(String workoutId) async {
     final workout = await (_db.select(
       _db.workouts,
-    )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
     if (workout == null) return null;
     String? routineSyncId;
     if (workout.routineId != null) {
       final r = await (_db.select(
         _db.routines,
-      )..where((t) => t.id.equals(workout.routineId!))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(workout.routineId!))).getSingleOrNull();
       routineSyncId = r?.syncId;
     }
     final wes = await (_db.select(_db.workoutExercises)
@@ -624,28 +631,28 @@ class SyncRepository {
           ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
         .get();
     final exerciseDtos = <WorkoutExerciseDto>[];
-    final workoutSetSyncByLocalId = <int, String>{};
+    final workoutSetSyncByLocalId = <String, String>{};
     for (final we in wes) {
       String? exerciseSyncId;
       if (we.exerciseId != null) {
         final ex = await (_db.select(
           _db.exercises,
-        )..where((t) => t.id.equals(we.exerciseId!))).getSingleOrNull();
+        )..where((t) => t.syncId.equals(we.exerciseId!))).getSingleOrNull();
         exerciseSyncId = ex?.syncId;
       }
       String? routineExerciseSyncId;
       if (we.routineExerciseId != null) {
         final re = await (_db.select(
           _db.routineExercises,
-        )..where((t) => t.id.equals(we.routineExerciseId!))).getSingleOrNull();
+        )..where((t) => t.syncId.equals(we.routineExerciseId!))).getSingleOrNull();
         routineExerciseSyncId = re?.syncId;
       }
       final sets = await (_db.select(_db.workoutSets)
-            ..where((t) => t.workoutExerciseId.equals(we.id))
+            ..where((t) => t.workoutExerciseId.equals(we.syncId))
             ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
           .get();
       for (final s in sets) {
-        workoutSetSyncByLocalId[s.id] = s.syncId;
+        workoutSetSyncByLocalId[s.syncId] = s.syncId;
       }
       exerciseDtos.add(
         WorkoutExerciseDto(
@@ -711,15 +718,16 @@ class SyncRepository {
       )..where((t) => t.syncId.equals(dto.syncId))).getSingleOrNull();
       if (existing != null) return; // already have it; skip
 
-      int? routineLocalId;
+      String? routineLocalId;
       if (dto.routineSyncId != null) {
         final routine = await (_db.select(
           _db.routines,
         )..where((t) => t.syncId.equals(dto.routineSyncId!))).getSingleOrNull();
-        routineLocalId = routine?.id;
+        routineLocalId = routine?.syncId;
       }
 
-      final workoutId = await _db
+      final workoutId = dto.syncId;
+      await _db
           .into(_db.workouts)
           .insert(
             WorkoutsCompanion.insert(
@@ -736,23 +744,24 @@ class SyncRepository {
             ),
           );
 
-      final workoutSetIdBySync = <String, int>{};
+      final workoutSetIdBySync = <String, String>{};
       for (final e in dto.exercises) {
-        int? exerciseLocalId;
+        String? exerciseLocalId;
         if (e.exerciseSyncId != null) {
           final ex = await (_db.select(
             _db.exercises,
           )..where((t) => t.syncId.equals(e.exerciseSyncId!))).getSingleOrNull();
-          exerciseLocalId = ex?.id;
+          exerciseLocalId = ex?.syncId;
         }
-        int? routineExerciseLocalId;
+        String? routineExerciseLocalId;
         if (e.routineExerciseSyncId != null) {
           final re = await (_db.select(_db.routineExercises)
                 ..where((t) => t.syncId.equals(e.routineExerciseSyncId!)))
               .getSingleOrNull();
-          routineExerciseLocalId = re?.id;
+          routineExerciseLocalId = re?.syncId;
         }
-        final weId = await _db
+        final weId = e.syncId;
+        await _db
             .into(_db.workoutExercises)
             .insert(
               WorkoutExercisesCompanion.insert(
@@ -768,7 +777,8 @@ class SyncRepository {
               ),
             );
         for (final s in e.sets) {
-          final wsId = await _db
+          final wsId = s.syncId;
+          await _db
               .into(_db.workoutSets)
               .insert(
                 WorkoutSetsCompanion.insert(

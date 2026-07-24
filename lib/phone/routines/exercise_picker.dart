@@ -11,13 +11,13 @@ import '../../data/providers.dart';
 Future<Exercise?> showExercisePicker(
   BuildContext context,
   WidgetRef ref, {
-  Set<int> excludeIds = const {},
+  Set<String> excludeIds = const {},
 }) async {
   final db = ref.read(exerciseRepositoryProvider);
   final all = await db.watchExercises().first;
   final exercises = excludeIds.isEmpty
       ? all
-      : all.where((e) => !excludeIds.contains(e.id)).toList();
+      : all.where((e) => !excludeIds.contains(e.syncId)).toList();
   if (!context.mounted) return null;
   return showModalBottomSheet<Exercise>(
     context: context,

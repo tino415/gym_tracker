@@ -42,8 +42,8 @@ class FakeTransport implements SyncTransport {
   }
 }
 
-Future<int> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
-  final routineId = await db
+Future<String> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
+  await db
       .into(db.routines)
       .insert(
         RoutinesCompanion.insert(
@@ -52,7 +52,7 @@ Future<int> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
           createdAt: DateTime.utc(2026, 1, 1),
         ),
       );
-  final exerciseId = await db
+  await db
       .into(db.exercises)
       .insert(
         ExercisesCompanion.insert(
@@ -61,13 +61,13 @@ Future<int> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
           createdAt: DateTime.utc(2026, 1, 1),
         ),
       );
-  final reId = await db
+  await db
       .into(db.routineExercises)
       .insert(
         RoutineExercisesCompanion.insert(
           syncId: 're-1',
-          routineId: routineId,
-          exerciseId: exerciseId,
+          routineId: 'routine-1',
+          exerciseId: 'ex-1',
           orderIndex: 0,
         ),
       );
@@ -76,13 +76,13 @@ Future<int> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
       .insert(
         PlannedSetsCompanion.insert(
           syncId: 'ps-1',
-          routineExerciseId: reId,
+          routineExerciseId: 're-1',
           setIndex: 0,
           targetReps: const Value(10),
           targetWeightKg: const Value(50),
         ),
       );
-  return routineId;
+  return 'routine-1';
 }
 
 void main() {

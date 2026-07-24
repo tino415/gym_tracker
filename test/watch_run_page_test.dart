@@ -18,21 +18,21 @@ Future<FullRoutine> _seedRoutine(
   for (final fx in exercises) {
     final ex = await db.createExercise(fx.name, kind: fx.kind);
     final re = await db.addExerciseToRoutine(
-      routineId: routine.id,
-      exerciseId: ex.id,
+      routineId: routine.syncId,
+      exerciseId: ex.syncId,
     );
-    if (restSeconds != null) await db.setRestSeconds(re.id, restSeconds);
-    if (fx.group != null) await db.setSupersetGroup(re.id, fx.group);
+    if (restSeconds != null) await db.setRestSeconds(re.syncId, restSeconds);
+    if (fx.group != null) await db.setSupersetGroup(re.syncId, fx.group);
     for (final s in fx.sets) {
       await db.addPlannedSet(
-        routineExerciseId: re.id,
+        routineExerciseId: re.syncId,
         targetReps: s.reps,
         targetWeightKg: s.weight,
         targetSeconds: s.seconds,
       );
     }
   }
-  final full = await db.loadFullRoutine(routine.id);
+  final full = await db.loadFullRoutine(routine.syncId);
   return full!;
 }
 
@@ -342,7 +342,7 @@ void main() {
       // progress under the widget tester's fake clock.
       await tester.runAsync(() async {
         final ex = (await db.watchExercises().first).first;
-        await db.renameExercise(ex.id, 'Plank renamed');
+        await db.renameExercise(ex.syncId, 'Plank renamed');
       });
       await tester.pump();
 

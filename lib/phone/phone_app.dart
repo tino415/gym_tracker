@@ -36,16 +36,16 @@ final _router = GoRouter(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
                   builder: (context, state) => RoutineEditPage(
-                    routineId: int.parse(state.pathParameters['id']!),
+                    routineId: state.pathParameters['id']!,
                   ),
                   routes: [
                     GoRoute(
                       path: 'exercises/:reId',
                       parentNavigatorKey: _rootKey,
                       builder: (context, state) => RoutineExerciseDetailPage(
-                        routineId: int.parse(state.pathParameters['id']!),
+                        routineId: state.pathParameters['id']!,
                         routineExerciseId:
-                            int.parse(state.pathParameters['reId']!),
+                            state.pathParameters['reId']!,
                       ),
                     ),
                   ],
@@ -69,7 +69,7 @@ final _router = GoRouter(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
                   builder: (context, state) => ExerciseEditPage(
-                    exerciseId: int.parse(state.pathParameters['id']!),
+                    exerciseId: state.pathParameters['id']!,
                   ),
                 ),
               ],
@@ -86,7 +86,7 @@ final _router = GoRouter(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
                   builder: (context, state) => WorkoutDetailPage(
-                    workoutId: int.parse(state.pathParameters['id']!),
+                    workoutId: state.pathParameters['id']!,
                   ),
                 ),
               ],

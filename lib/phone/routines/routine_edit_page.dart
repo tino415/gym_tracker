@@ -9,7 +9,7 @@ import 'exercise_picker.dart';
 class RoutineEditPage extends ConsumerStatefulWidget {
   const RoutineEditPage({super.key, this.routineId});
 
-  final int? routineId;
+  final String? routineId;
 
   @override
   ConsumerState<RoutineEditPage> createState() => _RoutineEditPageState();
@@ -18,7 +18,7 @@ class RoutineEditPage extends ConsumerStatefulWidget {
 class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
   final _nameController = TextEditingController();
   String _initialName = '';
-  int? _routineId;
+  String? _routineId;
   bool _initializing = true;
   bool _reorderMode = false;
 
@@ -45,7 +45,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
 
   /// Persist the routine if we're still in draft state. Returns the routine
   /// id (creating one if needed). Empty names short-circuit with null.
-  Future<int?> _ensurePersisted() async {
+  Future<String?> _ensurePersisted() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) return null;
     if (_routineId != null) {
@@ -57,8 +57,8 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     }
     final created = await ref.read(routineRepositoryProvider).createRoutine(name);
     _initialName = name;
-    setState(() => _routineId = created.id);
-    return created.id;
+    setState(() => _routineId = created.syncId);
+    return created.syncId;
   }
 
   @override
@@ -119,7 +119,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (picked == null || _routineId == null || !mounted) return;
     await ref.read(routineRepositoryProvider).addExerciseToRoutine(
           routineId: _routineId!,
-          exerciseId: picked.id,
+          exerciseId: picked.syncId,
         );
   }
 
@@ -287,9 +287,9 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (newIndex > oldIndex) insertAt -= 1;
     final moved = list.removeAt(oldIndex);
     list.insert(insertAt, moved);
-    final orderedIds = <int>[
+    final orderedIds = <String>[
       for (final u in list)
-        for (final m in u.members) m.routineExercise.id,
+        for (final m in u.members) m.routineExercise.syncId,
     ];
     await ref
         .read(routineRepositoryProvider)
@@ -311,15 +311,15 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (newIndex > oldIndex) insertAt -= 1;
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(insertAt, moved);
-    final orderedIds = <int>[];
+    final orderedIds = <String>[];
     for (var i = 0; i < units.length; i++) {
       if (i == unitIdx) {
         for (final m in reordered) {
-          orderedIds.add(m.routineExercise.id);
+          orderedIds.add(m.routineExercise.syncId);
         }
       } else {
         for (final m in units[i].members) {
-          orderedIds.add(m.routineExercise.id);
+          orderedIds.add(m.routineExercise.syncId);
         }
       }
     }
@@ -340,7 +340,7 @@ class _SingleUnit extends _RoutineUnit {
   @override
   List<FullRoutineExercise> get members => [member];
   @override
-  String get key => 's-${member.routineExercise.id}';
+  String get key => 's-${member.routineExercise.syncId}';
 }
 
 class _GroupUnit extends _RoutineUnit {
@@ -349,7 +349,7 @@ class _GroupUnit extends _RoutineUnit {
   @override
   List<FullRoutineExercise> get members => _members;
   @override
-  String get key => 'g-${_members.first.routineExercise.id}';
+  String get key => 'g-${_members.first.routineExercise.syncId}';
 }
 
 class _UnitTile extends StatelessWidget {
@@ -363,7 +363,7 @@ class _UnitTile extends StatelessWidget {
 
   final int outerIndex;
   final _RoutineUnit unit;
-  final int routineId;
+  final String routineId;
   final bool reorderMode;
   final void Function(int oldIdx, int newIdx) onInnerReorder;
 
@@ -434,7 +434,7 @@ class _UnitTile extends StatelessWidget {
             itemBuilder: (context, innerIdx) {
               final m = group.members[innerIdx];
               return Padding(
-                key: ValueKey('m-${m.routineExercise.id}'),
+                key: ValueKey('m-${m.routineExercise.syncId}'),
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -481,7 +481,7 @@ class _ExerciseRow extends StatelessWidget {
   });
 
   final FullRoutineExercise fullExercise;
-  final int routineId;
+  final String routineId;
   final bool reorderMode;
 
   String _summary() {
@@ -539,7 +539,7 @@ class _ExerciseRow extends StatelessWidget {
       onTap: reorderMode
           ? null
           : () => context.push(
-                '/routines/$routineId/exercises/${fullExercise.routineExercise.id}',
+                '/routines/$routineId/exercises/${fullExercise.routineExercise.syncId}',
               ),
     );
     return Card(

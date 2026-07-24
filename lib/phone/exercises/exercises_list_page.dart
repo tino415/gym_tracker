@@ -44,7 +44,7 @@ class ExercisesListPage extends ConsumerWidget {
                         ),
                       ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/exercises/${e.exercise.id}'),
+                onTap: () => context.push('/exercises/${e.exercise.syncId}'),
               );
             },
           );

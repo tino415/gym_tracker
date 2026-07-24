@@ -41,7 +41,7 @@ final routineSummariesStreamProvider = StreamProvider<List<RoutineSummary>>((
   return ref.watch(routineRepositoryProvider).watchRoutineSummaries();
 });
 
-final fullRoutineProvider = StreamProvider.family<FullRoutine?, int>((
+final fullRoutineProvider = StreamProvider.family<FullRoutine?, String>((
   ref,
   routineId,
 ) {
@@ -56,7 +56,7 @@ final inProgressWorkoutStreamProvider = StreamProvider<Workout?>((ref) {
   return ref.watch(workoutRepositoryProvider).watchInProgressWorkout();
 });
 
-final fullWorkoutProvider = StreamProvider.family<FullWorkout?, int>((
+final fullWorkoutProvider = StreamProvider.family<FullWorkout?, String>((
   ref,
   workoutId,
 ) {

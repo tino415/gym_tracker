@@ -14,61 +14,61 @@ import 'database.dart';
 abstract class RoutineRepository {
   // Reads
   Stream<List<RoutineSummary>> watchRoutineSummaries();
-  Stream<FullRoutine?> watchFullRoutine(int routineId);
-  Future<FullRoutine?> loadFullRoutine(int routineId);
+  Stream<FullRoutine?> watchFullRoutine(String routineId);
+  Future<FullRoutine?> loadFullRoutine(String routineId);
 
   // Routine mutations
   Future<Routine> createRoutine(String name);
-  Future<void> renameRoutine(int id, String name);
-  Future<void> deleteRoutine(int id);
+  Future<void> renameRoutine(String id, String name);
+  Future<void> deleteRoutine(String id);
 
   // Routine-exercise mutations
   Future<RoutineExercise> addExerciseToRoutine({
-    required int routineId,
-    required int exerciseId,
+    required String routineId,
+    required String exerciseId,
   });
-  Future<void> removeRoutineExercise(int routineExerciseId);
+  Future<void> removeRoutineExercise(String routineExerciseId);
   Future<void> reorderRoutineExercises({
-    required int routineId,
-    required List<int> orderedIds,
+    required String routineId,
+    required List<String> orderedIds,
   });
-  Future<void> setRestSeconds(int routineExerciseId, int seconds);
-  Future<void> setSupersetGroup(int routineExerciseId, int? group);
+  Future<void> setRestSeconds(String routineExerciseId, int seconds);
+  Future<void> setSupersetGroup(String routineExerciseId, int? group);
 
   // Planned-set mutations
   Future<PlannedSet> addPlannedSet({
-    required int routineExerciseId,
+    required String routineExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
   });
   Future<void> updatePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
   });
-  Future<void> deletePlannedSet(int id);
+  Future<void> deletePlannedSet(String id);
 
   // Alternative mutations
   Future<RoutineExerciseAlternative> addRoutineExerciseAlternative({
-    required int routineExerciseId,
-    required int exerciseId,
+    required String routineExerciseId,
+    required String exerciseId,
   });
   Future<AlternativePlannedSet> addAlternativePlannedSet({
-    required int alternativeId,
+    required String alternativeId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
   });
   Future<void> updateAlternativePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
   });
-  Future<void> deleteAlternativePlannedSet(int id);
-  Future<void> removeRoutineExerciseAlternative(int alternativeId);
+  Future<void> deleteAlternativePlannedSet(String id);
+  Future<void> removeRoutineExerciseAlternative(String alternativeId);
 }
 
 /// Exercise & muscle reads and exercise mutations used by the phone UI.
@@ -77,14 +77,14 @@ abstract class ExerciseRepository {
   Stream<List<Exercise>> watchExercises();
   Stream<List<ExerciseWithMuscles>> watchExercisesWithMuscles();
   Stream<List<Muscle>> watchMuscles();
-  Future<List<Muscle>> musclesForExercise(int exerciseId);
+  Future<List<Muscle>> musclesForExercise(String exerciseId);
 
   // Mutations
   Future<Exercise> createExercise(String name, {String kind = exerciseKindReps});
-  Future<void> renameExercise(int id, String name);
-  Future<void> deleteExercise(int id);
-  Future<void> setExerciseKind(int id, String kind);
-  Future<void> setExerciseMuscles(int exerciseId, List<int> muscleIds);
+  Future<void> renameExercise(String id, String name);
+  Future<void> deleteExercise(String id);
+  Future<void> setExerciseKind(String id, String kind);
+  Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds);
 }
 
 /// Workout reads and history-editing mutations used by the phone UI.
@@ -92,32 +92,32 @@ abstract class WorkoutRepository {
   // Reads
   Stream<List<Workout>> watchRecentWorkouts();
   Stream<Workout?> watchInProgressWorkout();
-  Stream<FullWorkout?> watchFullWorkout(int workoutId);
-  Future<List<WorkoutImprovement>> findWorkoutImprovements(int workoutId);
+  Stream<FullWorkout?> watchFullWorkout(String workoutId);
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId);
 
   // History-editing mutations
-  Future<void> applyWorkoutImprovements(int workoutId);
+  Future<void> applyWorkoutImprovements(String workoutId);
   Future<void> updateWorkoutTimes({
-    required int workoutId,
+    required String workoutId,
     required DateTime startedAt,
     required DateTime? endedAt,
   });
-  Future<void> deleteWorkout(int workoutId);
+  Future<void> deleteWorkout(String workoutId);
   Future<WorkoutExercise> addWorkoutExercise({
-    required int workoutId,
-    required int exerciseId,
+    required String workoutId,
+    required String exerciseId,
   });
-  Future<void> removeWorkoutExercise(int workoutExerciseId);
+  Future<void> removeWorkoutExercise(String workoutExerciseId);
   Future<WorkoutSet> addWorkoutSet({
-    required int workoutExerciseId,
+    required String workoutExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
   });
-  Future<void> removeWorkoutSet(int workoutSetId);
+  Future<void> removeWorkoutSet(String workoutSetId);
   Future<SetCompletion> upsertSetCompletion({
-    required int workoutId,
-    required int workoutSetId,
+    required String workoutId,
+    required String workoutSetId,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
@@ -125,11 +125,11 @@ abstract class WorkoutRepository {
     Value<int?> maxHeartRate = const Value.absent(),
   });
   Future<void> updateCompletion({
-    required int id,
+    required String id,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
     DateTime? completedAt,
   });
-  Future<void> deleteCompletion(int id);
+  Future<void> deleteCompletion(String id);
 }

@@ -13,9 +13,14 @@ const _uuid = Uuid();
 const exerciseKindReps = 'reps';
 const exerciseKindTime = 'time';
 
+// Every table is keyed by its `syncId` (a uuid string) — the same identity
+// used across the Wear bridge and Firestore. There is no separate autoincrement
+// int id: Drift rows, server docs, and the UI all address by this one string,
+// so a server-backed store needs no id synthesis. Foreign keys reference the
+// parent's `syncId`.
+
 class Exercises extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
+  TextColumn get syncId => text()();
   TextColumn get name => text().unique()();
   DateTimeColumn get createdAt => dateTime()();
   TextColumn get kind =>
@@ -28,11 +33,12 @@ class Exercises extends Table {
   // routine/workout joins deliberately do NOT, so a routine that still
   // references a deleted exercise keeps rendering its name.
   DateTimeColumn get deletedAt => dateTime().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 class Routines extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
+  TextColumn get syncId => text()();
   TextColumn get name => text()();
   DateTimeColumn get createdAt => dateTime()();
   IntColumn get version => integer().withDefault(const Constant(1))();
@@ -42,90 +48,102 @@ class Routines extends Table {
   // skip tombstoned rows; a later higher-or-equal-version non-tombstone edit
   // clears it (a legitimate revive). See lib/sync/sync_repository.dart.
   DateTimeColumn get deletedAt => dateTime().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 class RoutineExercises extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get routineId =>
-      integer().references(Routines, #id, onDelete: KeyAction.cascade)();
-  IntColumn get exerciseId =>
-      integer().references(Exercises, #id, onDelete: KeyAction.restrict)();
+  TextColumn get syncId => text()();
+  TextColumn get routineId =>
+      text().references(Routines, #syncId, onDelete: KeyAction.cascade)();
+  TextColumn get exerciseId =>
+      text().references(Exercises, #syncId, onDelete: KeyAction.restrict)();
   IntColumn get orderIndex => integer()();
   IntColumn get restSeconds => integer().withDefault(const Constant(90))();
   // Exercises sharing a non-null group on the same routine form a superset
   // (alternating sets at run time). Null = standalone.
   IntColumn get supersetGroup => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 class PlannedSets extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get routineExerciseId =>
-      integer().references(RoutineExercises, #id, onDelete: KeyAction.cascade)();
+  TextColumn get syncId => text()();
+  TextColumn get routineExerciseId => text().references(
+    RoutineExercises,
+    #syncId,
+    onDelete: KeyAction.cascade,
+  )();
   IntColumn get setIndex => integer()();
   // For reps-kind exercises:
   IntColumn get targetReps => integer().nullable()();
   RealColumn get targetWeightKg => real().nullable()();
   // For time-kind exercises:
   IntColumn get targetSeconds => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Alternative exercises for a routine slot. The user can swap to any of these
 /// mid-workout (e.g., dumbbell bench if the barbell is occupied). Lives on the
 /// routine — workouts read these on demand via [WorkoutExercises.routineExerciseId].
 class RoutineExerciseAlternatives extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get routineExerciseId =>
-      integer().references(RoutineExercises, #id, onDelete: KeyAction.cascade)();
-  IntColumn get exerciseId =>
-      integer().references(Exercises, #id, onDelete: KeyAction.restrict)();
+  TextColumn get syncId => text()();
+  TextColumn get routineExerciseId => text().references(
+    RoutineExercises,
+    #syncId,
+    onDelete: KeyAction.cascade,
+  )();
+  TextColumn get exerciseId =>
+      text().references(Exercises, #syncId, onDelete: KeyAction.restrict)();
   IntColumn get orderIndex => integer()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Per-alternative planned sets. Mirrors [PlannedSets] but FK'd to an
 /// alternative row. Empty list means the alternative shares the primary's
 /// targets at swap time — feature is opt-in per alternative.
 class AlternativePlannedSets extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get alternativeId => integer().references(
+  TextColumn get syncId => text()();
+  TextColumn get alternativeId => text().references(
     RoutineExerciseAlternatives,
-    #id,
+    #syncId,
     onDelete: KeyAction.cascade,
   )();
   IntColumn get setIndex => integer()();
   IntColumn get targetReps => integer().nullable()();
   RealColumn get targetWeightKg => real().nullable()();
   IntColumn get targetSeconds => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Muscle group registry. Seeded with a standard set; users may add more.
 class Muscles extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
+  TextColumn get syncId => text()();
   TextColumn get name => text().unique()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Many-to-many: which muscles an exercise targets.
 class ExerciseMuscles extends Table {
-  IntColumn get exerciseId =>
-      integer().references(Exercises, #id, onDelete: KeyAction.cascade)();
-  IntColumn get muscleId =>
-      integer().references(Muscles, #id, onDelete: KeyAction.cascade)();
+  TextColumn get exerciseId =>
+      text().references(Exercises, #syncId, onDelete: KeyAction.cascade)();
+  TextColumn get muscleId =>
+      text().references(Muscles, #syncId, onDelete: KeyAction.cascade)();
   @override
   Set<Column> get primaryKey => {exerciseId, muscleId};
 }
 
 class Workouts extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
+  TextColumn get syncId => text()();
   // Nullable + SET NULL: the workout owns a snapshot of its routine, so
   // deleting the routine just severs the link, the workout stays.
-  IntColumn get routineId => integer()
+  TextColumn get routineId => text()
       .nullable()
-      .references(Routines, #id, onDelete: KeyAction.setNull)();
+      .references(Routines, #syncId, onDelete: KeyAction.setNull)();
   DateTimeColumn get startedAt => dateTime()();
   DateTimeColumn get endedAt => dateTime().nullable()();
   // Workout-level heart-rate aggregates computed on Finish from the per-set
@@ -133,20 +151,21 @@ class Workouts extends Table {
   // were captured).
   IntColumn get avgHeartRate => integer().nullable()();
   IntColumn get maxHeartRate => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Snapshot of a routine exercise taken when a workout starts. Owned by the
 /// workout — survives routine edits and routine deletion.
 class WorkoutExercises extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get workoutId =>
-      integer().references(Workouts, #id, onDelete: KeyAction.cascade)();
+  TextColumn get syncId => text()();
+  TextColumn get workoutId =>
+      text().references(Workouts, #syncId, onDelete: KeyAction.cascade)();
   // Link back to the canonical Exercise for analytics. SET NULL on delete so
   // history survives the source exercise being removed.
-  IntColumn get exerciseId => integer().nullable().references(
+  TextColumn get exerciseId => text().nullable().references(
     Exercises,
-    #id,
+    #syncId,
     onDelete: KeyAction.setNull,
   )();
   TextColumn get exerciseName => text()();
@@ -158,33 +177,35 @@ class WorkoutExercises extends Table {
   // Back-pointer to the routine slot this workout exercise was created from.
   // SET NULL on delete so a routine edit that removes the slot mid-workout
   // gracefully disables mid-workout swap without breaking the workout itself.
-  IntColumn get routineExerciseId => integer().nullable().references(
+  TextColumn get routineExerciseId => text().nullable().references(
     RoutineExercises,
-    #id,
+    #syncId,
     onDelete: KeyAction.setNull,
   )();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 /// Snapshot of a planned set taken when a workout starts.
 class WorkoutSets extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get workoutExerciseId => integer()
-      .references(WorkoutExercises, #id, onDelete: KeyAction.cascade)();
+  TextColumn get syncId => text()();
+  TextColumn get workoutExerciseId => text()
+      .references(WorkoutExercises, #syncId, onDelete: KeyAction.cascade)();
   IntColumn get setIndex => integer()();
   IntColumn get targetReps => integer().nullable()();
   RealColumn get targetWeightKg => real().nullable()();
   IntColumn get targetSeconds => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 class SetCompletions extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get syncId => text().unique()();
-  IntColumn get workoutId =>
-      integer().references(Workouts, #id, onDelete: KeyAction.cascade)();
+  TextColumn get syncId => text()();
+  TextColumn get workoutId =>
+      text().references(Workouts, #syncId, onDelete: KeyAction.cascade)();
   // Bound to the workout's own snapshot, not back to the routine's planned_set.
-  IntColumn get workoutSetId =>
-      integer().references(WorkoutSets, #id, onDelete: KeyAction.cascade)();
+  TextColumn get workoutSetId =>
+      text().references(WorkoutSets, #syncId, onDelete: KeyAction.cascade)();
   IntColumn get actualReps => integer().nullable()();
   RealColumn get actualWeightKg => real().nullable()();
   IntColumn get actualSeconds => integer().nullable()();
@@ -193,6 +214,8 @@ class SetCompletions extends Table {
   // because earlier rows / sets recorded without HR permission won't have them.
   IntColumn get avgHeartRate => integer().nullable()();
   IntColumn get maxHeartRate => integer().nullable()();
+  @override
+  Set<Column> get primaryKey => {syncId};
 }
 
 class FullRoutine {
@@ -291,8 +314,8 @@ class WorkoutImprovement {
   final String exerciseName;
   final String kind;
   final int setIndex;
-  // Either a PlannedSets.id or an AlternativePlannedSets.id — `targetIsAlternative` discriminates.
-  final int targetPlannedSetId;
+  // Either a PlannedSets.syncId or an AlternativePlannedSets.syncId — `targetIsAlternative` discriminates.
+  final String targetPlannedSetId;
   final bool targetIsAlternative;
   final int? oldReps;
   final double? oldWeightKg;
@@ -336,7 +359,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -420,6 +443,23 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(exercises, exercises.version);
         await m.addColumn(exercises, exercises.deletedAt);
       }
+      if (from < 11) {
+        // v10 → v11: uuid primary keys — every table dropped the autoincrement
+        // int id and is now keyed by its `syncId` (FKs reference the parent's
+        // syncId). This is a structural change with no in-place path, and there
+        // are no users yet, so the upgrade is a destructive reset: drop every
+        // table and recreate the current schema. (FKs are re-enabled by
+        // beforeOpen on the next open; muscles are re-seeded there too.)
+        await customStatement('PRAGMA foreign_keys = OFF');
+        final tables = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' "
+          "AND name NOT LIKE 'sqlite_%'",
+        ).get();
+        for (final row in tables) {
+          await customStatement('DROP TABLE IF EXISTS "${row.read<String>('name')}"');
+        }
+        await m.createAll();
+      }
     },
   );
 
@@ -477,7 +517,7 @@ class AppDatabase extends _$AppDatabase {
     await m.createTable(workoutSets);
 
     // 5. Snapshot every existing workout's routine into the new tables.
-    final workoutToPlannedSetToWorkoutSet = <int, Map<int, int>>{};
+    final workoutToPlannedSetToWorkoutSet = <String, Map<String, String>>{};
     final existingWorkouts = await select(workouts).get();
     for (final w in existingWorkouts) {
       final routineId = w.routineId;
@@ -486,16 +526,17 @@ class AppDatabase extends _$AppDatabase {
             ..where((t) => t.routineId.equals(routineId))
             ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
           .get();
-      final psMap = <int, int>{};
+      final psMap = <String, String>{};
       for (final re in res) {
         final ex = await (select(
           exercises,
-        )..where((t) => t.id.equals(re.exerciseId))).getSingle();
-        final weId = await into(workoutExercises).insert(
+        )..where((t) => t.syncId.equals(re.exerciseId))).getSingle();
+        final weId = _uuid.v4();
+        await into(workoutExercises).insert(
           WorkoutExercisesCompanion.insert(
-            syncId: _uuid.v4(),
-            workoutId: w.id,
-            exerciseId: Value(ex.id),
+            syncId: weId,
+            workoutId: w.syncId,
+            exerciseId: Value(ex.syncId),
             exerciseName: ex.name,
             orderIndex: re.orderIndex,
             restSeconds: Value(re.restSeconds),
@@ -504,13 +545,14 @@ class AppDatabase extends _$AppDatabase {
           ),
         );
         final ps = await (select(plannedSets)
-              ..where((t) => t.routineExerciseId.equals(re.id))
+              ..where((t) => t.routineExerciseId.equals(re.syncId))
               ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
             .get();
         for (final p in ps) {
-          final wsId = await into(workoutSets).insert(
+          final wsId = _uuid.v4();
+          await into(workoutSets).insert(
             WorkoutSetsCompanion.insert(
-              syncId: _uuid.v4(),
+              syncId: wsId,
               workoutExerciseId: weId,
               setIndex: p.setIndex,
               targetReps: Value(p.targetReps),
@@ -518,10 +560,10 @@ class AppDatabase extends _$AppDatabase {
               targetSeconds: Value(p.targetSeconds),
             ),
           );
-          psMap[p.id] = wsId;
+          psMap[p.syncId] = wsId;
         }
       }
-      workoutToPlannedSetToWorkoutSet[w.id] = psMap;
+      workoutToPlannedSetToWorkoutSet[w.syncId] = psMap;
     }
 
     // 6. Recreate set_completions: planned_set_id → workout_set_id, nullable
@@ -534,8 +576,8 @@ class AppDatabase extends _$AppDatabase {
       'SELECT id, sync_id, workout_id, planned_set_id, actual_reps, actual_weight_kg, completed_at FROM _set_completions_v2',
     ).get();
     for (final row in oldCompletions) {
-      final workoutId = row.read<int>('workout_id');
-      final oldPlannedSetId = row.read<int>('planned_set_id');
+      final workoutId = row.read<String>('workout_id');
+      final oldPlannedSetId = row.read<String>('planned_set_id');
       final wsId =
           workoutToPlannedSetToWorkoutSet[workoutId]?[oldPlannedSetId];
       if (wsId == null) continue; // orphan — drop
@@ -643,11 +685,11 @@ class AppDatabase extends _$AppDatabase {
         .get();
     if (exs.isEmpty) return const [];
     final rows = await (select(exerciseMuscles).join([
-          innerJoin(muscles, muscles.id.equalsExp(exerciseMuscles.muscleId)),
+          innerJoin(muscles, muscles.syncId.equalsExp(exerciseMuscles.muscleId)),
         ])
           ..orderBy([OrderingTerm.asc(muscles.name)]))
         .get();
-    final byExercise = <int, List<Muscle>>{};
+    final byExercise = <String, List<Muscle>>{};
     for (final row in rows) {
       final em = row.readTable(exerciseMuscles);
       final m = row.readTable(muscles);
@@ -655,7 +697,7 @@ class AppDatabase extends _$AppDatabase {
     }
     return [
       for (final e in exs)
-        ExerciseWithMuscles(exercise: e, muscles: byExercise[e.id] ?? const []),
+        ExerciseWithMuscles(exercise: e, muscles: byExercise[e.syncId] ?? const []),
     ];
   }
 
@@ -675,28 +717,29 @@ class AppDatabase extends _$AppDatabase {
     String kind = exerciseKindReps,
   }) async {
     final now = DateTime.now();
-    final id = await into(exercises).insert(
+    final id = _uuid.v4();
+    await into(exercises).insert(
       ExercisesCompanion.insert(
-        syncId: _uuid.v4(),
+        syncId: id,
         name: name,
         createdAt: now,
         kind: Value(kind),
       ),
     );
-    return (select(exercises)..where((t) => t.id.equals(id))).getSingle();
+    return (select(exercises)..where((t) => t.syncId.equals(id))).getSingle();
   }
 
-  Future<void> renameExercise(int id, String name) async {
+  Future<void> renameExercise(String id, String name) async {
     await (update(
       exercises,
-    )..where((t) => t.id.equals(id))).write(ExercisesCompanion(name: Value(name)));
+    )..where((t) => t.syncId.equals(id))).write(ExercisesCompanion(name: Value(name)));
     await _bumpExerciseVersion(id);
   }
 
-  Future<void> setExerciseKind(int id, String kind) async {
+  Future<void> setExerciseKind(String id, String kind) async {
     await (update(
       exercises,
-    )..where((t) => t.id.equals(id))).write(ExercisesCompanion(kind: Value(kind)));
+    )..where((t) => t.syncId.equals(id))).write(ExercisesCompanion(kind: Value(kind)));
     await _bumpExerciseVersion(id);
   }
 
@@ -704,19 +747,19 @@ class AppDatabase extends _$AppDatabase {
   /// version) so the deletion travels through version-LWW sync. The row
   /// survives, so routines/workouts still referencing this exercise (by FK id)
   /// keep resolving it; only the library reads hide it.
-  Future<void> deleteExercise(int id) async {
+  Future<void> deleteExercise(String id) async {
     await transaction(() async {
-      await (update(exercises)..where((t) => t.id.equals(id))).write(
+      await (update(exercises)..where((t) => t.syncId.equals(id))).write(
         ExercisesCompanion(deletedAt: Value(DateTime.now())),
       );
       await _bumpExerciseVersion(id);
     });
   }
 
-  Future<void> _bumpExerciseVersion(int id) async {
+  Future<void> _bumpExerciseVersion(String id) async {
     await customUpdate(
-      'UPDATE exercises SET version = version + 1 WHERE id = ?',
-      variables: [Variable.withInt(id)],
+      'UPDATE exercises SET version = version + 1 WHERE sync_id = ?',
+      variables: [Variable.withString(id)],
       updates: {exercises},
     );
   }
@@ -724,17 +767,17 @@ class AppDatabase extends _$AppDatabase {
   // -- Routines ---------------------------------------------------------
 
   Stream<List<RoutineSummary>> watchRoutineSummaries() {
-    final countExpr = routineExercises.id.count();
+    final countExpr = routineExercises.syncId.count();
     final query =
         select(routines).join([
             leftOuterJoin(
               routineExercises,
-              routineExercises.routineId.equalsExp(routines.id),
+              routineExercises.routineId.equalsExp(routines.syncId),
             ),
           ])
           ..where(routines.deletedAt.isNull()) // hide tombstones
           ..addColumns([countExpr])
-          ..groupBy([routines.id])
+          ..groupBy([routines.syncId])
           ..orderBy([OrderingTerm.desc(routines.createdAt)]);
     return query.watch().map((rows) {
       return rows
@@ -750,14 +793,15 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Routine> createRoutine(String name) async {
     final now = DateTime.now();
-    final id = await into(routines).insert(
-      RoutinesCompanion.insert(syncId: _uuid.v4(), name: name, createdAt: now),
+    final id = _uuid.v4();
+    await into(routines).insert(
+      RoutinesCompanion.insert(syncId: id, name: name, createdAt: now),
     );
-    return (select(routines)..where((t) => t.id.equals(id))).getSingle();
+    return (select(routines)..where((t) => t.syncId.equals(id))).getSingle();
   }
 
-  Future<void> renameRoutine(int id, String name) async {
-    await (update(routines)..where((t) => t.id.equals(id))).write(
+  Future<void> renameRoutine(String id, String name) async {
+    await (update(routines)..where((t) => t.syncId.equals(id))).write(
       RoutinesCompanion(name: Value(name), version: const Value.absent()),
     );
     await _bumpRoutineVersion(id);
@@ -770,7 +814,7 @@ class AppDatabase extends _$AppDatabase {
   /// lightweight; reads skip tombstoned routines, so it reads as deleted.
   /// Past workouts keep their own snapshot (they read it, not the routine), so
   /// the surviving backref is harmless.
-  Future<void> deleteRoutine(int id) async {
+  Future<void> deleteRoutine(String id) async {
     await transaction(() async {
       await (delete(routineExercises)..where((t) => t.routineId.equals(id)))
           .go();
@@ -780,17 +824,17 @@ class AppDatabase extends _$AppDatabase {
       await (update(workouts)..where((t) => t.routineId.equals(id))).write(
         const WorkoutsCompanion(routineId: Value(null)),
       );
-      await (update(routines)..where((t) => t.id.equals(id))).write(
+      await (update(routines)..where((t) => t.syncId.equals(id))).write(
         RoutinesCompanion(deletedAt: Value(DateTime.now())),
       );
       await _bumpRoutineVersion(id);
     });
   }
 
-  Future<FullRoutine?> loadFullRoutine(int routineId) async {
+  Future<FullRoutine?> loadFullRoutine(String routineId) async {
     final r = await (select(
       routines,
-    )..where((t) => t.id.equals(routineId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(routineId))).getSingleOrNull();
     // Tombstoned routines read as absent (callers already treat null as gone).
     if (r == null || r.deletedAt != null) return null;
     final res =
@@ -802,14 +846,14 @@ class AppDatabase extends _$AppDatabase {
     for (final re in res) {
       final ex = await (select(
         exercises,
-      )..where((t) => t.id.equals(re.exerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(re.exerciseId))).getSingle();
       final sets =
           await (select(plannedSets)
-                ..where((t) => t.routineExerciseId.equals(re.id))
+                ..where((t) => t.routineExerciseId.equals(re.syncId))
                 ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
               .get();
-      final alts = await _loadAlternatives(re.id);
-      final mus = await _loadMusclesFor(ex.id);
+      final alts = await _loadAlternatives(re.syncId);
+      final mus = await _loadMusclesFor(ex.syncId);
       result.add(
         FullRoutineExercise(
           routineExercise: re,
@@ -824,7 +868,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<RoutineAlternative>> _loadAlternatives(
-    int routineExerciseId,
+    String routineExerciseId,
   ) async {
     final alts =
         await (select(routineExerciseAlternatives)
@@ -835,14 +879,14 @@ class AppDatabase extends _$AppDatabase {
     final ids = alts.map((a) => a.exerciseId).toList();
     final exs = await (select(
       exercises,
-    )..where((t) => t.id.isIn(ids))).get();
-    final byId = {for (final e in exs) e.id: e};
+    )..where((t) => t.syncId.isIn(ids))).get();
+    final byId = {for (final e in exs) e.syncId: e};
     final result = <RoutineAlternative>[];
     for (final a in alts) {
       final ex = byId[a.exerciseId];
       if (ex == null) continue;
       final ps = await (select(alternativePlannedSets)
-            ..where((t) => t.alternativeId.equals(a.id))
+            ..where((t) => t.alternativeId.equals(a.syncId))
             ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
           .get();
       result.add(RoutineAlternative(join: a, exercise: ex, plannedSets: ps));
@@ -850,10 +894,10 @@ class AppDatabase extends _$AppDatabase {
     return result;
   }
 
-  Future<List<Muscle>> _loadMusclesFor(int exerciseId) async {
+  Future<List<Muscle>> _loadMusclesFor(String exerciseId) async {
     final rows =
         await (select(exerciseMuscles).join([
-              innerJoin(muscles, muscles.id.equalsExp(exerciseMuscles.muscleId)),
+              innerJoin(muscles, muscles.syncId.equalsExp(exerciseMuscles.muscleId)),
             ])
               ..where(exerciseMuscles.exerciseId.equals(exerciseId))
               ..orderBy([OrderingTerm.asc(muscles.name)]))
@@ -861,7 +905,7 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.readTable(muscles)).toList();
   }
 
-  Stream<FullRoutine?> watchFullRoutine(int routineId) async* {
+  Stream<FullRoutine?> watchFullRoutine(String routineId) async* {
     yield await loadFullRoutine(routineId);
     final updates = tableUpdates(
       TableUpdateQuery.onAllTables([
@@ -881,14 +925,15 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<RoutineExercise> addExerciseToRoutine({
-    required int routineId,
-    required int exerciseId,
+    required String routineId,
+    required String exerciseId,
   }) async {
     return transaction(() async {
       final maxOrder = await _maxOrderIndex(routineId);
-      final id = await into(routineExercises).insert(
+      final id = _uuid.v4();
+      await into(routineExercises).insert(
         RoutineExercisesCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           routineId: routineId,
           exerciseId: exerciseId,
           orderIndex: maxOrder + 1,
@@ -897,31 +942,31 @@ class AppDatabase extends _$AppDatabase {
       await _bumpRoutineVersion(routineId);
       return (select(
         routineExercises,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
-  Future<void> removeRoutineExercise(int routineExerciseId) async {
+  Future<void> removeRoutineExercise(String routineExerciseId) async {
     await transaction(() async {
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(routineExerciseId))).getSingleOrNull();
       if (re == null) return;
       await (delete(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).go();
+      )..where((t) => t.syncId.equals(routineExerciseId))).go();
       await _bumpRoutineVersion(re.routineId);
     });
   }
 
   Future<void> reorderRoutineExercises({
-    required int routineId,
-    required List<int> orderedIds,
+    required String routineId,
+    required List<String> orderedIds,
   }) async {
     await transaction(() async {
       for (var i = 0; i < orderedIds.length; i++) {
         await (update(routineExercises)..where(
-              (t) => t.id.equals(orderedIds[i]) & t.routineId.equals(routineId),
+              (t) => t.syncId.equals(orderedIds[i]) & t.routineId.equals(routineId),
             ))
             .write(RoutineExercisesCompanion(orderIndex: Value(i)));
       }
@@ -929,34 +974,34 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> setRestSeconds(int routineExerciseId, int seconds) async {
+  Future<void> setRestSeconds(String routineExerciseId, int seconds) async {
     await transaction(() async {
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(routineExerciseId))).getSingleOrNull();
       if (re == null) return;
       await (update(routineExercises)
-            ..where((t) => t.id.equals(routineExerciseId)))
+            ..where((t) => t.syncId.equals(routineExerciseId)))
           .write(RoutineExercisesCompanion(restSeconds: Value(seconds)));
       await _bumpRoutineVersion(re.routineId);
     });
   }
 
-  Future<void> setSupersetGroup(int routineExerciseId, int? group) async {
+  Future<void> setSupersetGroup(String routineExerciseId, int? group) async {
     await transaction(() async {
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(routineExerciseId))).getSingleOrNull();
       if (re == null) return;
       await (update(routineExercises)
-            ..where((t) => t.id.equals(routineExerciseId)))
+            ..where((t) => t.syncId.equals(routineExerciseId)))
           .write(RoutineExercisesCompanion(supersetGroup: Value(group)));
       await _bumpRoutineVersion(re.routineId);
     });
   }
 
   Future<PlannedSet> addPlannedSet({
-    required int routineExerciseId,
+    required String routineExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -964,11 +1009,12 @@ class AppDatabase extends _$AppDatabase {
     return transaction(() async {
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(routineExerciseId))).getSingle();
       final maxIndex = await _maxSetIndex(routineExerciseId);
-      final id = await into(plannedSets).insert(
+      final id = _uuid.v4();
+      await into(plannedSets).insert(
         PlannedSetsCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           routineExerciseId: routineExerciseId,
           setIndex: maxIndex + 1,
           targetReps: Value(targetReps),
@@ -977,12 +1023,12 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
       await _bumpRoutineVersion(re.routineId);
-      return (select(plannedSets)..where((t) => t.id.equals(id))).getSingle();
+      return (select(plannedSets)..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
   Future<void> updatePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -990,12 +1036,12 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       final ps = await (select(
         plannedSets,
-      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(id))).getSingleOrNull();
       if (ps == null) return;
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(ps.routineExerciseId))).getSingle();
-      await (update(plannedSets)..where((t) => t.id.equals(id))).write(
+      )..where((t) => t.syncId.equals(ps.routineExerciseId))).getSingle();
+      await (update(plannedSets)..where((t) => t.syncId.equals(id))).write(
         PlannedSetsCompanion(
           targetReps: Value(targetReps),
           targetWeightKg: Value(targetWeightKg),
@@ -1006,21 +1052,21 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> deletePlannedSet(int id) async {
+  Future<void> deletePlannedSet(String id) async {
     await transaction(() async {
       final ps = await (select(
         plannedSets,
-      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(id))).getSingleOrNull();
       if (ps == null) return;
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(ps.routineExerciseId))).getSingle();
-      await (delete(plannedSets)..where((t) => t.id.equals(id))).go();
+      )..where((t) => t.syncId.equals(ps.routineExerciseId))).getSingle();
+      await (delete(plannedSets)..where((t) => t.syncId.equals(id))).go();
       await _bumpRoutineVersion(re.routineId);
     });
   }
 
-  Future<int> _maxOrderIndex(int routineId) async {
+  Future<int> _maxOrderIndex(String routineId) async {
     final expr = routineExercises.orderIndex.max();
     final query = selectOnly(routineExercises)
       ..where(routineExercises.routineId.equals(routineId))
@@ -1029,7 +1075,7 @@ class AppDatabase extends _$AppDatabase {
     return row?.read(expr) ?? -1;
   }
 
-  Future<int> _maxSetIndex(int routineExerciseId) async {
+  Future<int> _maxSetIndex(String routineExerciseId) async {
     final expr = plannedSets.setIndex.max();
     final query = selectOnly(plannedSets)
       ..where(plannedSets.routineExerciseId.equals(routineExerciseId))
@@ -1038,10 +1084,10 @@ class AppDatabase extends _$AppDatabase {
     return row?.read(expr) ?? -1;
   }
 
-  Future<void> _bumpRoutineVersion(int routineId) async {
+  Future<void> _bumpRoutineVersion(String routineId) async {
     await customUpdate(
-      'UPDATE routines SET version = version + 1 WHERE id = ?',
-      variables: [Variable.withInt(routineId)],
+      'UPDATE routines SET version = version + 1 WHERE sync_id = ?',
+      variables: [Variable.withString(routineId)],
       updates: {routines},
     );
   }
@@ -1049,13 +1095,13 @@ class AppDatabase extends _$AppDatabase {
   // -- Routine exercise alternatives ------------------------------------
 
   Future<RoutineExerciseAlternative> addRoutineExerciseAlternative({
-    required int routineExerciseId,
-    required int exerciseId,
+    required String routineExerciseId,
+    required String exerciseId,
   }) async {
     return transaction(() async {
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(routineExerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(routineExerciseId))).getSingle();
       final maxExpr = routineExerciseAlternatives.orderIndex.max();
       final row =
           await (selectOnly(routineExerciseAlternatives)
@@ -1067,9 +1113,10 @@ class AppDatabase extends _$AppDatabase {
                 ..addColumns([maxExpr]))
               .getSingleOrNull();
       final next = (row?.read(maxExpr) ?? -1) + 1;
-      final id = await into(routineExerciseAlternatives).insert(
+      final id = _uuid.v4();
+      await into(routineExerciseAlternatives).insert(
         RoutineExerciseAlternativesCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           routineExerciseId: routineExerciseId,
           exerciseId: exerciseId,
           orderIndex: next,
@@ -1078,12 +1125,12 @@ class AppDatabase extends _$AppDatabase {
       await _bumpRoutineVersion(re.routineId);
       return (select(
         routineExerciseAlternatives,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
   Future<AlternativePlannedSet> addAlternativePlannedSet({
-    required int alternativeId,
+    required String alternativeId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -1091,19 +1138,20 @@ class AppDatabase extends _$AppDatabase {
     return transaction(() async {
       final alt = await (select(
         routineExerciseAlternatives,
-      )..where((t) => t.id.equals(alternativeId))).getSingle();
+      )..where((t) => t.syncId.equals(alternativeId))).getSingle();
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(alt.routineExerciseId))).getSingle();
       final maxExpr = alternativePlannedSets.setIndex.max();
       final row = await (selectOnly(alternativePlannedSets)
             ..where(alternativePlannedSets.alternativeId.equals(alternativeId))
             ..addColumns([maxExpr]))
           .getSingleOrNull();
       final next = (row?.read(maxExpr) ?? -1) + 1;
-      final id = await into(alternativePlannedSets).insert(
+      final id = _uuid.v4();
+      await into(alternativePlannedSets).insert(
         AlternativePlannedSetsCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           alternativeId: alternativeId,
           setIndex: next,
           targetReps: Value(targetReps),
@@ -1114,12 +1162,12 @@ class AppDatabase extends _$AppDatabase {
       await _bumpRoutineVersion(re.routineId);
       return (select(
         alternativePlannedSets,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
   Future<void> updateAlternativePlannedSet({
-    required int id,
+    required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -1127,15 +1175,15 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       final ps = await (select(
         alternativePlannedSets,
-      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(id))).getSingleOrNull();
       if (ps == null) return;
       final alt = await (select(
         routineExerciseAlternatives,
-      )..where((t) => t.id.equals(ps.alternativeId))).getSingle();
+      )..where((t) => t.syncId.equals(ps.alternativeId))).getSingle();
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
-      await (update(alternativePlannedSets)..where((t) => t.id.equals(id)))
+      )..where((t) => t.syncId.equals(alt.routineExerciseId))).getSingle();
+      await (update(alternativePlannedSets)..where((t) => t.syncId.equals(id)))
           .write(
             AlternativePlannedSetsCompanion(
               targetReps: Value(targetReps),
@@ -1147,35 +1195,35 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> deleteAlternativePlannedSet(int id) async {
+  Future<void> deleteAlternativePlannedSet(String id) async {
     await transaction(() async {
       final ps = await (select(
         alternativePlannedSets,
-      )..where((t) => t.id.equals(id))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(id))).getSingleOrNull();
       if (ps == null) return;
       final alt = await (select(
         routineExerciseAlternatives,
-      )..where((t) => t.id.equals(ps.alternativeId))).getSingle();
+      )..where((t) => t.syncId.equals(ps.alternativeId))).getSingle();
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingle();
-      await (delete(alternativePlannedSets)..where((t) => t.id.equals(id)))
+      )..where((t) => t.syncId.equals(alt.routineExerciseId))).getSingle();
+      await (delete(alternativePlannedSets)..where((t) => t.syncId.equals(id)))
           .go();
       await _bumpRoutineVersion(re.routineId);
     });
   }
 
-  Future<void> removeRoutineExerciseAlternative(int alternativeId) async {
+  Future<void> removeRoutineExerciseAlternative(String alternativeId) async {
     await transaction(() async {
       final alt = await (select(
         routineExerciseAlternatives,
-      )..where((t) => t.id.equals(alternativeId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(alternativeId))).getSingleOrNull();
       if (alt == null) return;
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(alt.routineExerciseId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(alt.routineExerciseId))).getSingleOrNull();
       await (delete(routineExerciseAlternatives)
-            ..where((t) => t.id.equals(alternativeId)))
+            ..where((t) => t.syncId.equals(alternativeId)))
           .go();
       if (re != null) {
         await _bumpRoutineVersion(re.routineId);
@@ -1191,11 +1239,11 @@ class AppDatabase extends _$AppDatabase {
     )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
   }
 
-  Future<List<Muscle>> musclesForExercise(int exerciseId) =>
+  Future<List<Muscle>> musclesForExercise(String exerciseId) =>
       _loadMusclesFor(exerciseId);
 
   /// Replace the muscle set for an exercise with [muscleIds].
-  Future<void> setExerciseMuscles(int exerciseId, List<int> muscleIds) async {
+  Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds) async {
     await transaction(() async {
       await (delete(
         exerciseMuscles,
@@ -1232,31 +1280,33 @@ class AppDatabase extends _$AppDatabase {
   /// Start a workout and snapshot its routine into workout-owned tables.
   /// Returns the new workout row; the snapshot is reachable via
   /// [loadFullWorkout] / [watchFullWorkout].
-  Future<Workout> startWorkout(int routineId) async {
+  Future<Workout> startWorkout(String routineId) async {
     return transaction(() async {
       final full = await loadFullRoutine(routineId);
       if (full == null) {
         throw StateError('Routine $routineId not found');
       }
-      final workoutId = await into(workouts).insert(
+      final workoutId = _uuid.v4();
+      await into(workouts).insert(
         WorkoutsCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: workoutId,
           routineId: Value(routineId),
           startedAt: DateTime.now(),
         ),
       );
       for (final re in full.exercises) {
-        final weId = await into(workoutExercises).insert(
+        final weId = _uuid.v4();
+        await into(workoutExercises).insert(
           WorkoutExercisesCompanion.insert(
-            syncId: _uuid.v4(),
+            syncId: weId,
             workoutId: workoutId,
-            exerciseId: Value(re.exercise.id),
+            exerciseId: Value(re.exercise.syncId),
             exerciseName: re.exercise.name,
             orderIndex: re.routineExercise.orderIndex,
             restSeconds: Value(re.routineExercise.restSeconds),
             supersetGroup: Value(re.routineExercise.supersetGroup),
             kind: Value(re.exercise.kind),
-            routineExerciseId: Value(re.routineExercise.id),
+            routineExerciseId: Value(re.routineExercise.syncId),
           ),
         );
         for (final ps in re.plannedSets) {
@@ -1274,16 +1324,16 @@ class AppDatabase extends _$AppDatabase {
       }
       return (select(
         workouts,
-      )..where((t) => t.id.equals(workoutId))).getSingle();
+      )..where((t) => t.syncId.equals(workoutId))).getSingle();
     });
   }
 
   Future<void> finishWorkout(
-    int workoutId, {
+    String workoutId, {
     int? avgHeartRate,
     int? maxHeartRate,
   }) async {
-    await (update(workouts)..where((t) => t.id.equals(workoutId))).write(
+    await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
       WorkoutsCompanion(
         endedAt: Value(DateTime.now()),
         avgHeartRate: Value(avgHeartRate),
@@ -1293,11 +1343,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateWorkoutTimes({
-    required int workoutId,
+    required String workoutId,
     required DateTime startedAt,
     required DateTime? endedAt,
   }) async {
-    await (update(workouts)..where((t) => t.id.equals(workoutId))).write(
+    await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
       WorkoutsCompanion(
         startedAt: Value(startedAt),
         endedAt: Value(endedAt),
@@ -1305,23 +1355,23 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Future<void> deleteWorkout(int workoutId) async {
-    await (delete(workouts)..where((t) => t.id.equals(workoutId))).go();
+  Future<void> deleteWorkout(String workoutId) async {
+    await (delete(workouts)..where((t) => t.syncId.equals(workoutId))).go();
   }
 
   /// Full snapshot of a workout: its (optional) routine, every workout
   /// exercise + its sets, and any completions resolved per set.
-  Future<FullWorkout?> loadFullWorkout(int workoutId) async {
+  Future<FullWorkout?> loadFullWorkout(String workoutId) async {
     final w = await (select(
       workouts,
-    )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
     if (w == null) return null;
     // A routine tombstoned via sync (backref not severed locally) reads as
     // gone here too, matching a locally-deleted routine's null backref.
     final routine = w.routineId == null
         ? null
         : await (select(routines)
-                ..where((t) => t.id.equals(w.routineId!) & t.deletedAt.isNull()))
+                ..where((t) => t.syncId.equals(w.routineId!) & t.deletedAt.isNull()))
               .getSingleOrNull();
     final wes =
         await (select(workoutExercises)
@@ -1338,7 +1388,7 @@ class AppDatabase extends _$AppDatabase {
     for (final we in wes) {
       final sets =
           await (select(workoutSets)
-                ..where((t) => t.workoutExerciseId.equals(we.id))
+                ..where((t) => t.workoutExerciseId.equals(we.syncId))
                 ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
               .get();
       result.add(
@@ -1348,7 +1398,7 @@ class AppDatabase extends _$AppDatabase {
               .map(
                 (s) => FullWorkoutSet(
                   workoutSet: s,
-                  completion: completionByWorkoutSet[s.id],
+                  completion: completionByWorkoutSet[s.syncId],
                 ),
               )
               .toList(),
@@ -1358,7 +1408,7 @@ class AppDatabase extends _$AppDatabase {
     return FullWorkout(workout: w, routine: routine, exercises: result);
   }
 
-  Stream<FullWorkout?> watchFullWorkout(int workoutId) async* {
+  Stream<FullWorkout?> watchFullWorkout(String workoutId) async* {
     yield await loadFullWorkout(workoutId);
     final updates = tableUpdates(
       TableUpdateQuery.onAllTables([
@@ -1374,7 +1424,7 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  Future<List<SetCompletion>> completionsForWorkout(int workoutId) {
+  Future<List<SetCompletion>> completionsForWorkout(String workoutId) {
     return (select(setCompletions)
           ..where((t) => t.workoutId.equals(workoutId))
           ..orderBy([(t) => OrderingTerm.asc(t.completedAt)]))
@@ -1385,28 +1435,28 @@ class AppDatabase extends _$AppDatabase {
   /// workout other than [excludeWorkoutId]. Used by the watch run page to show
   /// "Last: 8 × 80 kg" alongside the current set's targets.
   Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
-    required int exerciseId,
+    required String exerciseId,
     required int setIndex,
-    required int excludeWorkoutId,
+    required String excludeWorkoutId,
   }) async {
     final query =
         select(setCompletions).join([
             innerJoin(
               workoutSets,
-              workoutSets.id.equalsExp(setCompletions.workoutSetId),
+              workoutSets.syncId.equalsExp(setCompletions.workoutSetId),
             ),
             innerJoin(
               workoutExercises,
-              workoutExercises.id.equalsExp(workoutSets.workoutExerciseId),
+              workoutExercises.syncId.equalsExp(workoutSets.workoutExerciseId),
             ),
             innerJoin(
               workouts,
-              workouts.id.equalsExp(setCompletions.workoutId),
+              workouts.syncId.equalsExp(setCompletions.workoutId),
             ),
           ])
           ..where(workoutExercises.exerciseId.equals(exerciseId))
           ..where(workoutSets.setIndex.equals(setIndex))
-          ..where(workouts.id.equals(excludeWorkoutId).not())
+          ..where(workouts.syncId.equals(excludeWorkoutId).not())
           ..where(workouts.endedAt.isNotNull())
           ..orderBy([OrderingTerm(expression: workouts.startedAt, mode: OrderingMode.desc)])
           ..limit(1);
@@ -1417,10 +1467,10 @@ class AppDatabase extends _$AppDatabase {
   /// Sets in [workoutId] whose actuals strictly beat the routine's current
   /// target. Empty when the routine is gone, the workout is purely ad-hoc, or
   /// nothing exceeded — the phone uses that to hide the banner entirely.
-  Future<List<WorkoutImprovement>> findWorkoutImprovements(int workoutId) async {
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId) async {
     final w = await (select(
       workouts,
-    )..where((t) => t.id.equals(workoutId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
     if (w == null || w.routineId == null) return const [];
     final wes = await (select(workoutExercises)
           ..where((t) => t.workoutId.equals(workoutId))
@@ -1438,26 +1488,26 @@ class AppDatabase extends _$AppDatabase {
       if (reId == null) continue;
       final re = await (select(
         routineExercises,
-      )..where((t) => t.id.equals(reId))).getSingleOrNull();
+      )..where((t) => t.syncId.equals(reId))).getSingleOrNull();
       if (re == null) continue;
       List<PlannedSet> primaryPs = const [];
       List<AlternativePlannedSet> altPs = const [];
       bool useAlt = false;
       if (we.exerciseId == re.exerciseId) {
         primaryPs = await (select(plannedSets)
-              ..where((t) => t.routineExerciseId.equals(re.id))
+              ..where((t) => t.routineExerciseId.equals(re.syncId))
               ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
             .get();
       } else if (we.exerciseId != null) {
         final altRow = await (select(routineExerciseAlternatives)..where(
               (t) =>
-                  t.routineExerciseId.equals(re.id) &
+                  t.routineExerciseId.equals(re.syncId) &
                   t.exerciseId.equals(we.exerciseId!),
             ))
             .getSingleOrNull();
         if (altRow == null) continue;
         altPs = await (select(alternativePlannedSets)
-              ..where((t) => t.alternativeId.equals(altRow.id))
+              ..where((t) => t.alternativeId.equals(altRow.syncId))
               ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
             .get();
         if (altPs.isEmpty) continue;
@@ -1466,16 +1516,16 @@ class AppDatabase extends _$AppDatabase {
         continue;
       }
       final wSets = await (select(workoutSets)
-            ..where((t) => t.workoutExerciseId.equals(we.id))
+            ..where((t) => t.workoutExerciseId.equals(we.syncId))
             ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
           .get();
       for (final ws in wSets) {
-        final c = completionByWorkoutSet[ws.id];
+        final c = completionByWorkoutSet[ws.syncId];
         if (c == null) continue;
         int? tReps;
         double? tWeight;
         int? tSeconds;
-        int targetPsId;
+        String targetPsId;
         if (useAlt) {
           final ps = altPs
               .where((p) => p.setIndex == ws.setIndex)
@@ -1484,7 +1534,7 @@ class AppDatabase extends _$AppDatabase {
           tReps = ps.targetReps;
           tWeight = ps.targetWeightKg;
           tSeconds = ps.targetSeconds;
-          targetPsId = ps.id;
+          targetPsId = ps.syncId;
         } else {
           final ps = primaryPs
               .where((p) => p.setIndex == ws.setIndex)
@@ -1493,7 +1543,7 @@ class AppDatabase extends _$AppDatabase {
           tReps = ps.targetReps;
           tWeight = ps.targetWeightKg;
           tSeconds = ps.targetSeconds;
-          targetPsId = ps.id;
+          targetPsId = ps.syncId;
         }
         final improved = _isImprovement(
           kind: we.kind,
@@ -1551,7 +1601,7 @@ class AppDatabase extends _$AppDatabase {
   /// Promote every outstanding improvement in [workoutId] to its routine
   /// planned set. Idempotent — once applied, the same call returns an empty
   /// improvement list and is a no-op.
-  Future<void> applyWorkoutImprovements(int workoutId) async {
+  Future<void> applyWorkoutImprovements(String workoutId) async {
     final improvements = await findWorkoutImprovements(workoutId);
     if (improvements.isEmpty) return;
     await transaction(() async {
@@ -1577,7 +1627,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch all completions for a workout, indexed by workoutSetId for fast
   /// lookup from the watch run page.
-  Stream<Map<int, SetCompletion>> watchCompletionsByWorkoutSet(int workoutId) {
+  Stream<Map<String, SetCompletion>> watchCompletionsByWorkoutSet(String workoutId) {
     return (select(setCompletions)..where((t) => t.workoutId.equals(workoutId)))
         .watch()
         .map((rows) => {for (final c in rows) c.workoutSetId: c});
@@ -1590,8 +1640,8 @@ class AppDatabase extends _$AppDatabase {
   /// existing value untouched on an update. That way re-marking a set with no
   /// new HR samples buffered doesn't clobber a previously-captured value.
   Future<SetCompletion> upsertSetCompletion({
-    required int workoutId,
-    required int workoutSetId,
+    required String workoutId,
+    required String workoutSetId,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
@@ -1608,7 +1658,7 @@ class AppDatabase extends _$AppDatabase {
       if (existing != null) {
         await (update(
           setCompletions,
-        )..where((t) => t.id.equals(existing.id))).write(
+        )..where((t) => t.syncId.equals(existing.syncId))).write(
           SetCompletionsCompanion(
             actualReps: Value(actualReps),
             actualWeightKg: Value(actualWeightKg),
@@ -1620,11 +1670,12 @@ class AppDatabase extends _$AppDatabase {
         );
         return (select(
           setCompletions,
-        )..where((t) => t.id.equals(existing.id))).getSingle();
+        )..where((t) => t.syncId.equals(existing.syncId))).getSingle();
       }
-      final id = await into(setCompletions).insert(
+      final id = _uuid.v4();
+      await into(setCompletions).insert(
         SetCompletionsCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           workoutId: workoutId,
           workoutSetId: workoutSetId,
           actualReps: Value(actualReps),
@@ -1637,19 +1688,19 @@ class AppDatabase extends _$AppDatabase {
       );
       return (select(
         setCompletions,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
   /// Update a completion by id (workout-edit flow on phone).
   Future<void> updateCompletion({
-    required int id,
+    required String id,
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
     DateTime? completedAt,
   }) async {
-    await (update(setCompletions)..where((t) => t.id.equals(id))).write(
+    await (update(setCompletions)..where((t) => t.syncId.equals(id))).write(
       SetCompletionsCompanion(
         actualReps: Value(actualReps),
         actualWeightKg: Value(actualWeightKg),
@@ -1663,8 +1714,8 @@ class AppDatabase extends _$AppDatabase {
 
   /// Remove the completion (if any) for (workoutId, workoutSetId).
   Future<void> deleteSetCompletionFor({
-    required int workoutId,
-    required int workoutSetId,
+    required String workoutId,
+    required String workoutSetId,
   }) async {
     await (delete(setCompletions)..where(
           (t) =>
@@ -1674,31 +1725,32 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
-  Future<void> deleteCompletion(int id) async {
-    await (delete(setCompletions)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteCompletion(String id) async {
+    await (delete(setCompletions)..where((t) => t.syncId.equals(id))).go();
   }
 
   // -- Workout snapshot editing (phone history page) -------------------
 
   Future<WorkoutExercise> addWorkoutExercise({
-    required int workoutId,
-    required int exerciseId,
+    required String workoutId,
+    required String exerciseId,
   }) async {
     return transaction(() async {
       final ex = await (select(
         exercises,
-      )..where((t) => t.id.equals(exerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(exerciseId))).getSingle();
       final maxOrderExpr = workoutExercises.orderIndex.max();
       final row = await (selectOnly(workoutExercises)
             ..where(workoutExercises.workoutId.equals(workoutId))
             ..addColumns([maxOrderExpr]))
           .getSingleOrNull();
       final next = (row?.read(maxOrderExpr) ?? -1) + 1;
-      final id = await into(workoutExercises).insert(
+      final id = _uuid.v4();
+      await into(workoutExercises).insert(
         WorkoutExercisesCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           workoutId: workoutId,
-          exerciseId: Value(ex.id),
+          exerciseId: Value(ex.syncId),
           exerciseName: ex.name,
           orderIndex: next,
           kind: Value(ex.kind),
@@ -1706,18 +1758,18 @@ class AppDatabase extends _$AppDatabase {
       );
       return (select(
         workoutExercises,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
-  Future<void> removeWorkoutExercise(int workoutExerciseId) async {
+  Future<void> removeWorkoutExercise(String workoutExerciseId) async {
     await (delete(
       workoutExercises,
-    )..where((t) => t.id.equals(workoutExerciseId))).go();
+    )..where((t) => t.syncId.equals(workoutExerciseId))).go();
   }
 
   Future<WorkoutSet> addWorkoutSet({
-    required int workoutExerciseId,
+    required String workoutExerciseId,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
@@ -1730,9 +1782,10 @@ class AppDatabase extends _$AppDatabase {
                 ..addColumns([maxIndexExpr]))
               .getSingleOrNull();
       final next = (row?.read(maxIndexExpr) ?? -1) + 1;
-      final id = await into(workoutSets).insert(
+      final id = _uuid.v4();
+      await into(workoutSets).insert(
         WorkoutSetsCompanion.insert(
-          syncId: _uuid.v4(),
+          syncId: id,
           workoutExerciseId: workoutExerciseId,
           setIndex: next,
           targetReps: Value(targetReps),
@@ -1742,12 +1795,12 @@ class AppDatabase extends _$AppDatabase {
       );
       return (select(
         workoutSets,
-      )..where((t) => t.id.equals(id))).getSingle();
+      )..where((t) => t.syncId.equals(id))).getSingle();
     });
   }
 
-  Future<void> removeWorkoutSet(int workoutSetId) async {
-    await (delete(workoutSets)..where((t) => t.id.equals(workoutSetId))).go();
+  Future<void> removeWorkoutSet(String workoutSetId) async {
+    await (delete(workoutSets)..where((t) => t.syncId.equals(workoutSetId))).go();
   }
 
   /// Mid-workout swap: change which canonical exercise this snapshot row
@@ -1757,15 +1810,15 @@ class AppDatabase extends _$AppDatabase {
   /// sets, targets are left as-is — falling back to "share with primary"
   /// behaviour.
   Future<void> swapWorkoutExercise({
-    required int workoutExerciseId,
-    required int newExerciseId,
+    required String workoutExerciseId,
+    required String newExerciseId,
   }) async {
     await transaction(() async {
       final ex = await (select(
         exercises,
-      )..where((t) => t.id.equals(newExerciseId))).getSingle();
+      )..where((t) => t.syncId.equals(newExerciseId))).getSingle();
       final we = await (select(workoutExercises)
-            ..where((t) => t.id.equals(workoutExerciseId)))
+            ..where((t) => t.syncId.equals(workoutExerciseId)))
           .getSingle();
 
       // Look up the alternative row (and its planned sets) for this slot, if
@@ -1781,7 +1834,7 @@ class AppDatabase extends _$AppDatabase {
             alts.where((a) => a.exerciseId == newExerciseId).firstOrNull;
         if (altRow != null) {
           altPs = await (select(alternativePlannedSets)
-                ..where((t) => t.alternativeId.equals(altRow.id))
+                ..where((t) => t.alternativeId.equals(altRow.syncId))
                 ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
               .get();
         }
@@ -1818,8 +1871,8 @@ class AppDatabase extends _$AppDatabase {
             );
             continue;
           }
-          if (completedSetIds.contains(existing.id)) continue;
-          await (update(workoutSets)..where((t) => t.id.equals(existing.id)))
+          if (completedSetIds.contains(existing.syncId)) continue;
+          await (update(workoutSets)..where((t) => t.syncId.equals(existing.syncId)))
               .write(
                 WorkoutSetsCompanion(
                   targetReps: Value(aps.targetReps),
@@ -1831,10 +1884,10 @@ class AppDatabase extends _$AppDatabase {
       }
 
       await (update(workoutExercises)
-            ..where((t) => t.id.equals(workoutExerciseId)))
+            ..where((t) => t.syncId.equals(workoutExerciseId)))
           .write(
             WorkoutExercisesCompanion(
-              exerciseId: Value(ex.id),
+              exerciseId: Value(ex.syncId),
               exerciseName: Value(ex.name),
               kind: Value(ex.kind),
             ),
@@ -1848,19 +1901,19 @@ class AppDatabase extends _$AppDatabase {
   /// pointer (e.g., pre-v6 workouts) or if the slot was removed from the
   /// routine since the workout started.
   Future<List<Exercise>> loadAlternativesForWorkoutExercise(
-    int workoutExerciseId,
+    String workoutExerciseId,
   ) async {
     final we = await (select(
       workoutExercises,
-    )..where((t) => t.id.equals(workoutExerciseId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(workoutExerciseId))).getSingleOrNull();
     if (we == null) return const [];
     final reId = we.routineExerciseId;
     if (reId == null) return const [];
     final re = await (select(
       routineExercises,
-    )..where((t) => t.id.equals(reId))).getSingleOrNull();
+    )..where((t) => t.syncId.equals(reId))).getSingleOrNull();
     if (re == null) return const [];
-    final variantIds = <int>{re.exerciseId};
+    final variantIds = <String>{re.exerciseId};
     final alts = await (select(routineExerciseAlternatives)
           ..where((t) => t.routineExerciseId.equals(reId))
           ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
@@ -1871,17 +1924,17 @@ class AppDatabase extends _$AppDatabase {
     if (variantIds.isEmpty) return const [];
     final exs = await (select(
       exercises,
-    )..where((t) => t.id.isIn(variantIds))).get();
+    )..where((t) => t.syncId.isIn(variantIds))).get();
     // Stable order: primary first if still present, then alternatives in
     // their stored orderIndex.
-    final byId = {for (final e in exs) e.id: e};
+    final byId = {for (final e in exs) e.syncId: e};
     final ordered = <Exercise>[];
     if (current != re.exerciseId && byId.containsKey(re.exerciseId)) {
       ordered.add(byId[re.exerciseId]!);
     }
     for (final a in alts) {
       final ex = byId[a.exerciseId];
-      if (ex != null && ex.id != current) ordered.add(ex);
+      if (ex != null && ex.syncId != current) ordered.add(ex);
     }
     return ordered;
   }

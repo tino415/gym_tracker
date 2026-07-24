@@ -12,7 +12,7 @@ import 'widgets/round_safe_area.dart';
 class WatchAlternativePickerPage extends ConsumerStatefulWidget {
   const WatchAlternativePickerPage({super.key, required this.workoutExerciseId});
 
-  final int workoutExerciseId;
+  final String workoutExerciseId;
 
   @override
   ConsumerState<WatchAlternativePickerPage> createState() =>
@@ -34,7 +34,7 @@ class _WatchAlternativePickerPageState
   Future<void> _pick(Exercise ex) async {
     await ref.read(databaseProvider).swapWorkoutExercise(
           workoutExerciseId: widget.workoutExerciseId,
-          newExerciseId: ex.id,
+          newExerciseId: ex.syncId,
         );
     if (!mounted) return;
     // Pop with `true` so the run page knows to reload the active set's

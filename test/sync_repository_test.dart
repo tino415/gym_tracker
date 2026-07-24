@@ -153,7 +153,7 @@ void main() {
       // Children gone; the routine reads as absent.
       expect(await db.select(db.routineExercises).get(), isEmpty);
       expect(await db.select(db.plannedSets).get(), isEmpty);
-      expect(await db.loadFullRoutine(routine.id), isNull);
+      expect(await db.loadFullRoutine(routine.syncId), isNull);
     });
 
     test('a tombstone older than a local edit is ignored (edit wins)',
@@ -174,7 +174,7 @@ void main() {
       final routine = await db.select(db.routines).getSingle();
       expect(routine.deletedAt, isNull);
       expect(routine.name, 'v3');
-      expect(await db.loadFullRoutine(routine.id), isNotNull);
+      expect(await db.loadFullRoutine(routine.syncId), isNotNull);
     });
 
     test('a tombstone for an unseen routine suppresses a stale re-creation',
@@ -192,7 +192,7 @@ void main() {
     test('exportAllRoutines emits a tombstone for a soft-deleted routine',
         () async {
       final r = await db.createRoutine('Legs');
-      await db.deleteRoutine(r.id);
+      await db.deleteRoutine(r.syncId);
 
       final exported = await repo.exportAllRoutines();
       expect(exported, hasLength(1));
@@ -225,7 +225,7 @@ void main() {
     test('exportAllExercises carries live exercises with muscle tags', () async {
       final ex = await db.createExercise('Row');
       final m = await (db.select(db.muscles)..limit(1)).getSingle();
-      await db.setExerciseMuscles(ex.id, [m.id]);
+      await db.setExerciseMuscles(ex.syncId, [m.syncId]);
 
       final exported = await repo.exportAllExercises();
       final dto = exported.firstWhere((e) => e.syncId == ex.syncId);
@@ -237,7 +237,7 @@ void main() {
     test('exportAllExercises emits a tombstone for a soft-deleted exercise',
         () async {
       final ex = await db.createExercise('Row');
-      await db.deleteExercise(ex.id);
+      await db.deleteExercise(ex.syncId);
       final exported = await repo.exportAllExercises();
       final dto = exported.firstWhere((e) => e.syncId == ex.syncId);
       expect(dto.deletedAtMs, isNotNull);
@@ -256,7 +256,7 @@ void main() {
       final lib = await db.loadExercisesWithMuscles();
       final entry = lib.firstWhere((e) => e.exercise.syncId == 'ex-lib-1');
       expect(entry.exercise.name, 'Overhead Press');
-      expect(entry.muscles.map((x) => x.id), contains(m.id));
+      expect(entry.muscles.map((x) => x.syncId), contains(m.syncId));
     });
 
     test('a strictly older bundle is ignored; equal/newer applies', () async {
