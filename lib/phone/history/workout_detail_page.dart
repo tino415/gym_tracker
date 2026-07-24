@@ -62,7 +62,7 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(databaseProvider).deleteWorkout(widget.workoutId);
+    await ref.read(workoutRepositoryProvider).deleteWorkout(widget.workoutId);
     if (!mounted) return;
     router.pop();
   }
@@ -75,7 +75,7 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(databaseProvider);
+    final db = ref.watch(workoutRepositoryProvider);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
@@ -173,7 +173,7 @@ class _Body extends ConsumerWidget {
       time.hour,
       time.minute,
     );
-    final db = ref.read(databaseProvider);
+    final db = ref.read(workoutRepositoryProvider);
     await db.updateWorkoutTimes(
       workoutId: snap.workout.id,
       startedAt: isStart ? merged : snap.workout.startedAt,
@@ -194,7 +194,7 @@ class _Body extends ConsumerWidget {
       seconds: null,
     );
     if (values == null) return;
-    await ref.read(databaseProvider).addWorkoutSet(
+    await ref.read(workoutRepositoryProvider).addWorkoutSet(
           workoutExerciseId: ex.workoutExercise.id,
           targetReps: values.$1,
           targetWeightKg: values.$2,
@@ -227,7 +227,7 @@ class _Body extends ConsumerWidget {
       ),
     );
     if (ok != true) return;
-    await ref.read(databaseProvider).removeWorkoutExercise(ex.workoutExercise.id);
+    await ref.read(workoutRepositoryProvider).removeWorkoutExercise(ex.workoutExercise.id);
   }
 
   Future<void> _editCompletion(
@@ -246,7 +246,7 @@ class _Body extends ConsumerWidget {
       title: c == null ? 'Add completion' : 'Edit completion',
     );
     if (values == null) return;
-    final db = ref.read(databaseProvider);
+    final db = ref.read(workoutRepositoryProvider);
     if (c == null) {
       await db.upsertSetCompletion(
         workoutId: snap.workout.id,
@@ -266,8 +266,9 @@ class _Body extends ConsumerWidget {
   }
 
   Future<void> _addExercise(BuildContext context, WidgetRef ref) async {
-    final db = ref.read(databaseProvider);
-    final exercises = await db.watchExercises().first;
+    final exercises = ref.read(exerciseRepositoryProvider);
+    final workouts = ref.read(workoutRepositoryProvider);
+    final all = await exercises.watchExercises().first;
     if (!context.mounted) return;
     final picked = await showModalBottomSheet<Exercise>(
       context: context,
@@ -276,7 +277,7 @@ class _Body extends ConsumerWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
-            for (final e in exercises)
+            for (final e in all)
               ListTile(
                 leading: Icon(
                   e.kind == exerciseKindTime
@@ -291,7 +292,7 @@ class _Body extends ConsumerWidget {
       ),
     );
     if (picked == null) return;
-    await db.addWorkoutExercise(
+    await workouts.addWorkoutExercise(
       workoutId: snap.workout.id,
       exerciseId: picked.id,
     );
@@ -398,9 +399,9 @@ class _MuscleChipsRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(databaseProvider);
+    final exercises = ref.watch(exerciseRepositoryProvider);
     return FutureBuilder<List<Muscle>>(
-      future: db.musclesForExercise(exerciseId),
+      future: exercises.musclesForExercise(exerciseId),
       builder: (context, snap) {
         final list = snap.data ?? const <Muscle>[];
         if (list.isEmpty) return const SizedBox.shrink();
@@ -691,13 +692,13 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
 
   void _reload() {
     _future = ref
-        .read(databaseProvider)
+        .read(workoutRepositoryProvider)
         .findWorkoutImprovements(widget.workoutId);
   }
 
   Future<void> _apply() async {
     await ref
-        .read(databaseProvider)
+        .read(workoutRepositoryProvider)
         .applyWorkoutImprovements(widget.workoutId);
     if (!mounted) return;
     setState(_reload);

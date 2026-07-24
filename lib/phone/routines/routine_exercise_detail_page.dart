@@ -158,7 +158,7 @@ class _Body extends ConsumerWidget {
                 existing: re.plannedSets[i],
               ),
               onDelete: () => ref
-                  .read(databaseProvider)
+                  .read(routineRepositoryProvider)
                   .deletePlannedSet(re.plannedSets[i].id),
             ),
         const Divider(height: 24),
@@ -191,13 +191,13 @@ class _Body extends ConsumerWidget {
               parentKind: re.kind,
               alternative: alt,
               onDelete: () => ref
-                  .read(databaseProvider)
+                  .read(routineRepositoryProvider)
                   .removeRoutineExerciseAlternative(alt.join.id),
               onAddSet: () => _editAltSetDialog(context, ref, alt: alt),
               onEditSet: (s) =>
                   _editAltSetDialog(context, ref, alt: alt, existing: s),
               onDeleteSet: (s) => ref
-                  .read(databaseProvider)
+                  .read(routineRepositoryProvider)
                   .deleteAlternativePlannedSet(s.id),
             ),
         const Divider(height: 32),
@@ -239,7 +239,7 @@ Future<void> _confirmRemove(
     ),
   );
   if (confirmed != true || !context.mounted) return;
-  await ref.read(databaseProvider).removeRoutineExercise(re.routineExercise.id);
+  await ref.read(routineRepositoryProvider).removeRoutineExercise(re.routineExercise.id);
   if (!context.mounted) return;
   context.pop();
 }
@@ -278,7 +278,7 @@ Future<void> _editRest(
   // Guard against the page unmounting during the dialog await (e.g. a
   // concurrent sync bundle-apply pops it): using ref/context afterwards throws.
   if (result != null && result > 0 && context.mounted) {
-    await ref.read(databaseProvider).setRestSeconds(re.id, result);
+    await ref.read(routineRepositoryProvider).setRestSeconds(re.id, result);
   }
 }
 
@@ -289,7 +289,7 @@ Future<void> _toggleSuperset(
   int idx,
 ) async {
   if (idx == 0) return; // first slot has no previous to group with
-  final db = ref.read(databaseProvider);
+  final db = ref.read(routineRepositoryProvider);
   final prev = full.exercises[idx - 1];
   final currentGroup = current.routineExercise.supersetGroup;
   if (currentGroup != null &&
@@ -329,7 +329,7 @@ Future<void> _addAlternative(
   // Guard: the picker await may outlive the page (a concurrent sync
   // bundle-apply can pop it), and ref.read on a defunct ref throws.
   if (picked == null || !context.mounted) return;
-  await ref.read(databaseProvider).addRoutineExerciseAlternative(
+  await ref.read(routineRepositoryProvider).addRoutineExerciseAlternative(
         routineExerciseId: re.routineExercise.id,
         exerciseId: picked.id,
       );
@@ -415,7 +415,7 @@ Future<void> _editSetDialog(
   // Guard: the dialog await may outlive the page (a concurrent sync
   // bundle-apply can pop it), and ref.read on a defunct ref throws.
   if (saved != true || !context.mounted) return;
-  final db = ref.read(databaseProvider);
+  final db = ref.read(routineRepositoryProvider);
   if (isTime) {
     final seconds = int.tryParse(secondsController.text.trim());
     if (seconds == null || seconds <= 0) return;
@@ -533,7 +533,7 @@ Future<void> _editAltSetDialog(
   // Guard: the dialog await may outlive the page (a concurrent sync
   // bundle-apply can pop it), and ref.read on a defunct ref throws.
   if (saved != true || !context.mounted) return;
-  final db = ref.read(databaseProvider);
+  final db = ref.read(routineRepositoryProvider);
   if (isTime) {
     final seconds = int.tryParse(secondsController.text.trim());
     if (seconds == null || seconds <= 0) return;

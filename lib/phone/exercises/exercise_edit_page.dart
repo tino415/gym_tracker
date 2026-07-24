@@ -35,7 +35,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       setState(() => _initializing = false);
       return;
     }
-    final db = ref.read(databaseProvider);
+    final db = ref.read(exerciseRepositoryProvider);
     final list = await db.watchExercises().first;
     final found = list.where((e) => e.id == widget.exerciseId).firstOrNull;
     final mus = found == null
@@ -60,7 +60,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final db = ref.read(databaseProvider);
+    final db = ref.read(exerciseRepositoryProvider);
     final name = _nameController.text.trim();
     try {
       final Exercise exercise;
@@ -108,7 +108,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     );
     if (confirmed != true) return;
     try {
-      await ref.read(databaseProvider).deleteExercise(_loaded!.id);
+      await ref.read(exerciseRepositoryProvider).deleteExercise(_loaded!.id);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

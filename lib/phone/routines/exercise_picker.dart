@@ -13,7 +13,7 @@ Future<Exercise?> showExercisePicker(
   WidgetRef ref, {
   Set<int> excludeIds = const {},
 }) async {
-  final db = ref.read(databaseProvider);
+  final db = ref.read(exerciseRepositoryProvider);
   final all = await db.watchExercises().first;
   final exercises = excludeIds.isEmpty
       ? all
@@ -105,7 +105,7 @@ Future<Exercise?> showCreateExerciseDialog(
               final name = controller.text.trim();
               if (name.isEmpty) return;
               try {
-                final db = ref.read(databaseProvider);
+                final db = ref.read(exerciseRepositoryProvider);
                 final created = await db.createExercise(name, kind: kind);
                 if (!ctx.mounted) return;
                 Navigator.of(ctx).pop(created);

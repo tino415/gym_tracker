@@ -30,7 +30,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
   }
 
   Future<void> _bootstrap() async {
-    final db = ref.read(databaseProvider);
+    final db = ref.read(routineRepositoryProvider);
     if (_routineId == null) {
       _initialName = '';
       _nameController.text = '';
@@ -50,12 +50,12 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (name.isEmpty) return null;
     if (_routineId != null) {
       if (_nameDirty) {
-        await ref.read(databaseProvider).renameRoutine(_routineId!, name);
+        await ref.read(routineRepositoryProvider).renameRoutine(_routineId!, name);
         _initialName = name;
       }
       return _routineId;
     }
-    final created = await ref.read(databaseProvider).createRoutine(name);
+    final created = await ref.read(routineRepositoryProvider).createRoutine(name);
     _initialName = name;
     setState(() => _routineId = created.id);
     return created.id;
@@ -100,7 +100,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await ref.read(databaseProvider).deleteRoutine(_routineId!);
+    await ref.read(routineRepositoryProvider).deleteRoutine(_routineId!);
     if (!mounted) return;
     context.pop();
   }
@@ -117,7 +117,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (!mounted) return;
     final picked = await showExercisePicker(context, ref);
     if (picked == null || _routineId == null || !mounted) return;
-    await ref.read(databaseProvider).addExerciseToRoutine(
+    await ref.read(routineRepositoryProvider).addExerciseToRoutine(
           routineId: _routineId!,
           exerciseId: picked.id,
         );
@@ -292,7 +292,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
         for (final m in u.members) m.routineExercise.id,
     ];
     await ref
-        .read(databaseProvider)
+        .read(routineRepositoryProvider)
         .reorderRoutineExercises(routineId: routineId, orderedIds: orderedIds);
   }
 
@@ -324,7 +324,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
       }
     }
     await ref
-        .read(databaseProvider)
+        .read(routineRepositoryProvider)
         .reorderRoutineExercises(routineId: routineId, orderedIds: orderedIds);
   }
 }
