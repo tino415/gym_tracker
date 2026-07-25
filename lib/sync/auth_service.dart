@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firestore_backend.dart';
 import 'firestore_transport.dart';
@@ -13,8 +15,28 @@ import 'sync_service.dart';
 /// enabled — the account UI gates on [authBackendEnabledProvider], and every
 /// method here calls FirebaseAuth, which throws unless [Firebase.initializeApp]
 /// has run (guaranteed by [firebaseReadyProvider]).
+/// The `gym-tracker-44a5f` project's OAuth 2.0 **Web** client ID
+/// (`client_type: 3`). Passed to google_sign_in as `serverClientId` on Android
+/// so the Google ID token it returns carries an audience Firebase Auth accepts.
+/// Like the web [FirebaseOptions] in `firestore_backend.dart`, this is a public
+/// client identifier (it ships in the web bundle / APK) — access is gated by
+/// Firebase Auth + Firestore rules, not by keeping it secret — so it's baked in
+/// as the default rather than requiring a `--dart-define` on every build. The
+/// `GOOGLE_SERVER_CLIENT_ID` override exists only for pointing a build at a
+/// different project. (Web doesn't read this — its popup flow knows the client
+/// internally; the const is only consumed on the Android path.)
+const String _googleServerClientId = String.fromEnvironment(
+  'GOOGLE_SERVER_CLIENT_ID',
+  defaultValue:
+      '15728358407-ib0tqktaurck8fr0l6fpsqv6312l8v19.apps.googleusercontent.com',
+);
+
 class AuthService {
   FirebaseAuth get _auth => FirebaseAuth.instance;
+
+  /// google_sign_in v7 requires a single `initialize` before the first
+  /// `authenticate`. Guarded so repeated sign-in attempts don't re-init.
+  bool _googleInitialized = false;
 
   Future<void> signInWithEmail(String email, String password) =>
       _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -30,29 +52,64 @@ class AuthService {
   /// to sever `window.opener` and block the cross-origin auth flow. Requires
   /// the Google provider to be enabled in the Firebase Auth console (the
   /// `.web.app` / `.firebaseapp.com` domains are authorized by default).
-  /// Android: deferred — needs a real OAuth client + SHA-1 registration and the
-  /// google_sign_in credential exchange, so it throws rather than reach an
-  /// unwired path.
+  /// Android: the native google_sign_in v7 Credential Manager flow, whose
+  /// Google ID token is exchanged for a Firebase credential. Requires the app's
+  /// package + signing SHA-1 to be registered as an Android OAuth client in the
+  /// `gym-tracker-44a5f` project, the Google provider enabled in Firebase Auth,
+  /// and [_googleServerClientId] baked into the build. A user-cancelled picker
+  /// is swallowed (returns normally) rather than surfaced as an error.
   Future<void> signInWithGoogle() async {
     if (kIsWeb) {
       await _auth.signInWithPopup(GoogleAuthProvider());
       return;
     }
-    throw UnsupportedError(
-      'Google sign-in on Android needs an OAuth client + SHA-1 setup.',
+    if (_googleServerClientId.isEmpty) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID not set in this build — cannot start the '
+        'Android Google sign-in flow.',
+      );
+    }
+    final google = GoogleSignIn.instance;
+    if (!_googleInitialized) {
+      await google.initialize(serverClientId: _googleServerClientId);
+      _googleInitialized = true;
+    }
+    final GoogleSignInAccount account;
+    try {
+      account = await google.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return; // user aborted
+      rethrow;
+    }
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw FirebaseAuthException(
+        code: 'missing-google-id-token',
+        message: 'Google sign-in returned no ID token.',
+      );
+    }
+    await _auth.signInWithCredential(
+      GoogleAuthProvider.credential(idToken: idToken),
     );
   }
 
   Future<void> signOut() => _auth.signOut();
 }
 
-/// Whether the "Continue with Google" affordance is offered. Web only: the
-/// Firestore-direct web build drops OPFS, so hosting no longer sets the
-/// COOP/COEP isolation headers that used to break the popup auth flow, and
-/// [signInWithGoogle] runs a real popup against the prod project. Android stays
-/// off until an OAuth client + SHA-1 + google_sign_in credential exchange is
-/// wired; email/password remains the active path there.
-bool get googleSignInSupported => kIsWeb;
+/// Whether the "Continue with Google" affordance is offered.
+///
+/// Web: always — the Firestore-direct web build drops OPFS, so hosting no
+/// longer sets the COOP/COEP isolation headers that used to break the popup
+/// auth flow, and [signInWithGoogle] runs a real popup against the prod project.
+///
+/// Android: only when [_googleServerClientId] is baked into the build (a
+/// `--dart-define=GOOGLE_SERVER_CLIENT_ID=...` Firestore build). Gating on the
+/// client ID means an unconfigured build shows no button rather than a button
+/// that throws — email/password stays the fallback. iOS/others remain off.
+bool get googleSignInSupported =>
+    kIsWeb ||
+    (defaultTargetPlatform == TargetPlatform.android &&
+        _googleServerClientId.isNotEmpty);
 
 /// True when this build has the Firestore backend compiled in. Gates the
 /// account button and page so a plain phone/watch build shows no auth UI.

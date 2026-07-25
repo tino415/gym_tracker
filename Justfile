@@ -27,9 +27,13 @@ test:
 watch-apk:
     flutter build apk --debug --target-platform android-arm,android-arm64
 
-# Debug APK for the phone (arm64) + Firestore backend
+# Debug APK for the phone (arm64) + Firestore backend. The Google Web client id
+# (serverClientId for the native Android sign-in) is baked into the app as a
+# const default, so no dart-define is needed here. Override only to target a
+# different Firebase project: GOOGLE_SERVER_CLIENT_ID=... just phone-apk.
 phone-apk:
-    flutter build apk --debug --target-platform android-arm64 --dart-define=SYNC_BACKEND=firestore
+    flutter build apk --debug --target-platform android-arm64 --dart-define=SYNC_BACKEND=firestore \
+      {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
 
 # Integration test on a device/emulator (pass the serial, e.g. 127.0.0.1:5557)
 e2e device:
