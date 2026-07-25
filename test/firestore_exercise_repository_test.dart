@@ -1,0 +1,77 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_tracker/data/database.dart';
+import 'package:gym_tracker/data/firestore_repositories.dart';
+import 'package:gym_tracker/data/muscle_seeds.dart';
+
+void main() {
+  late FakeFirebaseFirestore fs;
+  late FirestoreExerciseRepository repo;
+
+  setUp(() {
+    fs = FakeFirebaseFirestore();
+    repo = FirestoreExerciseRepository(uid: 'u1', firestore: fs);
+  });
+
+  test('createExercise persists and watchExercises emits it', () async {
+    final ex = await repo.createExercise('Bench', kind: exerciseKindReps);
+    expect(ex.name, 'Bench');
+    expect(ex.version, 1);
+    expect(ex.deletedAt, isNull);
+
+    final list = await repo.watchExercises().first;
+    expect(list.map((e) => e.name), ['Bench']);
+    expect(list.single.syncId, ex.syncId);
+  });
+
+  test('watchExercises is sorted by name', () async {
+    await repo.createExercise('Squat');
+    await repo.createExercise('Bench');
+    await repo.createExercise('Deadlift');
+    final list = await repo.watchExercises().first;
+    expect(list.map((e) => e.name), ['Bench', 'Deadlift', 'Squat']);
+  });
+
+  test('rename / setKind bump the version', () async {
+    final ex = await repo.createExercise('Bench');
+    await repo.renameExercise(ex.syncId, 'Incline Bench');
+    await repo.setExerciseKind(ex.syncId, exerciseKindTime);
+
+    final row = (await repo.watchExercises().first).single;
+    expect(row.name, 'Incline Bench');
+    expect(row.kind, exerciseKindTime);
+    expect(row.version, greaterThan(1));
+  });
+
+  test('setExerciseMuscles resolves tags via the static registry', () async {
+    final ex = await repo.createExercise('Bench');
+    await repo.setExerciseMuscles(ex.syncId, [muscleSyncId('Chest')]);
+
+    final withMuscles = (await repo.watchExercisesWithMuscles().first).single;
+    expect(withMuscles.muscles.map((m) => m.name), ['Chest']);
+
+    final direct = await repo.musclesForExercise(ex.syncId);
+    expect(direct.map((m) => m.name), ['Chest']);
+  });
+
+  test('deleteExercise tombstones: hidden from library, doc survives', () async {
+    final ex = await repo.createExercise('Bench');
+    await repo.deleteExercise(ex.syncId);
+
+    expect(await repo.watchExercises().first, isEmpty);
+    final doc = await fs
+        .collection('users')
+        .doc('u1')
+        .collection('exercises')
+        .doc(ex.syncId)
+        .get();
+    expect(doc.exists, isTrue);
+    expect(doc.data()!['deletedAtMs'], isNotNull);
+  });
+
+  test('watchMuscles returns the static seed set', () async {
+    final muscles = await repo.watchMuscles().first;
+    expect(muscles.length, muscleSeeds.length);
+    expect(muscles.map((m) => m.name), contains('Chest'));
+  });
+}
