@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
 import '../sync/sync_codec.dart';
@@ -678,4 +679,386 @@ class FirestoreRoutineRepository implements RoutineRepository {
         }
         return false;
       });
+}
+
+/// Firestore-backed workout store. A workout is one document (`WorkoutDto`:
+/// exercises → sets, plus a workout-level completions list keyed by
+/// workoutSetSyncId). Reads map a doc to a [FullWorkout] (completions attached
+/// per set); edits touch the nested doc. Workouts have no version field — the
+/// web is the only editor of a given workout, and cross-device edit propagation
+/// is the separate "versioned workouts" task.
+class FirestoreWorkoutRepository implements WorkoutRepository {
+  FirestoreWorkoutRepository({required this.uid, FirebaseFirestore? firestore})
+    : _fs = firestore ?? FirebaseFirestore.instance;
+
+  final String uid;
+  final FirebaseFirestore _fs;
+
+  CollectionReference<Map<String, Object?>> get _col =>
+      _fs.collection('users').doc(uid).collection('workouts');
+  CollectionReference<Map<String, Object?>> get _exCol =>
+      _fs.collection('users').doc(uid).collection('exercises');
+
+  static List<Map<String, dynamic>> _asMaps(Object? list) => [
+    for (final e in (list as List?) ?? const []) Map<String, dynamic>.from(e as Map),
+  ];
+
+  Workout _workoutRow(WorkoutDto dto) => Workout(
+    syncId: dto.syncId,
+    routineId: dto.routineSyncId,
+    startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
+    endedAt: dto.endedAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(dto.endedAtMs!),
+    avgHeartRate: dto.avgHeartRate,
+    maxHeartRate: dto.maxHeartRate,
+  );
+
+  SetCompletion _completionRow(SetCompletionDto c, String workoutId) =>
+      SetCompletion(
+        syncId: c.syncId,
+        workoutId: workoutId,
+        workoutSetId: c.workoutSetSyncId,
+        actualReps: c.actualReps,
+        actualWeightKg: c.actualWeightKg,
+        actualSeconds: c.actualSeconds,
+        completedAt: DateTime.fromMillisecondsSinceEpoch(c.completedAtMs),
+        avgHeartRate: c.avgHeartRate,
+        maxHeartRate: c.maxHeartRate,
+      );
+
+  FullWorkout _toFullWorkout(WorkoutDto dto) {
+    final completionBySet = {
+      for (final c in dto.completions) c.workoutSetSyncId: c,
+    };
+    return FullWorkout(
+      workout: _workoutRow(dto),
+      // The workout snapshot is self-contained (names live on it); the source
+      // routine link isn't needed to render history.
+      routine: null,
+      exercises: [
+        for (final we in dto.exercises)
+          FullWorkoutExercise(
+            workoutExercise: WorkoutExercise(
+              syncId: we.syncId,
+              workoutId: dto.syncId,
+              exerciseId: we.exerciseSyncId,
+              exerciseName: we.exerciseName,
+              orderIndex: we.orderIndex,
+              restSeconds: we.restSeconds,
+              supersetGroup: we.supersetGroup,
+              kind: we.kind,
+              routineExerciseId: we.routineExerciseSyncId,
+            ),
+            sets: [
+              for (final ws in we.sets)
+                FullWorkoutSet(
+                  workoutSet: WorkoutSet(
+                    syncId: ws.syncId,
+                    workoutExerciseId: we.syncId,
+                    setIndex: ws.setIndex,
+                    targetReps: ws.targetReps,
+                    targetWeightKg: ws.targetWeightKg,
+                    targetSeconds: ws.targetSeconds,
+                  ),
+                  completion: completionBySet[ws.syncId] == null
+                      ? null
+                      : _completionRow(completionBySet[ws.syncId]!, dto.syncId),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  // -- Reads ------------------------------------------------------------
+
+  @override
+  Stream<List<Workout>> watchRecentWorkouts() {
+    return _col.snapshots().map((snap) {
+      final rows = snap.docs
+          .map((d) => _workoutRow(WorkoutDto.fromJson(d.data())))
+          .toList();
+      rows.sort((a, b) => b.startedAt.compareTo(a.startedAt)); // newest first
+      return rows;
+    });
+  }
+
+  @override
+  Stream<Workout?> watchInProgressWorkout() {
+    return _col.snapshots().map((snap) {
+      final open = snap.docs
+          .map((d) => WorkoutDto.fromJson(d.data()))
+          .where((dto) => dto.endedAtMs == null)
+          .map(_workoutRow)
+          .toList();
+      open.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+      return open.isEmpty ? null : open.first;
+    });
+  }
+
+  @override
+  Stream<FullWorkout?> watchFullWorkout(String workoutId) {
+    return _col.doc(workoutId).snapshots().map((doc) {
+      final d = doc.data();
+      return d == null ? null : _toFullWorkout(WorkoutDto.fromJson(d));
+    });
+  }
+
+  // -- Improvements (cross-collection analytics) ------------------------
+  // Deferred on the Firestore backend: it compares a workout's completions
+  // against its source routine's planned targets. Tracked as a follow-up; the
+  // web history page just shows no suggestions until then.
+  @override
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId) async =>
+      const [];
+
+  @override
+  Future<void> applyWorkoutImprovements(String workoutId) async {}
+
+  // -- Write helpers ----------------------------------------------------
+
+  Future<void> _editWorkout(
+    String workoutId,
+    void Function(Map<String, dynamic> data) mutate,
+  ) async {
+    final ref = _col.doc(workoutId);
+    final doc = await ref.get();
+    final data = doc.data();
+    if (data == null) return;
+    final m = Map<String, dynamic>.from(data);
+    mutate(m);
+    await ref.set(m);
+  }
+
+  Future<void> _editOwningWorkout(
+    bool Function(Map<String, dynamic> data) findAndMutate,
+  ) async {
+    final snap = await _col.get();
+    for (final doc in snap.docs) {
+      final m = Map<String, dynamic>.from(doc.data());
+      if (findAndMutate(m)) {
+        await doc.reference.set(m);
+        return;
+      }
+    }
+  }
+
+  // -- Workout-level mutations ------------------------------------------
+
+  @override
+  Future<void> updateWorkoutTimes({
+    required String workoutId,
+    required DateTime startedAt,
+    required DateTime? endedAt,
+  }) => _editWorkout(workoutId, (m) {
+    m['startedAtMs'] = startedAt.millisecondsSinceEpoch;
+    m['endedAtMs'] = endedAt?.millisecondsSinceEpoch;
+  });
+
+  @override
+  Future<void> deleteWorkout(String workoutId) => _col.doc(workoutId).delete();
+
+  @override
+  Future<WorkoutExercise> addWorkoutExercise({
+    required String workoutId,
+    required String exerciseId,
+  }) async {
+    final exDoc = await _exCol.doc(exerciseId).get();
+    final name = (exDoc.data()?['name'] as String?) ?? '';
+    final kind = (exDoc.data()?['kind'] as String?) ?? exerciseKindReps;
+    final weId = _uuid.v4();
+    var order = 0;
+    await _editWorkout(workoutId, (m) {
+      final exs = _asMaps(m['exercises']);
+      order = exs.isEmpty
+          ? 0
+          : exs
+                  .map((e) => (e['orderIndex'] as num).toInt())
+                  .reduce((a, b) => a > b ? a : b) +
+              1;
+      exs.add({
+        'syncId': weId,
+        'exerciseSyncId': exerciseId,
+        'exerciseName': name,
+        'kind': kind,
+        'orderIndex': order,
+        'restSeconds': 90,
+        'supersetGroup': null,
+        'sets': <Object?>[],
+        'routineExerciseSyncId': null,
+      });
+      m['exercises'] = exs;
+    });
+    return WorkoutExercise(
+      syncId: weId,
+      workoutId: workoutId,
+      exerciseId: exerciseId,
+      exerciseName: name,
+      orderIndex: order,
+      restSeconds: 90,
+      kind: kind,
+    );
+  }
+
+  @override
+  Future<void> removeWorkoutExercise(String workoutExerciseId) =>
+      _editOwningWorkout((m) {
+        final exs = _asMaps(m['exercises']);
+        final target = exs.where((e) => e['syncId'] == workoutExerciseId).toList();
+        if (target.isEmpty) return false;
+        // Drop the exercise and any completions bound to its sets.
+        final setIds = {
+          for (final s in _asMaps(target.first['sets'])) s['syncId'] as String,
+        };
+        exs.removeWhere((e) => e['syncId'] == workoutExerciseId);
+        m['exercises'] = exs;
+        final comps = _asMaps(m['completions'])
+          ..removeWhere((c) => setIds.contains(c['workoutSetSyncId']));
+        m['completions'] = comps;
+        return true;
+      });
+
+  @override
+  Future<WorkoutSet> addWorkoutSet({
+    required String workoutExerciseId,
+    int? targetReps,
+    double? targetWeightKg,
+    int? targetSeconds,
+  }) async {
+    final wsId = _uuid.v4();
+    var setIndex = 0;
+    await _editOwningWorkout((m) {
+      final exs = _asMaps(m['exercises']);
+      for (final e in exs) {
+        if (e['syncId'] == workoutExerciseId) {
+          final sets = _asMaps(e['sets']);
+          setIndex = sets.length;
+          sets.add({
+            'syncId': wsId,
+            'setIndex': setIndex,
+            'targetReps': targetReps,
+            'targetWeightKg': targetWeightKg,
+            'targetSeconds': targetSeconds,
+          });
+          e['sets'] = sets;
+          m['exercises'] = exs;
+          return true;
+        }
+      }
+      return false;
+    });
+    return WorkoutSet(
+      syncId: wsId,
+      workoutExerciseId: workoutExerciseId,
+      setIndex: setIndex,
+      targetReps: targetReps,
+      targetWeightKg: targetWeightKg,
+      targetSeconds: targetSeconds,
+    );
+  }
+
+  @override
+  Future<void> removeWorkoutSet(String workoutSetId) => _editOwningWorkout((m) {
+    final exs = _asMaps(m['exercises']);
+    var found = false;
+    for (final e in exs) {
+      final sets = _asMaps(e['sets']);
+      final before = sets.length;
+      sets.removeWhere((s) => s['syncId'] == workoutSetId);
+      if (sets.length != before) {
+        e['sets'] = sets;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+    m['exercises'] = exs;
+    final comps = _asMaps(m['completions'])
+      ..removeWhere((c) => c['workoutSetSyncId'] == workoutSetId);
+    m['completions'] = comps;
+    return true;
+  });
+
+  // -- Completion mutations ---------------------------------------------
+
+  @override
+  Future<SetCompletion> upsertSetCompletion({
+    required String workoutId,
+    required String workoutSetId,
+    int? actualReps,
+    double? actualWeightKg,
+    int? actualSeconds,
+    Value<int?> avgHeartRate = const Value.absent(),
+    Value<int?> maxHeartRate = const Value.absent(),
+  }) async {
+    late SetCompletion result;
+    await _editWorkout(workoutId, (m) {
+      final comps = _asMaps(m['completions']);
+      final existing = comps.where((c) => c['workoutSetSyncId'] == workoutSetId);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      Map<String, dynamic> row;
+      if (existing.isNotEmpty) {
+        row = existing.first;
+        row['actualReps'] = actualReps;
+        row['actualWeightKg'] = actualWeightKg;
+        row['actualSeconds'] = actualSeconds;
+        row['completedAtMs'] = nowMs;
+        if (avgHeartRate.present) row['avgHeartRate'] = avgHeartRate.value;
+        if (maxHeartRate.present) row['maxHeartRate'] = maxHeartRate.value;
+      } else {
+        row = {
+          'syncId': _uuid.v4(),
+          'workoutSetSyncId': workoutSetId,
+          'actualReps': actualReps,
+          'actualWeightKg': actualWeightKg,
+          'actualSeconds': actualSeconds,
+          'completedAtMs': nowMs,
+          'avgHeartRate': avgHeartRate.present ? avgHeartRate.value : null,
+          'maxHeartRate': maxHeartRate.present ? maxHeartRate.value : null,
+        };
+        comps.add(row);
+      }
+      m['completions'] = comps;
+      result = _completionRow(
+        SetCompletionDto.fromJson(Map<String, Object?>.from(row)),
+        workoutId,
+      );
+    });
+    return result;
+  }
+
+  @override
+  Future<void> updateCompletion({
+    required String id,
+    int? actualReps,
+    double? actualWeightKg,
+    int? actualSeconds,
+    DateTime? completedAt,
+  }) => _editOwningWorkout((m) {
+    final comps = _asMaps(m['completions']);
+    for (final c in comps) {
+      if (c['syncId'] == id) {
+        c['actualReps'] = actualReps;
+        c['actualWeightKg'] = actualWeightKg;
+        c['actualSeconds'] = actualSeconds;
+        if (completedAt != null) {
+          c['completedAtMs'] = completedAt.millisecondsSinceEpoch;
+        }
+        m['completions'] = comps;
+        return true;
+      }
+    }
+    return false;
+  });
+
+  @override
+  Future<void> deleteCompletion(String id) => _editOwningWorkout((m) {
+    final comps = _asMaps(m['completions']);
+    final before = comps.length;
+    comps.removeWhere((c) => c['syncId'] == id);
+    if (comps.length == before) return false;
+    m['completions'] = comps;
+    return true;
+  });
 }
