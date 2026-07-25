@@ -371,95 +371,21 @@ class AppDatabase extends _$AppDatabase {
       await _seedMuscles();
     },
     onUpgrade: (m, from, to) async {
-      if (from < 2) {
-        // v1 → v2: vocabulary rename (workouts→routines, sessions→workouts).
-        await customStatement('ALTER TABLE sessions RENAME TO _workouts_new');
-        await customStatement('ALTER TABLE workouts RENAME TO routines');
+      // The only shipped schema is v11 (uuid primary keys). There are no users
+      // and no in-place path from the pre-uuid int-id schema, so any upgrade is
+      // a destructive reset: drop every table and recreate the current schema.
+      // FKs are re-enabled and muscles re-seeded by beforeOpen on the next open.
+      await customStatement('PRAGMA foreign_keys = OFF');
+      final tables = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%'",
+      ).get();
+      for (final row in tables) {
         await customStatement(
-          'ALTER TABLE workout_exercises RENAME TO routine_exercises',
-        );
-        await customStatement(
-          'ALTER TABLE routine_exercises RENAME COLUMN workout_id TO routine_id',
-        );
-        await customStatement(
-          'ALTER TABLE planned_sets RENAME COLUMN workout_exercise_id TO routine_exercise_id',
-        );
-        await customStatement('ALTER TABLE _workouts_new RENAME TO workouts');
-        await customStatement(
-          'ALTER TABLE workouts RENAME COLUMN workout_id TO routine_id',
-        );
-        await customStatement(
-          'ALTER TABLE set_completions RENAME COLUMN session_id TO workout_id',
+          'DROP TABLE IF EXISTS "${row.read<String>('name')}"',
         );
       }
-      if (from < 3) {
-        // v2 → v3: introduce workout snapshot, exercise kinds, supersets,
-        // time-based targets, and make workouts independent of routines.
-        await _migrateToV3(m);
-      }
-      if (from < 4) {
-        // v3 → v4: repair FK references on the snapshot tables. The original
-        // v3 migration created workout_exercises/workout_sets before it
-        // recreated `workouts`, so SQLite re-pointed their workout_id FK at
-        // the now-dropped `_workouts_v2` rename-target. Recreate the
-        // snapshot tables (preserving rows) so their FKs reference the
-        // current `workouts`. v2→v3 has been reordered above so a fresh
-        // upgrade no longer hits this; the step still runs as a no-op
-        // safety net for clean v3s.
-        await _migrateToV4(m);
-      }
-      if (from < 5) {
-        // v4 → v5: HR aggregate columns on workouts + set_completions.
-        await m.addColumn(workouts, workouts.avgHeartRate);
-        await m.addColumn(workouts, workouts.maxHeartRate);
-        await m.addColumn(setCompletions, setCompletions.avgHeartRate);
-        await m.addColumn(setCompletions, setCompletions.maxHeartRate);
-      }
-      if (from < 6) {
-        // v5 → v6: alternative exercises per routine slot + muscle registry.
-        await m.createTable(routineExerciseAlternatives);
-        await m.createTable(muscles);
-        await m.createTable(exerciseMuscles);
-        await m.addColumn(
-          workoutExercises,
-          workoutExercises.routineExerciseId,
-        );
-      }
-      if (from < 7) {
-        // v6 → v7: per-alternative planned sets.
-        await m.createTable(alternativePlannedSets);
-      }
-      if (from < 8) {
-        // v7 → v8: sync bookkeeping key/value store (owner marker).
-        await m.createTable(syncMeta);
-      }
-      if (from < 9) {
-        // v8 → v9: versioned tombstones for routine deletion (version-LWW).
-        await m.addColumn(routines, routines.deletedAt);
-      }
-      if (from < 10) {
-        // v9 → v10: versioned tombstones for the exercise library (version-LWW),
-        // so exercise edits/deletions can sync to the server-backed web build.
-        await m.addColumn(exercises, exercises.version);
-        await m.addColumn(exercises, exercises.deletedAt);
-      }
-      if (from < 11) {
-        // v10 → v11: uuid primary keys — every table dropped the autoincrement
-        // int id and is now keyed by its `syncId` (FKs reference the parent's
-        // syncId). This is a structural change with no in-place path, and there
-        // are no users yet, so the upgrade is a destructive reset: drop every
-        // table and recreate the current schema. (FKs are re-enabled by
-        // beforeOpen on the next open; muscles are re-seeded there too.)
-        await customStatement('PRAGMA foreign_keys = OFF');
-        final tables = await customSelect(
-          "SELECT name FROM sqlite_master WHERE type='table' "
-          "AND name NOT LIKE 'sqlite_%'",
-        ).get();
-        for (final row in tables) {
-          await customStatement('DROP TABLE IF EXISTS "${row.read<String>('name')}"');
-        }
-        await m.createAll();
-      }
+      await m.createAll();
     },
   );
 
@@ -474,171 +400,6 @@ class AppDatabase extends _$AppDatabase {
         [muscleSyncId(name), name],
       );
     }
-  }
-
-  Future<void> _migrateToV3(Migrator m) async {
-    // Foreign keys must be off for the recreate-table dance below. They get
-    // turned back on by beforeOpen on the next connection.
-    await customStatement('PRAGMA foreign_keys = OFF');
-
-    // 1. Additive column adds.
-    await m.addColumn(exercises, exercises.kind);
-    await m.addColumn(routineExercises, routineExercises.supersetGroup);
-    await m.addColumn(plannedSets, plannedSets.targetSeconds);
-
-    // 2. Recreate planned_sets so target_reps / target_weight_kg become
-    //    nullable.
-    await customStatement(
-      'ALTER TABLE planned_sets RENAME TO _planned_sets_v2',
-    );
-    await m.createTable(plannedSets);
-    await customStatement('''
-      INSERT INTO planned_sets
-        (id, sync_id, routine_exercise_id, set_index, target_reps, target_weight_kg, target_seconds)
-      SELECT id, sync_id, routine_exercise_id, set_index, target_reps, target_weight_kg, target_seconds
-      FROM _planned_sets_v2
-    ''');
-    await customStatement('DROP TABLE _planned_sets_v2');
-
-    // 3. Recreate workouts (nullable routine_id + SET NULL) BEFORE creating
-    //    the snapshot tables. Otherwise the snapshot tables' FK references
-    //    would track the rename target and end up dangling after the drop.
-    await customStatement('ALTER TABLE workouts RENAME TO _workouts_v2');
-    await m.createTable(workouts);
-    await customStatement('''
-      INSERT INTO workouts (id, sync_id, routine_id, started_at, ended_at)
-      SELECT id, sync_id, routine_id, started_at, ended_at FROM _workouts_v2
-    ''');
-    await customStatement('DROP TABLE _workouts_v2');
-
-    // 4. Create the snapshot tables, now bound to the freshly-recreated
-    //    workouts.
-    await m.createTable(workoutExercises);
-    await m.createTable(workoutSets);
-
-    // 5. Snapshot every existing workout's routine into the new tables.
-    final workoutToPlannedSetToWorkoutSet = <String, Map<String, String>>{};
-    final existingWorkouts = await select(workouts).get();
-    for (final w in existingWorkouts) {
-      final routineId = w.routineId;
-      if (routineId == null) continue;
-      final res = await (select(routineExercises)
-            ..where((t) => t.routineId.equals(routineId))
-            ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
-          .get();
-      final psMap = <String, String>{};
-      for (final re in res) {
-        final ex = await (select(
-          exercises,
-        )..where((t) => t.syncId.equals(re.exerciseId))).getSingle();
-        final weId = _uuid.v4();
-        await into(workoutExercises).insert(
-          WorkoutExercisesCompanion.insert(
-            syncId: weId,
-            workoutId: w.syncId,
-            exerciseId: Value(ex.syncId),
-            exerciseName: ex.name,
-            orderIndex: re.orderIndex,
-            restSeconds: Value(re.restSeconds),
-            supersetGroup: Value(re.supersetGroup),
-            kind: Value(ex.kind),
-          ),
-        );
-        final ps = await (select(plannedSets)
-              ..where((t) => t.routineExerciseId.equals(re.syncId))
-              ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
-            .get();
-        for (final p in ps) {
-          final wsId = _uuid.v4();
-          await into(workoutSets).insert(
-            WorkoutSetsCompanion.insert(
-              syncId: wsId,
-              workoutExerciseId: weId,
-              setIndex: p.setIndex,
-              targetReps: Value(p.targetReps),
-              targetWeightKg: Value(p.targetWeightKg),
-              targetSeconds: Value(p.targetSeconds),
-            ),
-          );
-          psMap[p.syncId] = wsId;
-        }
-      }
-      workoutToPlannedSetToWorkoutSet[w.syncId] = psMap;
-    }
-
-    // 6. Recreate set_completions: planned_set_id → workout_set_id, nullable
-    //    actuals, plus actual_seconds.
-    await customStatement(
-      'ALTER TABLE set_completions RENAME TO _set_completions_v2',
-    );
-    await m.createTable(setCompletions);
-    final oldCompletions = await customSelect(
-      'SELECT id, sync_id, workout_id, planned_set_id, actual_reps, actual_weight_kg, completed_at FROM _set_completions_v2',
-    ).get();
-    for (final row in oldCompletions) {
-      final workoutId = row.read<String>('workout_id');
-      final oldPlannedSetId = row.read<String>('planned_set_id');
-      final wsId =
-          workoutToPlannedSetToWorkoutSet[workoutId]?[oldPlannedSetId];
-      if (wsId == null) continue; // orphan — drop
-      await into(setCompletions).insert(
-        SetCompletionsCompanion.insert(
-          syncId: row.read<String>('sync_id'),
-          workoutId: workoutId,
-          workoutSetId: wsId,
-          actualReps: Value(row.read<int>('actual_reps')),
-          actualWeightKg: Value(row.read<double>('actual_weight_kg')),
-          actualSeconds: const Value(null),
-          completedAt: row.read<DateTime>('completed_at'),
-        ),
-      );
-    }
-    await customStatement('DROP TABLE _set_completions_v2');
-
-    await customStatement('PRAGMA foreign_keys = ON');
-  }
-
-  Future<void> _migrateToV4(Migrator m) async {
-    // Recreate the snapshot tables (and set_completions, which FKs into
-    // workout_sets) so that any stale FK references left over from the bad
-    // v3 path are rebuilt against the current `workouts`. Done unconditionally
-    // — for correct v3 DBs it is just data round-tripped through fresh
-    // tables.
-    await customStatement('PRAGMA foreign_keys = OFF');
-    await customStatement(
-      'ALTER TABLE set_completions RENAME TO _set_completions_v3',
-    );
-    await customStatement(
-      'ALTER TABLE workout_sets RENAME TO _workout_sets_v3',
-    );
-    await customStatement(
-      'ALTER TABLE workout_exercises RENAME TO _workout_exercises_v3',
-    );
-    await m.createTable(workoutExercises);
-    await m.createTable(workoutSets);
-    await m.createTable(setCompletions);
-    await customStatement('''
-      INSERT INTO workout_exercises
-        (id, sync_id, workout_id, exercise_id, exercise_name, order_index, rest_seconds, superset_group, kind)
-      SELECT id, sync_id, workout_id, exercise_id, exercise_name, order_index, rest_seconds, superset_group, kind
-      FROM _workout_exercises_v3
-    ''');
-    await customStatement('''
-      INSERT INTO workout_sets
-        (id, sync_id, workout_exercise_id, set_index, target_reps, target_weight_kg, target_seconds)
-      SELECT id, sync_id, workout_exercise_id, set_index, target_reps, target_weight_kg, target_seconds
-      FROM _workout_sets_v3
-    ''');
-    await customStatement('''
-      INSERT INTO set_completions
-        (id, sync_id, workout_id, workout_set_id, actual_reps, actual_weight_kg, actual_seconds, completed_at)
-      SELECT id, sync_id, workout_id, workout_set_id, actual_reps, actual_weight_kg, actual_seconds, completed_at
-      FROM _set_completions_v3
-    ''');
-    await customStatement('DROP TABLE _set_completions_v3');
-    await customStatement('DROP TABLE _workout_sets_v3');
-    await customStatement('DROP TABLE _workout_exercises_v3');
-    await customStatement('PRAGMA foreign_keys = ON');
   }
 
   // -- Sync metadata (key/value) ----------------------------------------
