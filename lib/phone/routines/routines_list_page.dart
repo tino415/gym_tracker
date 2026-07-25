@@ -22,7 +22,11 @@ class RoutinesListPage extends ConsumerWidget {
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
-        onRefresh: () => ref.read(syncServiceProvider).pushAll(),
+        // On the Firestore-direct web build there's no SyncService (Firestore
+        // snapshots are already live); pull-to-refresh is a no-op there.
+        onRefresh: () => ref.read(firestoreDirectProvider)
+            ? Future<void>.value()
+            : ref.read(syncServiceProvider).pushAll(),
         child: routinesAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) =>

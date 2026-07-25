@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/providers.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/sync_ownership.dart';
 
@@ -177,7 +178,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final auth = ref.read(authServiceProvider);
     // Whether server sync is paused because this device's local data belongs to
     // a different account. Owner null (unclaimed) or matching means active sync.
-    final owner = ref.watch(syncOwnerProvider).valueOrNull;
+    // The Firestore-direct web build has no local store (the account *is* the
+    // store), so there's no owner/paused concept — and reading syncOwnerProvider
+    // there would spin up an unwanted local Drift database.
+    final direct = ref.watch(firestoreDirectProvider);
+    final owner = direct ? null : ref.watch(syncOwnerProvider).valueOrNull;
     final paused = owner != null && owner != user.uid;
     return ListView(
       padding: const EdgeInsets.all(16),
