@@ -51,7 +51,10 @@ void main() {
 
       await tester.tap(find.text('Add set').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      // Add mode persists on "Save & add" and stays open for the next set.
+      await tester.tap(find.widgetWithText(FilledButton, 'Save & add'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Done')); // close
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);

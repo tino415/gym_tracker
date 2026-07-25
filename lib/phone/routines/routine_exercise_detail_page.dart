@@ -6,6 +6,7 @@ import '../../data/database.dart';
 import '../../data/providers.dart';
 import 'exercise_picker.dart';
 import 'planned_set_row.dart';
+import 'set_editor_dialog.dart';
 
 /// Detail page for a single routine slot. Owns the full per-exercise editor —
 /// planned sets, alternatives, rest, kind, superset toggle, remove. The list
@@ -335,240 +336,68 @@ Future<void> _addAlternative(
       );
 }
 
-Future<void> _editSetDialog(
+void _editSetDialog(
   BuildContext context,
   WidgetRef ref, {
   required FullRoutineExercise re,
   PlannedSet? existing,
-}) async {
-  final isTime = re.kind == exerciseKindTime;
-  final repsController = TextEditingController(
-    text: existing?.targetReps?.toString() ?? '10',
-  );
-  final weightController = TextEditingController(
-    text: existing?.targetWeightKg?.toStringAsFixed(0) ?? '20',
-  );
-  final secondsController = TextEditingController(
-    text: existing?.targetSeconds?.toString() ?? '30',
-  );
-  final saved = await showDialog<bool>(
+}) {
+  final db = ref.read(routineRepositoryProvider);
+  final reId = re.routineExercise.syncId;
+  showDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(existing == null ? 'New set' : 'Edit set'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: isTime
-            ? [
-                TextField(
-                  controller: secondsController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Seconds',
-                    suffixText: 's',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: weightController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight (optional)',
-                    suffixText: 'kg',
-                  ),
-                ),
-              ]
-            : [
-                TextField(
-                  controller: weightController,
-                  autofocus: true,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight',
-                    suffixText: 'kg',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: repsController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Reps'),
-                ),
-              ],
+    builder: (_) => SetEditorDialog(
+      kind: re.kind,
+      existingId: existing?.syncId,
+      initialReps: existing?.targetReps,
+      initialWeightKg: existing?.targetWeightKg,
+      initialSeconds: existing?.targetSeconds,
+      onAdd: (v) => db.addPlannedSet(
+        routineExerciseId: reId,
+        targetReps: v.reps,
+        targetWeightKg: v.weightKg,
+        targetSeconds: v.seconds,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Save'),
-        ),
-      ],
+      onUpdate: (id, v) => db.updatePlannedSet(
+        id: id,
+        targetReps: v.reps,
+        targetWeightKg: v.weightKg,
+        targetSeconds: v.seconds,
+      ),
     ),
   );
-  // Guard: the dialog await may outlive the page (a concurrent sync
-  // bundle-apply can pop it), and ref.read on a defunct ref throws.
-  if (saved != true || !context.mounted) return;
-  final db = ref.read(routineRepositoryProvider);
-  if (isTime) {
-    final seconds = int.tryParse(secondsController.text.trim());
-    if (seconds == null || seconds <= 0) return;
-    final weight = double.tryParse(weightController.text.trim());
-    if (existing == null) {
-      await db.addPlannedSet(
-        routineExerciseId: re.routineExercise.syncId,
-        targetSeconds: seconds,
-        targetWeightKg: weight,
-      );
-    } else {
-      await db.updatePlannedSet(
-        id: existing.syncId,
-        targetSeconds: seconds,
-        targetWeightKg: weight,
-      );
-    }
-  } else {
-    final reps = int.tryParse(repsController.text.trim());
-    final weight = double.tryParse(weightController.text.trim());
-    if (reps == null || weight == null) return;
-    if (existing == null) {
-      await db.addPlannedSet(
-        routineExerciseId: re.routineExercise.syncId,
-        targetReps: reps,
-        targetWeightKg: weight,
-      );
-    } else {
-      await db.updatePlannedSet(
-        id: existing.syncId,
-        targetReps: reps,
-        targetWeightKg: weight,
-      );
-    }
-  }
 }
 
-Future<void> _editAltSetDialog(
+void _editAltSetDialog(
   BuildContext context,
   WidgetRef ref, {
   required RoutineAlternative alt,
   AlternativePlannedSet? existing,
-}) async {
-  final isTime = alt.exercise.kind == exerciseKindTime;
-  final repsController = TextEditingController(
-    text: existing?.targetReps?.toString() ?? '10',
-  );
-  final weightController = TextEditingController(
-    text: existing?.targetWeightKg?.toStringAsFixed(0) ?? '20',
-  );
-  final secondsController = TextEditingController(
-    text: existing?.targetSeconds?.toString() ?? '30',
-  );
-  final saved = await showDialog<bool>(
+}) {
+  final db = ref.read(routineRepositoryProvider);
+  final altId = alt.join.syncId;
+  showDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(existing == null ? 'New set' : 'Edit set'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: isTime
-            ? [
-                TextField(
-                  controller: secondsController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Seconds',
-                    suffixText: 's',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: weightController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight (optional)',
-                    suffixText: 'kg',
-                  ),
-                ),
-              ]
-            : [
-                TextField(
-                  controller: weightController,
-                  autofocus: true,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight',
-                    suffixText: 'kg',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: repsController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Reps'),
-                ),
-              ],
+    builder: (_) => SetEditorDialog(
+      kind: alt.exercise.kind,
+      existingId: existing?.syncId,
+      initialReps: existing?.targetReps,
+      initialWeightKg: existing?.targetWeightKg,
+      initialSeconds: existing?.targetSeconds,
+      onAdd: (v) => db.addAlternativePlannedSet(
+        alternativeId: altId,
+        targetReps: v.reps,
+        targetWeightKg: v.weightKg,
+        targetSeconds: v.seconds,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Save'),
-        ),
-      ],
+      onUpdate: (id, v) => db.updateAlternativePlannedSet(
+        id: id,
+        targetReps: v.reps,
+        targetWeightKg: v.weightKg,
+        targetSeconds: v.seconds,
+      ),
     ),
   );
-  // Guard: the dialog await may outlive the page (a concurrent sync
-  // bundle-apply can pop it), and ref.read on a defunct ref throws.
-  if (saved != true || !context.mounted) return;
-  final db = ref.read(routineRepositoryProvider);
-  if (isTime) {
-    final seconds = int.tryParse(secondsController.text.trim());
-    if (seconds == null || seconds <= 0) return;
-    final weight = double.tryParse(weightController.text.trim());
-    if (existing == null) {
-      await db.addAlternativePlannedSet(
-        alternativeId: alt.join.syncId,
-        targetSeconds: seconds,
-        targetWeightKg: weight,
-      );
-    } else {
-      await db.updateAlternativePlannedSet(
-        id: existing.syncId,
-        targetSeconds: seconds,
-        targetWeightKg: weight,
-      );
-    }
-  } else {
-    final reps = int.tryParse(repsController.text.trim());
-    final weight = double.tryParse(weightController.text.trim());
-    if (reps == null || weight == null) return;
-    if (existing == null) {
-      await db.addAlternativePlannedSet(
-        alternativeId: alt.join.syncId,
-        targetReps: reps,
-        targetWeightKg: weight,
-      );
-    } else {
-      await db.updateAlternativePlannedSet(
-        id: existing.syncId,
-        targetReps: reps,
-        targetWeightKg: weight,
-      );
-    }
-  }
 }
 
 class _AlternativeTile extends StatelessWidget {
