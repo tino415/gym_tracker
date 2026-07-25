@@ -183,6 +183,32 @@ void main() {
     expect(w.routineName, 'Leg Day');
   });
 
+  test('createWorkout snapshots a routine into a new workout doc', () async {
+    await seedRoutine('r1', exercises: [
+      rexercise('re1', exId: 'exA', plannedSets: [pset('ps1', reps: 5, weight: 100.0)]),
+    ]);
+    final started = DateTime(2026, 7, 20, 18);
+    final w = await workouts.createWorkout(
+      routineId: 'r1',
+      startedAt: started,
+      endedAt: started,
+    );
+    expect(w.routineName, 'R'); // seedRoutine names it 'R'
+    expect(w.endedAt, started);
+
+    final full = (await workouts.watchFullWorkout(w.syncId).first)!;
+    expect(full.exercises.single.workoutExercise.exerciseName, 'Bench');
+    expect(full.exercises.single.sets.single.workoutSet.targetReps, 5);
+    expect(full.exercises.single.sets.single.completion, isNull);
+  });
+
+  test('createWorkout with no routine is empty', () async {
+    final w = await workouts.createWorkout(startedAt: DateTime(2026, 7, 20));
+    expect(w.routineId, isNull);
+    final full = (await workouts.watchFullWorkout(w.syncId).first)!;
+    expect(full.exercises, isEmpty);
+  });
+
   test('watchInProgressWorkout returns the open one', () async {
     await seed('done', endedAtMs: 2000);
     await seed('open', endedAtMs: null);

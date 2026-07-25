@@ -48,7 +48,81 @@ class HistoryListPage extends ConsumerWidget {
           },
         ),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _logPastWorkout(context, ref),
+        icon: const Icon(Icons.add),
+        label: const Text('Log workout'),
+      ),
     );
+  }
+
+  /// Backfill a workout done off-watch: pick a routine to prefill (or start
+  /// empty), pick the day, create the workout, then open the detail editor to
+  /// fill in the actuals (and refine the time).
+  Future<void> _logPastWorkout(BuildContext context, WidgetRef ref) async {
+    final summaries =
+        await ref.read(routineRepositoryProvider).watchRoutineSummaries().first;
+    if (!context.mounted) return;
+
+    final choice = await showModalBottomSheet<_BackfillChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Log a past workout',
+                style: Theme.of(ctx).textTheme.titleMedium,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: const Text('Empty workout'),
+              subtitle: const Text('Add exercises yourself'),
+              onTap: () =>
+                  Navigator.of(ctx).pop(const _BackfillChoice(routineId: null)),
+            ),
+            if (summaries.isNotEmpty) const Divider(),
+            for (final s in summaries)
+              ListTile(
+                leading: const Icon(Icons.fitness_center),
+                title: Text(s.routine.name),
+                subtitle: Text(
+                  s.exerciseCount == 1
+                      ? '1 exercise'
+                      : '${s.exerciseCount} exercises',
+                ),
+                onTap: () => Navigator.of(ctx)
+                    .pop(_BackfillChoice(routineId: s.routine.syncId)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(2000),
+      lastDate: now,
+    );
+    if (date == null || !context.mounted) return;
+    // Keep the current time-of-day; the detail editor refines start/end.
+    final started =
+        DateTime(date.year, date.month, date.day, now.hour, now.minute);
+
+    final workout = await ref.read(workoutRepositoryProvider).createWorkout(
+          routineId: choice.routineId,
+          startedAt: started,
+          endedAt: started,
+        );
+    if (!context.mounted) return;
+    context.push('/history/${workout.syncId}');
   }
 
   /// Date + status/duration, e.g. "2026-07-25 12:25 · 48 min" or
@@ -76,6 +150,13 @@ class HistoryListPage extends ConsumerWidget {
     final mm = dt.minute.toString().padLeft(2, '0');
     return '$y-$m-$d $hh:$mm';
   }
+}
+
+/// A user's pick in the "log past workout" sheet. A null [routineId] means an
+/// empty workout; the sheet returning null (not this) means it was dismissed.
+class _BackfillChoice {
+  const _BackfillChoice({required this.routineId});
+  final String? routineId;
 }
 
 class _EmptyState extends StatelessWidget {

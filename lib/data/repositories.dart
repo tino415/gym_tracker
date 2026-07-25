@@ -96,6 +96,14 @@ abstract class WorkoutRepository {
   Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId);
 
   // History-editing mutations
+  /// Create a workout for manual backfill: optionally snapshot [routineId]'s
+  /// exercises + target sets (no completions), with the given times. Null/
+  /// unknown routine yields an empty workout the user fills in by hand.
+  Future<Workout> createWorkout({
+    String? routineId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+  });
   Future<void> applyWorkoutImprovements(String workoutId);
   Future<void> updateWorkoutTimes({
     required String workoutId,

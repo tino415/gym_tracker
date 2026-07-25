@@ -1017,6 +1017,62 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   // -- Workout-level mutations ------------------------------------------
 
   @override
+  Future<Workout> createWorkout({
+    String? routineId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+  }) async {
+    final id = _uuid.v4();
+    String? routineName;
+    final exercises = <Map<String, Object?>>[];
+    if (routineId != null) {
+      final rdata = (await _routCol.doc(routineId).get()).data();
+      if (rdata != null) {
+        final dto = RoutineTemplateDto.fromJson(rdata);
+        if (dto.deletedAtMs == null) {
+          routineName = dto.name;
+          for (final re in dto.exercises) {
+            exercises.add({
+              'syncId': _uuid.v4(),
+              'exerciseSyncId': re.exerciseSyncId,
+              'exerciseName': re.exerciseName,
+              'kind': re.exerciseKind,
+              'orderIndex': re.orderIndex,
+              'restSeconds': re.restSeconds,
+              'supersetGroup': re.supersetGroup,
+              'routineExerciseSyncId': re.syncId,
+              'sets': [
+                for (final ps in re.plannedSets)
+                  {
+                    'syncId': _uuid.v4(),
+                    'setIndex': ps.setIndex,
+                    'targetReps': ps.targetReps,
+                    'targetWeightKg': ps.targetWeightKg,
+                    'targetSeconds': ps.targetSeconds,
+                  },
+              ],
+            });
+          }
+        }
+      }
+    }
+    final doc = <String, Object?>{
+      'syncId': id,
+      // Only keep the link if the routine actually resolved (else empty backfill).
+      'routineSyncId': routineName == null ? null : routineId,
+      'routineName': routineName,
+      'startedAtMs': startedAt.millisecondsSinceEpoch,
+      'endedAtMs': endedAt?.millisecondsSinceEpoch,
+      'exercises': exercises,
+      'completions': <Object?>[],
+      'avgHeartRate': null,
+      'maxHeartRate': null,
+    };
+    await _col.doc(id).set(doc);
+    return _workoutRow(WorkoutDto.fromJson(doc));
+  }
+
+  @override
   Future<void> updateWorkoutTimes({
     required String workoutId,
     required DateTime startedAt,

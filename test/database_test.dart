@@ -130,6 +130,59 @@ void main() {
     });
   });
 
+  group('createWorkout (manual backfill)', () {
+    test('empty workout with chosen times, no snapshot', () async {
+      final started = DateTime(2026, 7, 20, 18, 30);
+      final ended = DateTime(2026, 7, 20, 19, 15);
+      final w = await db.createWorkout(startedAt: started, endedAt: ended);
+
+      final snap = await db.loadFullWorkout(w.syncId);
+      expect(snap!.workout.routineId, isNull);
+      expect(snap.workout.routineName, isNull);
+      expect(snap.workout.startedAt, started);
+      expect(snap.workout.endedAt, ended);
+      expect(snap.exercises, isEmpty);
+    });
+
+    test('from a routine: snapshots exercises + target sets + name', () async {
+      final ex = await db.createExercise('Squat');
+      final routine = await db.createRoutine('Leg Day');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: ex.syncId,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.syncId,
+        targetReps: 5,
+        targetWeightKg: 100,
+      );
+      final started = DateTime(2026, 7, 20, 18);
+      final w = await db.createWorkout(
+        routineId: routine.syncId,
+        startedAt: started,
+        endedAt: started,
+      );
+
+      final snap = await db.loadFullWorkout(w.syncId);
+      expect(snap!.workout.routineName, 'Leg Day');
+      expect(snap.workout.endedAt, started);
+      expect(snap.exercises.single.workoutExercise.exerciseName, 'Squat');
+      expect(snap.exercises.single.sets.single.workoutSet.targetReps, 5);
+      // Targets only — the user logs actuals afterwards.
+      expect(snap.exercises.single.sets.single.completion, isNull);
+    });
+
+    test('unknown routine falls back to an empty workout', () async {
+      final w = await db.createWorkout(
+        routineId: 'nope',
+        startedAt: DateTime(2026, 7, 20),
+      );
+      final snap = await db.loadFullWorkout(w.syncId);
+      expect(snap!.workout.routineId, isNull);
+      expect(snap.exercises, isEmpty);
+    });
+  });
+
   group('routine deletion preserves workouts', () {
     test('workout snapshot stays, workout.routine_id becomes null', () async {
       final ex = await db.createExercise('Squat');

@@ -1087,38 +1087,75 @@ class AppDatabase extends _$AppDatabase {
           startedAt: DateTime.now(),
         ),
       );
-      for (final re in full.exercises) {
-        final weId = _uuid.v4();
-        await into(workoutExercises).insert(
-          WorkoutExercisesCompanion.insert(
-            syncId: weId,
-            workoutId: workoutId,
-            exerciseId: Value(re.exercise.syncId),
-            exerciseName: re.exercise.name,
-            orderIndex: re.routineExercise.orderIndex,
-            restSeconds: Value(re.routineExercise.restSeconds),
-            supersetGroup: Value(re.routineExercise.supersetGroup),
-            kind: Value(re.exercise.kind),
-            routineExerciseId: Value(re.routineExercise.syncId),
-          ),
-        );
-        for (final ps in re.plannedSets) {
-          await into(workoutSets).insert(
-            WorkoutSetsCompanion.insert(
-              syncId: _uuid.v4(),
-              workoutExerciseId: weId,
-              setIndex: ps.setIndex,
-              targetReps: Value(ps.targetReps),
-              targetWeightKg: Value(ps.targetWeightKg),
-              targetSeconds: Value(ps.targetSeconds),
-            ),
-          );
-        }
-      }
+      await _snapshotRoutineExercises(workoutId, full);
       return (select(
         workouts,
       )..where((t) => t.syncId.equals(workoutId))).getSingle();
     });
+  }
+
+  /// Create a workout for manual backfill: optionally snapshot [routineId]'s
+  /// exercises + target sets (no completions), with caller-chosen times. A null
+  /// or unknown routine yields an empty workout the user fills in by hand.
+  Future<Workout> createWorkout({
+    String? routineId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+  }) async {
+    return transaction(() async {
+      final full = routineId == null ? null : await loadFullRoutine(routineId);
+      final workoutId = _uuid.v4();
+      await into(workouts).insert(
+        WorkoutsCompanion.insert(
+          syncId: workoutId,
+          routineId: Value(full == null ? null : routineId),
+          routineName: Value(full?.routine.name),
+          startedAt: startedAt,
+          endedAt: Value(endedAt),
+        ),
+      );
+      if (full != null) await _snapshotRoutineExercises(workoutId, full);
+      return (select(
+        workouts,
+      )..where((t) => t.syncId.equals(workoutId))).getSingle();
+    });
+  }
+
+  /// Copy a routine's exercises + planned sets into a workout's snapshot tables
+  /// (targets only; completions are logged later). Runs in the caller's
+  /// transaction.
+  Future<void> _snapshotRoutineExercises(
+    String workoutId,
+    FullRoutine full,
+  ) async {
+    for (final re in full.exercises) {
+      final weId = _uuid.v4();
+      await into(workoutExercises).insert(
+        WorkoutExercisesCompanion.insert(
+          syncId: weId,
+          workoutId: workoutId,
+          exerciseId: Value(re.exercise.syncId),
+          exerciseName: re.exercise.name,
+          orderIndex: re.routineExercise.orderIndex,
+          restSeconds: Value(re.routineExercise.restSeconds),
+          supersetGroup: Value(re.routineExercise.supersetGroup),
+          kind: Value(re.exercise.kind),
+          routineExerciseId: Value(re.routineExercise.syncId),
+        ),
+      );
+      for (final ps in re.plannedSets) {
+        await into(workoutSets).insert(
+          WorkoutSetsCompanion.insert(
+            syncId: _uuid.v4(),
+            workoutExerciseId: weId,
+            setIndex: ps.setIndex,
+            targetReps: Value(ps.targetReps),
+            targetWeightKg: Value(ps.targetWeightKg),
+            targetSeconds: Value(ps.targetSeconds),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> finishWorkout(
