@@ -110,6 +110,25 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     String name, {
     String kind = exerciseKindReps,
   }) async {
+    // Reconcile by name, mirroring AppDatabase.createExercise. Firestore has no
+    // UNIQUE(name), but a soft delete keeps the tombstone's name, so a blind
+    // create would leave a duplicate tombstone shadowing the new doc. Prefer an
+    // existing live doc (idempotent create); otherwise revive a tombstone
+    // (clear deletedAtMs, apply the kind, bump version via LWW).
+    final matches = await _col.where('name', isEqualTo: name).get();
+    String? tombstoneId;
+    for (final doc in matches.docs) {
+      if (doc.data()['deletedAtMs'] == null) return _exerciseFromData(doc.data());
+      tombstoneId ??= doc.id;
+    }
+    if (tombstoneId != null) {
+      await _col.doc(tombstoneId).update({
+        'deletedAtMs': null,
+        'kind': kind,
+        'version': FieldValue.increment(1),
+      });
+      return _exerciseFromData((await _col.doc(tombstoneId).get()).data()!);
+    }
     final syncId = _uuid.v4();
     final data = <String, Object?>{
       'syncId': syncId,

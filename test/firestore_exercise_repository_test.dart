@@ -69,6 +69,43 @@ void main() {
     expect(doc.data()!['deletedAtMs'], isNotNull);
   });
 
+  test('re-creating a soft-deleted name revives the same doc', () async {
+    final first = await repo.createExercise('Plank', kind: exerciseKindReps);
+    await repo.deleteExercise(first.syncId);
+    expect(await repo.watchExercises().first, isEmpty); // tombstoned, hidden
+
+    // Recreating that name must not add a duplicate doc; it revives the
+    // tombstone (same identity, cleared deletedAt, new kind, bumped version).
+    final again = await repo.createExercise('Plank', kind: exerciseKindTime);
+    expect(again.syncId, first.syncId);
+    expect(again.deletedAt, isNull);
+    expect(again.kind, exerciseKindTime);
+    expect(again.version, greaterThan(first.version));
+
+    // Exactly one doc for the name, and it's live in the library.
+    final all = await fs
+        .collection('users')
+        .doc('u1')
+        .collection('exercises')
+        .where('name', isEqualTo: 'Plank')
+        .get();
+    expect(all.docs, hasLength(1));
+    expect((await repo.watchExercises().first).map((e) => e.name), ['Plank']);
+  });
+
+  test('creating a name that is already live returns the existing doc', () async {
+    final first = await repo.createExercise('Bench');
+    final again = await repo.createExercise('Bench');
+    expect(again.syncId, first.syncId);
+    final all = await fs
+        .collection('users')
+        .doc('u1')
+        .collection('exercises')
+        .where('name', isEqualTo: 'Bench')
+        .get();
+    expect(all.docs, hasLength(1));
+  });
+
   test('watchMuscles returns the static seed set', () async {
     final muscles = await repo.watchMuscles().first;
     expect(muscles.length, muscleSeeds.length);
