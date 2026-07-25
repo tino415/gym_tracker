@@ -22,37 +22,37 @@ class AuthService {
   Future<void> registerWithEmail(String email, String password) =>
       _auth.createUserWithEmailAndPassword(email: email, password: password);
 
-  /// Web: a redirect flow against the Auth emulator's fake picker (no real
-  /// OAuth client needed). Redirect — not popup — because hosting serves COOP
-  /// `same-origin` for drift's OPFS cross-origin isolation, which severs a
-  /// popup's `window.opener`. NOTE: the same isolation headers (COOP
-  /// `same-origin` + COEP `require-corp`, both required for OPFS) currently also
-  /// block this redirect's cross-origin auth flow in the browser, so Google
-  /// web sign-in is not yet functional — see the epic notes. Kept wired for the
-  /// production hosting/auth step.
-  /// Android: deferred to the production Firebase project (real OAuth client +
-  /// Play Services), so it throws here rather than reaching an unwired path.
+  /// Web: a popup flow. Popup — not redirect — because the caller awaits this
+  /// (see the account/sign-in `_run` wrappers); a redirect reloads the page
+  /// mid-await instead of resolving. Popups are viable again now that the web
+  /// build is Firestore-direct: it needs no OPFS, so hosting no longer serves
+  /// the COOP `same-origin` / COEP `require-corp` isolation headers that used
+  /// to sever `window.opener` and block the cross-origin auth flow. Requires
+  /// the Google provider to be enabled in the Firebase Auth console (the
+  /// `.web.app` / `.firebaseapp.com` domains are authorized by default).
+  /// Android: deferred — needs a real OAuth client + SHA-1 registration and the
+  /// google_sign_in credential exchange, so it throws rather than reach an
+  /// unwired path.
   Future<void> signInWithGoogle() async {
     if (kIsWeb) {
-      await _auth.signInWithRedirect(GoogleAuthProvider());
+      await _auth.signInWithPopup(GoogleAuthProvider());
       return;
     }
     throw UnsupportedError(
-      'Google sign-in on Android needs the production Firebase project.',
+      'Google sign-in on Android needs an OAuth client + SHA-1 setup.',
     );
   }
 
   Future<void> signOut() => _auth.signOut();
 }
 
-/// Whether the "Continue with Google" affordance is offered. Currently false on
-/// every platform: Android Google needs the production OAuth client, and web
-/// Google is blocked by the very COOP/COEP isolation headers drift's OPFS
-/// storage requires (relaxing them drops drift to IndexedDB). [signInWithGoogle]
-/// stays wired for when Google can coexist (production auth-domain setup, or
-/// browsers that support nested dedicated workers). Email/password is the
-/// active path meanwhile.
-bool get googleSignInSupported => false;
+/// Whether the "Continue with Google" affordance is offered. Web only: the
+/// Firestore-direct web build drops OPFS, so hosting no longer sets the
+/// COOP/COEP isolation headers that used to break the popup auth flow, and
+/// [signInWithGoogle] runs a real popup against the prod project. Android stays
+/// off until an OAuth client + SHA-1 + google_sign_in credential exchange is
+/// wired; email/password remains the active path there.
+bool get googleSignInSupported => kIsWeb;
 
 /// True when this build has the Firestore backend compiled in. Gates the
 /// account button and page so a plain phone/watch build shows no auth UI.

@@ -29,8 +29,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     super.dispose();
   }
 
-  Future<void> _run(Future<void> Function() action) async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _run(Future<void> Function() action, {bool validate = true}) async {
+    if (validate && !_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
       await action();
@@ -135,6 +135,30 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         )),
                 child: const Text('Create account'),
               ),
+              if (googleSignInSupported) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        'or',
+                        style: TextStyle(color: theme.colorScheme.outline),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => _run(auth.signInWithGoogle, validate: false),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Continue with Google'),
+                ),
+              ],
             ],
           ),
         ),
