@@ -166,6 +166,36 @@ void main() {
     });
   });
 
+  group('createExercise reconciles by name (UNIQUE + soft delete)', () {
+    test('re-creating a soft-deleted name revives the same row', () async {
+      final first = await db.createExercise('Plank', kind: exerciseKindReps);
+      await db.deleteExercise(first.syncId);
+      // Tombstoned: hidden from the library, but the UNIQUE name is still taken.
+      var library = await db.loadExercisesWithMuscles();
+      expect(library.where((e) => e.exercise.name == 'Plank'), isEmpty);
+
+      // Recreating that name must not throw on UNIQUE(name); it revives the
+      // tombstone (same identity), clears deletedAt, and applies the new kind.
+      final again = await db.createExercise('Plank', kind: exerciseKindTime);
+      expect(again.syncId, first.syncId);
+      expect(again.deletedAt, isNull);
+      expect(again.kind, exerciseKindTime);
+      expect(again.version, greaterThan(first.version));
+
+      library = await db.loadExercisesWithMuscles();
+      expect(library.where((e) => e.exercise.name == 'Plank'), hasLength(1));
+    });
+
+    test('creating a name that is already live returns the existing row',
+        () async {
+      final first = await db.createExercise('Bench');
+      final again = await db.createExercise('Bench');
+      expect(again.syncId, first.syncId);
+      final library = await db.loadExercisesWithMuscles();
+      expect(library.where((e) => e.exercise.name == 'Bench'), hasLength(1));
+    });
+  });
+
   group('completions', () {
     test('upsert for reps then update', () async {
       final ex = await db.createExercise('Deadlift');

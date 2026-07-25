@@ -477,13 +477,33 @@ class AppDatabase extends _$AppDatabase {
     String name, {
     String kind = exerciseKindReps,
   }) async {
-    final now = DateTime.now();
+    // `name` is UNIQUE, but soft delete leaves the tombstoned row (and its
+    // name) in place, so a plain insert of a previously-deleted name would
+    // throw a UNIQUE violation even though library reads hide the tombstone.
+    // Reconcile by name: revive a tombstone (LWW — clear deletedAt, apply the
+    // requested kind, bump version) and treat an already-live match as an
+    // idempotent create, returning it rather than erroring.
+    final existing =
+        await (select(exercises)..where((t) => t.name.equals(name)))
+            .getSingleOrNull();
+    if (existing != null) {
+      if (existing.deletedAt == null) return existing;
+      await (update(exercises)..where((t) => t.syncId.equals(existing.syncId)))
+          .write(ExercisesCompanion(
+            deletedAt: const Value(null),
+            kind: Value(kind),
+          ));
+      await _bumpExerciseVersion(existing.syncId);
+      return (select(
+        exercises,
+      )..where((t) => t.syncId.equals(existing.syncId))).getSingle();
+    }
     final id = _uuid.v4();
     await into(exercises).insert(
       ExercisesCompanion.insert(
         syncId: id,
         name: name,
-        createdAt: now,
+        createdAt: DateTime.now(),
         kind: Value(kind),
       ),
     );
