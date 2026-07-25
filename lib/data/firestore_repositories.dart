@@ -698,6 +698,8 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       _fs.collection('users').doc(uid).collection('workouts');
   CollectionReference<Map<String, Object?>> get _exCol =>
       _fs.collection('users').doc(uid).collection('exercises');
+  CollectionReference<Map<String, Object?>> get _routCol =>
+      _fs.collection('users').doc(uid).collection('routines');
 
   static List<Map<String, dynamic>> _asMaps(Object? list) => [
     for (final e in (list as List?) ?? const []) Map<String, dynamic>.from(e as Map),
@@ -806,15 +808,163 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   }
 
   // -- Improvements (cross-collection analytics) ------------------------
-  // Deferred on the Firestore backend: it compares a workout's completions
-  // against its source routine's planned targets. Tracked as a follow-up; the
-  // web history page just shows no suggestions until then.
+  // Compare a finished workout's completions against its source routine's
+  // *current* planned targets (following each snapshot exercise's
+  // routineExerciseSyncId back into the live routine doc, handling the
+  // alternative that was actually performed). Mirrors AppDatabase.
   @override
-  Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId) async =>
-      const [];
+  Future<List<WorkoutImprovement>> findWorkoutImprovements(
+    String workoutId,
+  ) async {
+    final wData = (await _col.doc(workoutId).get()).data();
+    if (wData == null) return const [];
+    final w = WorkoutDto.fromJson(wData);
+    if (w.routineSyncId == null) return const [];
+    final rData = (await _routCol.doc(w.routineSyncId!).get()).data();
+    if (rData == null) return const [];
+    final routine = RoutineTemplateDto.fromJson(rData);
+    if (routine.deletedAtMs != null) return const [];
 
+    final reBySyncId = {for (final re in routine.exercises) re.syncId: re};
+    final completionBySet = {
+      for (final c in w.completions) c.workoutSetSyncId: c,
+    };
+
+    final out = <WorkoutImprovement>[];
+    final exs = [...w.exercises]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    for (final we in exs) {
+      final reId = we.routineExerciseSyncId;
+      if (reId == null) continue;
+      final re = reBySyncId[reId];
+      if (re == null) continue;
+
+      // Which planned sets were the live target for what was performed: the
+      // primary exercise, or the specific alternative that was swapped in.
+      List<PlannedSetDto> plannedSets;
+      bool useAlt;
+      if (we.exerciseSyncId == re.exerciseSyncId) {
+        plannedSets = re.plannedSets;
+        useAlt = false;
+      } else {
+        final alt = re.alternatives
+            .where((a) => a.exerciseSyncId == we.exerciseSyncId)
+            .firstOrNull;
+        if (alt == null || alt.plannedSets.isEmpty) continue;
+        plannedSets = alt.plannedSets;
+        useAlt = true;
+      }
+      final psByIndex = {for (final ps in plannedSets) ps.setIndex: ps};
+
+      final wSets = [...we.sets]
+        ..sort((a, b) => a.setIndex.compareTo(b.setIndex));
+      for (final ws in wSets) {
+        final c = completionBySet[ws.syncId];
+        if (c == null) continue;
+        final ps = psByIndex[ws.setIndex];
+        if (ps == null) continue;
+        final improved = _isImprovement(
+          kind: we.kind,
+          targetReps: ps.targetReps,
+          targetWeightKg: ps.targetWeightKg,
+          targetSeconds: ps.targetSeconds,
+          actualReps: c.actualReps,
+          actualWeightKg: c.actualWeightKg,
+          actualSeconds: c.actualSeconds,
+        );
+        if (!improved) continue;
+        out.add(
+          WorkoutImprovement(
+            exerciseName: we.exerciseName,
+            kind: we.kind,
+            setIndex: ws.setIndex,
+            targetPlannedSetId: ps.syncId,
+            targetIsAlternative: useAlt,
+            oldReps: ps.targetReps,
+            oldWeightKg: ps.targetWeightKg,
+            oldSeconds: ps.targetSeconds,
+            newReps: c.actualReps,
+            newWeightKg: c.actualWeightKg,
+            newSeconds: c.actualSeconds,
+          ),
+        );
+      }
+    }
+    return out;
+  }
+
+  /// Promote every outstanding improvement to its routine planned set (primary
+  /// or alternative), in one routine-doc write with a version bump. Idempotent:
+  /// once applied the targets equal the actuals, so a repeat call finds none.
   @override
-  Future<void> applyWorkoutImprovements(String workoutId) async {}
+  Future<void> applyWorkoutImprovements(String workoutId) async {
+    final improvements = await findWorkoutImprovements(workoutId);
+    if (improvements.isEmpty) return;
+    final routineId = (await _col.doc(workoutId).get()).data()?['routineSyncId']
+        as String?;
+    if (routineId == null) return;
+    final ref = _routCol.doc(routineId);
+    final data = (await ref.get()).data();
+    if (data == null) return;
+
+    // Planned sets are uniquely keyed by syncId across the whole routine tree,
+    // so a single id→improvement map applies to both primary and alternative
+    // planned sets without needing the targetIsAlternative discriminator.
+    final byId = {for (final imp in improvements) imp.targetPlannedSetId: imp};
+    void promote(List<Map<String, dynamic>> sets) {
+      for (final s in sets) {
+        final imp = byId[s['syncId']];
+        if (imp == null) continue;
+        s['targetReps'] = imp.newReps;
+        s['targetWeightKg'] = imp.newWeightKg;
+        s['targetSeconds'] = imp.newSeconds;
+      }
+    }
+
+    final m = Map<String, dynamic>.from(data);
+    final exs = _asMaps(m['exercises']);
+    for (final e in exs) {
+      final ps = _asMaps(e['plannedSets']);
+      promote(ps);
+      e['plannedSets'] = ps;
+      final alts = _asMaps(e['alternatives']);
+      for (final a in alts) {
+        final aps = _asMaps(a['plannedSets']);
+        promote(aps);
+        a['plannedSets'] = aps;
+      }
+      e['alternatives'] = alts;
+    }
+    m['exercises'] = exs;
+    m['version'] = ((m['version'] as num?)?.toInt() ?? 1) + 1;
+    await ref.set(m);
+  }
+
+  /// An actual strictly beats the routine's current target for this set. Reps
+  /// kind: no regression on either axis and a gain on at least one. Time kind:
+  /// held longer. Mirrors AppDatabase._isImprovement.
+  bool _isImprovement({
+    required String kind,
+    required int? targetReps,
+    required double? targetWeightKg,
+    required int? targetSeconds,
+    required int? actualReps,
+    required double? actualWeightKg,
+    required int? actualSeconds,
+  }) {
+    if (kind == exerciseKindTime) {
+      if (targetSeconds == null || actualSeconds == null) return false;
+      return actualSeconds > targetSeconds;
+    }
+    if (targetReps == null ||
+        targetWeightKg == null ||
+        actualReps == null ||
+        actualWeightKg == null) {
+      return false;
+    }
+    if (actualReps < targetReps || actualWeightKg < targetWeightKg) return false;
+    return actualReps > targetReps || actualWeightKg > targetWeightKg;
+  }
 
   // -- Write helpers ----------------------------------------------------
 

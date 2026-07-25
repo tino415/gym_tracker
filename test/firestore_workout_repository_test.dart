@@ -18,11 +18,12 @@ void main() {
     String id, {
     int startedAtMs = 1000,
     int? endedAtMs = 2000,
+    String? routineSyncId,
     List<Map<String, dynamic>> exercises = const [],
     List<Map<String, dynamic>> completions = const [],
   }) => wcol().doc(id).set({
     'syncId': id,
-    'routineSyncId': null,
+    'routineSyncId': routineSyncId,
     'startedAtMs': startedAtMs,
     'endedAtMs': endedAtMs,
     'exercises': exercises,
@@ -49,6 +50,113 @@ void main() {
     'targetReps': 8,
     'targetWeightKg': 40.0,
     'targetSeconds': null,
+  };
+
+  // --- Improvement helpers: routine docs + fully-linked workout snapshots ---
+
+  rcol() => fs.collection('users').doc('u1').collection('routines');
+
+  Map<String, dynamic> pset(
+    String id, {
+    int idx = 0,
+    int? reps,
+    double? weight,
+    int? seconds,
+  }) => {
+    'syncId': id,
+    'setIndex': idx,
+    'targetReps': reps,
+    'targetWeightKg': weight,
+    'targetSeconds': seconds,
+  };
+
+  Map<String, dynamic> altRef(
+    String id, {
+    required String exId,
+    List<Map<String, dynamic>> plannedSets = const [],
+  }) => {
+    'syncId': id,
+    'exerciseSyncId': exId,
+    'exerciseName': 'Alt',
+    'exerciseKind': 'reps',
+    'orderIndex': 0,
+    'plannedSets': plannedSets,
+  };
+
+  Map<String, dynamic> rexercise(
+    String id, {
+    required String exId,
+    String kind = 'reps',
+    List<Map<String, dynamic>> plannedSets = const [],
+    List<Map<String, dynamic>> alternatives = const [],
+  }) => {
+    'syncId': id,
+    'exerciseSyncId': exId,
+    'exerciseName': 'Bench',
+    'exerciseKind': kind,
+    'orderIndex': 0,
+    'restSeconds': 90,
+    'supersetGroup': null,
+    'plannedSets': plannedSets,
+    'alternatives': alternatives,
+    'muscleSyncIds': <String>[],
+  };
+
+  Future<void> seedRoutine(
+    String id, {
+    int version = 1,
+    int? deletedAtMs,
+    List<Map<String, dynamic>> exercises = const [],
+  }) => rcol().doc(id).set({
+    'syncId': id,
+    'name': 'R',
+    'version': version,
+    'createdAtMs': 0,
+    'deletedAtMs': deletedAtMs,
+    'exercises': exercises,
+  });
+
+  Map<String, dynamic> wexercise(
+    String id, {
+    required String exId,
+    String? reId,
+    String kind = 'reps',
+    List<Map<String, dynamic>> sets = const [],
+  }) => {
+    'syncId': id,
+    'exerciseSyncId': exId,
+    'exerciseName': 'Bench',
+    'kind': kind,
+    'orderIndex': 0,
+    'restSeconds': 90,
+    'supersetGroup': null,
+    'sets': sets,
+    'routineExerciseSyncId': reId,
+  };
+
+  Map<String, dynamic> wsetIdx(String id, {int idx = 0}) => {
+    'syncId': id,
+    'setIndex': idx,
+    'targetReps': 0,
+    'targetWeightKg': 0.0,
+    'targetSeconds': null,
+  };
+
+  Map<String, dynamic> completion(
+    String id, {
+    required String wsId,
+    int? reps,
+    double? weight,
+    int? seconds,
+  }) => {
+    'syncId': id,
+    'workoutSetSyncId': wsId,
+    'actualReps': reps,
+    'actualWeightKg': weight,
+    'actualSeconds': seconds,
+    'completedAtMs': 1500,
+    'avgHeartRate': null,
+    'maxHeartRate': null,
   };
 
   test('watchRecentWorkouts is newest-first', () async {
@@ -157,8 +265,127 @@ void main() {
     expect(await workouts.watchFullWorkout('w1').first, isNull);
   });
 
-  test('findWorkoutImprovements is a deferred no-op (empty)', () async {
-    await seed('w1');
+  test('no routine link yields no improvements', () async {
+    await seed('w1'); // routineSyncId null
+    expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
+  });
+
+  test('finds a primary-exercise improvement, then apply promotes it', () async {
+    await seedRoutine(
+      'r1',
+      exercises: [
+        rexercise('re1', exId: 'exA', plannedSets: [
+          pset('ps1', reps: 8, weight: 40.0),
+        ]),
+      ],
+    );
+    await seed(
+      'w1',
+      routineSyncId: 'r1',
+      exercises: [
+        wexercise('we1', exId: 'exA', reId: 're1', sets: [wsetIdx('ws1')]),
+      ],
+      // 10 reps at the same 40kg beats the target of 8 reps.
+      completions: [completion('c1', wsId: 'ws1', reps: 10, weight: 40.0)],
+    );
+
+    final found = await workouts.findWorkoutImprovements('w1');
+    expect(found, hasLength(1));
+    expect(found.single.targetPlannedSetId, 'ps1');
+    expect(found.single.targetIsAlternative, isFalse);
+    expect(found.single.oldReps, 8);
+    expect(found.single.newReps, 10);
+
+    await workouts.applyWorkoutImprovements('w1');
+    final r = (await rcol().doc('r1').get()).data()!;
+    final ps = ((r['exercises'] as List).single as Map)['plannedSets'] as List;
+    expect((ps.single as Map)['targetReps'], 10);
+    expect(r['version'], 2); // bumped for LWW propagation
+
+    // Idempotent: targets now equal actuals, so nothing left to promote.
+    expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
+  });
+
+  test('attributes the improvement to the alternative that was performed', () async {
+    await seedRoutine(
+      'r1',
+      exercises: [
+        rexercise(
+          're1',
+          exId: 'exA',
+          plannedSets: [pset('ps1', reps: 8, weight: 40.0)],
+          alternatives: [
+            altRef('alt1', exId: 'exB', plannedSets: [
+              pset('aps1', reps: 6, weight: 30.0),
+            ]),
+          ],
+        ),
+      ],
+    );
+    await seed(
+      'w1',
+      routineSyncId: 'r1',
+      // Performed the alternative exB, not the primary exA.
+      exercises: [
+        wexercise('we1', exId: 'exB', reId: 're1', sets: [wsetIdx('ws1')]),
+      ],
+      completions: [completion('c1', wsId: 'ws1', reps: 8, weight: 30.0)],
+    );
+
+    final found = await workouts.findWorkoutImprovements('w1');
+    expect(found, hasLength(1));
+    expect(found.single.targetPlannedSetId, 'aps1');
+    expect(found.single.targetIsAlternative, isTrue);
+
+    await workouts.applyWorkoutImprovements('w1');
+    final r = (await rcol().doc('r1').get()).data()!;
+    final re = (r['exercises'] as List).single as Map;
+    final aps = ((re['alternatives'] as List).single as Map)['plannedSets'] as List;
+    expect((aps.single as Map)['targetReps'], 8);
+    // Primary planned set is untouched.
+    final ps = re['plannedSets'] as List;
+    expect((ps.single as Map)['targetReps'], 8);
+  });
+
+  test('a matched-but-not-beaten set is not an improvement', () async {
+    await seedRoutine(
+      'r1',
+      exercises: [
+        rexercise('re1', exId: 'exA', plannedSets: [
+          pset('ps1', reps: 8, weight: 40.0),
+        ]),
+      ],
+    );
+    await seed(
+      'w1',
+      routineSyncId: 'r1',
+      exercises: [
+        wexercise('we1', exId: 'exA', reId: 're1', sets: [wsetIdx('ws1')]),
+      ],
+      // Exactly on target — no gain on either axis.
+      completions: [completion('c1', wsId: 'ws1', reps: 8, weight: 40.0)],
+    );
+    expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
+  });
+
+  test('a tombstoned routine yields no improvements', () async {
+    await seedRoutine(
+      'r1',
+      deletedAtMs: 999,
+      exercises: [
+        rexercise('re1', exId: 'exA', plannedSets: [
+          pset('ps1', reps: 8, weight: 40.0),
+        ]),
+      ],
+    );
+    await seed(
+      'w1',
+      routineSyncId: 'r1',
+      exercises: [
+        wexercise('we1', exId: 'exA', reId: 're1', sets: [wsetIdx('ws1')]),
+      ],
+      completions: [completion('c1', wsId: 'ws1', reps: 10, weight: 40.0)],
+    );
     expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
   });
 }
