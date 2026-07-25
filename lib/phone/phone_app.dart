@@ -115,6 +115,24 @@ class PhoneApp extends StatelessWidget {
         useMaterial3: true,
       ),
       routerConfig: _router,
+      // Cap every route to a centered max-width column so the app reads as a
+      // focused editor on wide desktop/web windows instead of stretching edge
+      // to edge; a no-op on phones (viewport < maxWidth). The margins take a
+      // subtle surface tint so the column reads as an app window. Applies to
+      // the shell (rail + lists) and the root-pushed editor pages alike.
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return ColoredBox(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
