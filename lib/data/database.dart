@@ -144,6 +144,10 @@ class Workouts extends Table {
   TextColumn get routineId => text()
       .nullable()
       .references(Routines, #syncId, onDelete: KeyAction.setNull)();
+  // The routine's name at start, copied into the snapshot so history renders it
+  // even after the routine is deleted (routineId is severed on delete). Null
+  // for workouts started before this column existed.
+  TextColumn get routineName => text().nullable()();
   DateTimeColumn get startedAt => dateTime()();
   DateTimeColumn get endedAt => dateTime().nullable()();
   // Workout-level heart-rate aggregates computed on Finish from the per-set
@@ -359,7 +363,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -371,21 +375,28 @@ class AppDatabase extends _$AppDatabase {
       await _seedMuscles();
     },
     onUpgrade: (m, from, to) async {
-      // The only shipped schema is v11 (uuid primary keys). There are no users
-      // and no in-place path from the pre-uuid int-id schema, so any upgrade is
-      // a destructive reset: drop every table and recreate the current schema.
-      // FKs are re-enabled and muscles re-seeded by beforeOpen on the next open.
-      await customStatement('PRAGMA foreign_keys = OFF');
-      final tables = await customSelect(
-        "SELECT name FROM sqlite_master WHERE type='table' "
-        "AND name NOT LIKE 'sqlite_%'",
-      ).get();
-      for (final row in tables) {
-        await customStatement(
-          'DROP TABLE IF EXISTS "${row.read<String>('name')}"',
-        );
+      // Pre-uuid (int-id) schemas have no in-place path to v11, so upgrading
+      // from before v11 is a destructive reset: drop every table and recreate
+      // the current schema. FKs are re-enabled and muscles re-seeded by
+      // beforeOpen on the next open.
+      if (from < 11) {
+        await customStatement('PRAGMA foreign_keys = OFF');
+        final tables = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' "
+          "AND name NOT LIKE 'sqlite_%'",
+        ).get();
+        for (final row in tables) {
+          await customStatement(
+            'DROP TABLE IF EXISTS "${row.read<String>('name')}"',
+          );
+        }
+        await m.createAll();
+        return;
       }
-      await m.createAll();
+      // v11+ carries real data — migrate incrementally, never wipe.
+      if (from < 12) {
+        await m.addColumn(workouts, workouts.routineName);
+      }
     },
   );
 
@@ -1072,6 +1083,7 @@ class AppDatabase extends _$AppDatabase {
         WorkoutsCompanion.insert(
           syncId: workoutId,
           routineId: Value(routineId),
+          routineName: Value(full.routine.name),
           startedAt: DateTime.now(),
         ),
       );

@@ -92,6 +92,7 @@ void main() {
         WorkoutDto(
           syncId: 'w-1',
           routineSyncId: 'r-1',
+          routineName: 'Push Day',
           startedAtMs: 1700001000000,
           endedAtMs: 1700004000000,
           exercises: [
@@ -157,6 +158,7 @@ void main() {
 
       expect(decoded.workout.syncId, 'w-1');
       expect(decoded.workout.routineSyncId, 'r-1');
+      expect(decoded.workout.routineName, 'Push Day');
       expect(decoded.workout.exercises, hasLength(2));
       expect(decoded.workout.exercises[1].kind, 'time');
       expect(decoded.workout.exercises[1].supersetGroup, 1);

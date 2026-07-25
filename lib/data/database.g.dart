@@ -2916,6 +2916,17 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
       'REFERENCES routines (sync_id) ON DELETE SET NULL',
     ),
   );
+  static const VerificationMeta _routineNameMeta = const VerificationMeta(
+    'routineName',
+  );
+  @override
+  late final GeneratedColumn<String> routineName = GeneratedColumn<String>(
+    'routine_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _startedAtMeta = const VerificationMeta(
     'startedAt',
   );
@@ -2964,6 +2975,7 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
   List<GeneratedColumn> get $columns => [
     syncId,
     routineId,
+    routineName,
     startedAt,
     endedAt,
     avgHeartRate,
@@ -2993,6 +3005,15 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
       context.handle(
         _routineIdMeta,
         routineId.isAcceptableOrUnknown(data['routine_id']!, _routineIdMeta),
+      );
+    }
+    if (data.containsKey('routine_name')) {
+      context.handle(
+        _routineNameMeta,
+        routineName.isAcceptableOrUnknown(
+          data['routine_name']!,
+          _routineNameMeta,
+        ),
       );
     }
     if (data.containsKey('started_at')) {
@@ -3044,6 +3065,10 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         DriftSqlType.string,
         data['${effectivePrefix}routine_id'],
       ),
+      routineName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}routine_name'],
+      ),
       startedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}started_at'],
@@ -3072,6 +3097,7 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
 class Workout extends DataClass implements Insertable<Workout> {
   final String syncId;
   final String? routineId;
+  final String? routineName;
   final DateTime startedAt;
   final DateTime? endedAt;
   final int? avgHeartRate;
@@ -3079,6 +3105,7 @@ class Workout extends DataClass implements Insertable<Workout> {
   const Workout({
     required this.syncId,
     this.routineId,
+    this.routineName,
     required this.startedAt,
     this.endedAt,
     this.avgHeartRate,
@@ -3090,6 +3117,9 @@ class Workout extends DataClass implements Insertable<Workout> {
     map['sync_id'] = Variable<String>(syncId);
     if (!nullToAbsent || routineId != null) {
       map['routine_id'] = Variable<String>(routineId);
+    }
+    if (!nullToAbsent || routineName != null) {
+      map['routine_name'] = Variable<String>(routineName);
     }
     map['started_at'] = Variable<DateTime>(startedAt);
     if (!nullToAbsent || endedAt != null) {
@@ -3110,6 +3140,9 @@ class Workout extends DataClass implements Insertable<Workout> {
       routineId: routineId == null && nullToAbsent
           ? const Value.absent()
           : Value(routineId),
+      routineName: routineName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(routineName),
       startedAt: Value(startedAt),
       endedAt: endedAt == null && nullToAbsent
           ? const Value.absent()
@@ -3131,6 +3164,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     return Workout(
       syncId: serializer.fromJson<String>(json['syncId']),
       routineId: serializer.fromJson<String?>(json['routineId']),
+      routineName: serializer.fromJson<String?>(json['routineName']),
       startedAt: serializer.fromJson<DateTime>(json['startedAt']),
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
       avgHeartRate: serializer.fromJson<int?>(json['avgHeartRate']),
@@ -3143,6 +3177,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     return <String, dynamic>{
       'syncId': serializer.toJson<String>(syncId),
       'routineId': serializer.toJson<String?>(routineId),
+      'routineName': serializer.toJson<String?>(routineName),
       'startedAt': serializer.toJson<DateTime>(startedAt),
       'endedAt': serializer.toJson<DateTime?>(endedAt),
       'avgHeartRate': serializer.toJson<int?>(avgHeartRate),
@@ -3153,6 +3188,7 @@ class Workout extends DataClass implements Insertable<Workout> {
   Workout copyWith({
     String? syncId,
     Value<String?> routineId = const Value.absent(),
+    Value<String?> routineName = const Value.absent(),
     DateTime? startedAt,
     Value<DateTime?> endedAt = const Value.absent(),
     Value<int?> avgHeartRate = const Value.absent(),
@@ -3160,6 +3196,7 @@ class Workout extends DataClass implements Insertable<Workout> {
   }) => Workout(
     syncId: syncId ?? this.syncId,
     routineId: routineId.present ? routineId.value : this.routineId,
+    routineName: routineName.present ? routineName.value : this.routineName,
     startedAt: startedAt ?? this.startedAt,
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
     avgHeartRate: avgHeartRate.present ? avgHeartRate.value : this.avgHeartRate,
@@ -3169,6 +3206,9 @@ class Workout extends DataClass implements Insertable<Workout> {
     return Workout(
       syncId: data.syncId.present ? data.syncId.value : this.syncId,
       routineId: data.routineId.present ? data.routineId.value : this.routineId,
+      routineName: data.routineName.present
+          ? data.routineName.value
+          : this.routineName,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
       avgHeartRate: data.avgHeartRate.present
@@ -3185,6 +3225,7 @@ class Workout extends DataClass implements Insertable<Workout> {
     return (StringBuffer('Workout(')
           ..write('syncId: $syncId, ')
           ..write('routineId: $routineId, ')
+          ..write('routineName: $routineName, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
@@ -3197,6 +3238,7 @@ class Workout extends DataClass implements Insertable<Workout> {
   int get hashCode => Object.hash(
     syncId,
     routineId,
+    routineName,
     startedAt,
     endedAt,
     avgHeartRate,
@@ -3208,6 +3250,7 @@ class Workout extends DataClass implements Insertable<Workout> {
       (other is Workout &&
           other.syncId == this.syncId &&
           other.routineId == this.routineId &&
+          other.routineName == this.routineName &&
           other.startedAt == this.startedAt &&
           other.endedAt == this.endedAt &&
           other.avgHeartRate == this.avgHeartRate &&
@@ -3217,6 +3260,7 @@ class Workout extends DataClass implements Insertable<Workout> {
 class WorkoutsCompanion extends UpdateCompanion<Workout> {
   final Value<String> syncId;
   final Value<String?> routineId;
+  final Value<String?> routineName;
   final Value<DateTime> startedAt;
   final Value<DateTime?> endedAt;
   final Value<int?> avgHeartRate;
@@ -3225,6 +3269,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   const WorkoutsCompanion({
     this.syncId = const Value.absent(),
     this.routineId = const Value.absent(),
+    this.routineName = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
     this.avgHeartRate = const Value.absent(),
@@ -3234,6 +3279,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   WorkoutsCompanion.insert({
     required String syncId,
     this.routineId = const Value.absent(),
+    this.routineName = const Value.absent(),
     required DateTime startedAt,
     this.endedAt = const Value.absent(),
     this.avgHeartRate = const Value.absent(),
@@ -3244,6 +3290,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   static Insertable<Workout> custom({
     Expression<String>? syncId,
     Expression<String>? routineId,
+    Expression<String>? routineName,
     Expression<DateTime>? startedAt,
     Expression<DateTime>? endedAt,
     Expression<int>? avgHeartRate,
@@ -3253,6 +3300,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     return RawValuesInsertable({
       if (syncId != null) 'sync_id': syncId,
       if (routineId != null) 'routine_id': routineId,
+      if (routineName != null) 'routine_name': routineName,
       if (startedAt != null) 'started_at': startedAt,
       if (endedAt != null) 'ended_at': endedAt,
       if (avgHeartRate != null) 'avg_heart_rate': avgHeartRate,
@@ -3264,6 +3312,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   WorkoutsCompanion copyWith({
     Value<String>? syncId,
     Value<String?>? routineId,
+    Value<String?>? routineName,
     Value<DateTime>? startedAt,
     Value<DateTime?>? endedAt,
     Value<int?>? avgHeartRate,
@@ -3273,6 +3322,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     return WorkoutsCompanion(
       syncId: syncId ?? this.syncId,
       routineId: routineId ?? this.routineId,
+      routineName: routineName ?? this.routineName,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
       avgHeartRate: avgHeartRate ?? this.avgHeartRate,
@@ -3289,6 +3339,9 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     }
     if (routineId.present) {
       map['routine_id'] = Variable<String>(routineId.value);
+    }
+    if (routineName.present) {
+      map['routine_name'] = Variable<String>(routineName.value);
     }
     if (startedAt.present) {
       map['started_at'] = Variable<DateTime>(startedAt.value);
@@ -3313,6 +3366,7 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     return (StringBuffer('WorkoutsCompanion(')
           ..write('syncId: $syncId, ')
           ..write('routineId: $routineId, ')
+          ..write('routineName: $routineName, ')
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
@@ -9041,6 +9095,7 @@ typedef $$WorkoutsTableCreateCompanionBuilder =
     WorkoutsCompanion Function({
       required String syncId,
       Value<String?> routineId,
+      Value<String?> routineName,
       required DateTime startedAt,
       Value<DateTime?> endedAt,
       Value<int?> avgHeartRate,
@@ -9051,6 +9106,7 @@ typedef $$WorkoutsTableUpdateCompanionBuilder =
     WorkoutsCompanion Function({
       Value<String> syncId,
       Value<String?> routineId,
+      Value<String?> routineName,
       Value<DateTime> startedAt,
       Value<DateTime?> endedAt,
       Value<int?> avgHeartRate,
@@ -9137,6 +9193,11 @@ class $$WorkoutsTableFilterComposer
   });
   ColumnFilters<String> get syncId => $composableBuilder(
     column: $table.syncId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get routineName => $composableBuilder(
+    column: $table.routineName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9248,6 +9309,11 @@ class $$WorkoutsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get routineName => $composableBuilder(
+    column: $table.routineName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get startedAt => $composableBuilder(
     column: $table.startedAt,
     builder: (column) => ColumnOrderings(column),
@@ -9303,6 +9369,11 @@ class $$WorkoutsTableAnnotationComposer
   });
   GeneratedColumn<String> get syncId =>
       $composableBuilder(column: $table.syncId, builder: (column) => column);
+
+  GeneratedColumn<String> get routineName => $composableBuilder(
+    column: $table.routineName,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get startedAt =>
       $composableBuilder(column: $table.startedAt, builder: (column) => column);
@@ -9428,6 +9499,7 @@ class $$WorkoutsTableTableManager
               ({
                 Value<String> syncId = const Value.absent(),
                 Value<String?> routineId = const Value.absent(),
+                Value<String?> routineName = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> endedAt = const Value.absent(),
                 Value<int?> avgHeartRate = const Value.absent(),
@@ -9436,6 +9508,7 @@ class $$WorkoutsTableTableManager
               }) => WorkoutsCompanion(
                 syncId: syncId,
                 routineId: routineId,
+                routineName: routineName,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 avgHeartRate: avgHeartRate,
@@ -9446,6 +9519,7 @@ class $$WorkoutsTableTableManager
               ({
                 required String syncId,
                 Value<String?> routineId = const Value.absent(),
+                Value<String?> routineName = const Value.absent(),
                 required DateTime startedAt,
                 Value<DateTime?> endedAt = const Value.absent(),
                 Value<int?> avgHeartRate = const Value.absent(),
@@ -9454,6 +9528,7 @@ class $$WorkoutsTableTableManager
               }) => WorkoutsCompanion.insert(
                 syncId: syncId,
                 routineId: routineId,
+                routineName: routineName,
                 startedAt: startedAt,
                 endedAt: endedAt,
                 avgHeartRate: avgHeartRate,

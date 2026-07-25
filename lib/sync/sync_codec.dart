@@ -411,6 +411,7 @@ class WorkoutDto {
     required this.endedAtMs,
     required this.exercises,
     required this.completions,
+    this.routineName,
     this.avgHeartRate,
     this.maxHeartRate,
   });
@@ -419,6 +420,10 @@ class WorkoutDto {
   /// Routine sync id at the time the workout started. May reference a routine
   /// that no longer exists on the receiver — workouts are self-contained.
   final String? routineSyncId;
+
+  /// The routine's name at start, carried in the snapshot so history renders it
+  /// without the (possibly-deleted) routine. Null for pre-column workouts.
+  final String? routineName;
   final int startedAtMs;
   final int? endedAtMs;
   final List<WorkoutExerciseDto> exercises;
@@ -429,6 +434,7 @@ class WorkoutDto {
   Map<String, Object?> toJson() => {
     'syncId': syncId,
     'routineSyncId': routineSyncId,
+    'routineName': routineName,
     'startedAtMs': startedAtMs,
     'endedAtMs': endedAtMs,
     'exercises': exercises.map((e) => e.toJson()).toList(),
@@ -445,6 +451,7 @@ class WorkoutDto {
     return WorkoutDto(
       syncId: json['syncId']! as String,
       routineSyncId: json['routineSyncId'] as String?,
+      routineName: json['routineName'] as String?,
       startedAtMs: (json['startedAtMs']! as num).toInt(),
       endedAtMs: (json['endedAtMs'] as num?)?.toInt(),
       exercises: rawExercises

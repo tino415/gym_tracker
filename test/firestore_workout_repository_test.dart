@@ -167,6 +167,22 @@ void main() {
     expect(list.map((w) => w.syncId), ['b', 'c', 'a']);
   });
 
+  test('routineName from the doc surfaces on the workout row', () async {
+    await wcol().doc('w1').set({
+      'syncId': 'w1',
+      'routineSyncId': 'r1',
+      'routineName': 'Leg Day',
+      'startedAtMs': 1000,
+      'endedAtMs': 2000,
+      'exercises': <Object?>[],
+      'completions': <Object?>[],
+      'avgHeartRate': null,
+      'maxHeartRate': null,
+    });
+    final w = (await workouts.watchRecentWorkouts().first).single;
+    expect(w.routineName, 'Leg Day');
+  });
+
   test('watchInProgressWorkout returns the open one', () async {
     await seed('done', endedAtMs: 2000);
     await seed('open', endedAtMs: null);

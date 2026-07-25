@@ -727,6 +727,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   Workout _workoutRow(WorkoutDto dto) => Workout(
     syncId: dto.syncId,
     routineId: dto.routineSyncId,
+    routineName: dto.routineName,
     startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
     endedAt: dto.endedAtMs == null
         ? null

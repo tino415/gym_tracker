@@ -47,6 +47,27 @@ void main() {
       expect(snap.exercises.single.sets[1].workoutSet.targetReps, 8);
     });
 
+    test('captures the routine name, kept after the routine is deleted',
+        () async {
+      final ex = await db.createExercise('Row');
+      final routine = await db.createRoutine('Pull Day');
+      await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: ex.syncId,
+      );
+      final workout = await db.startWorkout(routine.syncId);
+      expect(
+        (await db.loadFullWorkout(workout.syncId))!.workout.routineName,
+        'Pull Day',
+      );
+
+      // Deleting the routine severs routineId, but the snapshot name survives.
+      await db.deleteRoutine(routine.syncId);
+      final snap = await db.loadFullWorkout(workout.syncId);
+      expect(snap!.workout.routineId, isNull);
+      expect(snap.workout.routineName, 'Pull Day');
+    });
+
     test('captures superset_group and exercise kind', () async {
       final bench = await db.createExercise('Bench');
       final fly = await db.createExercise('Fly');

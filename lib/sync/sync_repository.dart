@@ -698,6 +698,7 @@ class SyncRepository {
     return WorkoutDto(
       syncId: workout.syncId,
       routineSyncId: routineSyncId,
+      routineName: workout.routineName,
       startedAtMs: workout.startedAt.millisecondsSinceEpoch,
       endedAtMs: workout.endedAt?.millisecondsSinceEpoch,
       exercises: exerciseDtos,
@@ -733,6 +734,7 @@ class SyncRepository {
             WorkoutsCompanion.insert(
               syncId: dto.syncId,
               routineId: Value(routineLocalId),
+              routineName: Value(dto.routineName),
               startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
               endedAt: Value(
                 dto.endedAtMs == null

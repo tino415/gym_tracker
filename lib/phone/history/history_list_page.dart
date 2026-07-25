@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../sync/sync_service.dart';
 
@@ -37,10 +38,8 @@ class HistoryListPage extends ConsumerWidget {
               itemBuilder: (context, i) {
                 final w = workouts[i];
                 return ListTile(
-                  title: Text(_formatDate(w.startedAt)),
-                  subtitle: Text(
-                    w.endedAt == null ? 'In progress' : 'Completed',
-                  ),
+                  title: Text(w.routineName ?? 'Workout'),
+                  subtitle: Text(_subtitle(w)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/history/${w.syncId}'),
                 );
@@ -50,6 +49,23 @@ class HistoryListPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Date + status/duration, e.g. "2026-07-25 12:25 · 48 min" or
+  /// "2026-07-25 12:25 · In progress".
+  String _subtitle(Workout w) {
+    final date = _formatDate(w.startedAt);
+    if (w.endedAt == null) return '$date · In progress';
+    return '$date · ${_duration(w.startedAt, w.endedAt!)}';
+  }
+
+  String _duration(DateTime start, DateTime end) {
+    final mins = end.difference(start).inMinutes;
+    if (mins < 1) return '<1 min';
+    if (mins < 60) return '$mins min';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
   }
 
   String _formatDate(DateTime dt) {
