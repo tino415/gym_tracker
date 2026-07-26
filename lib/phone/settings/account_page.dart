@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/sync_ownership.dart';
+import 'theme_controller.dart';
 
 /// Opt-in "Sync & backup" account screen. Signed out, it offers email/password
 /// sign-in (a Google button appears only when [googleSignInSupported], which is
@@ -61,23 +62,39 @@ class _AccountPageState extends ConsumerState<AccountPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
-      body: !enabled
-          ? const _DisabledNotice()
-          : userAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+      // Single scroll view: the Appearance section is always shown (it isn't
+      // gated on sync being enabled or the user being signed in); the account /
+      // sync content follows below it.
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _AppearanceSection(
+            mode: ref.watch(themeModeProvider),
+            onChanged: (m) => ref.read(themeModeProvider.notifier).set(m),
+          ),
+          const Divider(height: 32),
+          if (!enabled)
+            const _DisabledNotice()
+          else
+            ...userAsync.when(
+              loading: () => const [
+                Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ],
+              error: (e, _) => [Center(child: Text('Error: $e'))],
               data: (user) =>
-                  user == null ? _buildSignedOut() : _buildSignedIn(user),
+                  user == null ? _signedOutChildren() : _signedInChildren(user),
             ),
+        ],
+      ),
     );
   }
 
-  Widget _buildSignedOut() {
+  List<Widget> _signedOutChildren() {
     final auth = ref.read(authServiceProvider);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    return [
         Text(
           'Sign in to sync your routines and history across devices. '
           'The app stays fully usable without an account.',
@@ -170,11 +187,10 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             label: const Text('Continue with Google'),
           ),
         ],
-      ],
-    );
+    ];
   }
 
-  Widget _buildSignedIn(User user) {
+  List<Widget> _signedInChildren(User user) {
     final auth = ref.read(authServiceProvider);
     // Whether server sync is paused because this device's local data belongs to
     // a different account. Owner null (unclaimed) or matching means active sync.
@@ -184,9 +200,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final direct = ref.watch(firestoreDirectProvider);
     final owner = direct ? null : ref.watch(syncOwnerProvider).valueOrNull;
     final paused = owner != null && owner != user.uid;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    return [
         ListTile(
           leading: const Icon(Icons.account_circle),
           title: Text(user.email ?? 'Signed in'),
@@ -203,8 +217,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           onPressed: _busy ? null : () => _run(auth.signOut, validate: false),
           child: const Text('Sign out'),
         ),
-      ],
-    );
+    ];
   }
 
   /// Take over this device for the signed-in account: persist it as the sync
@@ -293,6 +306,44 @@ class _PausedSyncCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// App theme picker (System / Light / Dark), shown on the settings screen
+/// regardless of auth state. Reads/writes [themeModeProvider] via [onChanged].
+class _AppearanceSection extends StatelessWidget {
+  const _AppearanceSection({required this.mode, required this.onChanged});
+
+  final ThemeMode mode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Theme',
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(value: ThemeMode.system, label: Text('System')),
+              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+            ],
+            selected: {mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => onChanged(s.first),
+          ),
+        ),
+      ],
     );
   }
 }

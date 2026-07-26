@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wear_plus/wear_plus.dart';
 
 import 'data/providers.dart';
 import 'phone/phone_app.dart';
+import 'phone/settings/theme_controller.dart';
 import 'phone/sign_in_screen.dart';
 import 'sync/auth_service.dart';
 import 'sync/firestore_backend.dart';
@@ -28,9 +30,16 @@ Future<bool> _detectIsWatch() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isWatch = await _detectIsWatch();
+  // Seed the theme from prefs before the first frame so the app opens in the
+  // saved light/dark mode with no flash.
+  final prefs = await SharedPreferences.getInstance();
+  final initialTheme = themeModeFromPrefs(prefs);
   runApp(
     ProviderScope(
-      overrides: [isWatchProvider.overrideWithValue(isWatch)],
+      overrides: [
+        isWatchProvider.overrideWithValue(isWatch),
+        initialThemeModeProvider.overrideWithValue(initialTheme),
+      ],
       child: GymTrackerRoot(isWatch: isWatch),
     ),
   );

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'breakpoints.dart';
-
 /// Selection API handed to a section's `onAdd` so it can drive the pane after an
 /// async add flow (e.g. a "log workout" modal that creates a row then selects
 /// it, or an inline "new" that opens a blank draft).
@@ -104,12 +102,10 @@ class _WideMasterDetailState extends State<WideMasterDetail>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      // Self-cap to the 2-pane content width and center within the app's wider
-      // column (which is sized for the Routines 3-pane view).
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: contentMaxWidth),
-          child: Row(
+      // Fill the space left of the rail: the list pane hugs the rail and the
+      // detail expands to the right edge. (Centering a capped block here left a
+      // gap between the rail and the list.)
+      body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
@@ -143,8 +139,6 @@ class _WideMasterDetailState extends State<WideMasterDetail>
           const VerticalDivider(width: 1),
           Expanded(child: _detail()),
         ],
-          ),
-        ),
       ),
     );
   }
