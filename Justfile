@@ -35,9 +35,15 @@ phone-apk:
     flutter build apk --debug --target-platform android-arm64 --dart-define=SYNC_BACKEND=firestore \
       {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
 
-# Integration test on a device/emulator (pass the serial, e.g. 127.0.0.1:5557)
+# Phone integration test on a device/emulator (pass the serial, e.g. 127.0.0.1:5557)
 e2e device:
     flutter test integration_test/routine_flow_test.dart -d {{device}}
+
+# Watch integration test on the Wear emulator (default serial 127.0.0.1:5555;
+# start it with `droid start wear`). The test sets WorkoutBridge's platform-skip
+# seam itself, so no permission dialog blocks the run.
+e2e-watch device="127.0.0.1:5555":
+    flutter test integration_test/watch_flow_test.dart -d {{device}}
 
 # Web e2e in headless Chrome (needs the Firebase emulator running: just emulator)
 e2e-web:

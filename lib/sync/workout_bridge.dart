@@ -173,9 +173,21 @@ class WorkoutBridge {
     }
   }
 
+  /// When true, every platform call is skipped even outside a host `flutter
+  /// test` run. On-device integration tests (`flutter test … -d DEVICE`) do
+  /// *not* set `FLUTTER_TEST` in the app process, so without this the run page
+  /// would fire a real BODY_SENSORS/notifications permission dialog that blocks
+  /// the test. Integration tests set this true before pumping the widget tree.
+  static bool debugSkipPlatformCalls = false;
+
+  /// Whether to no-op platform calls: host `flutter test` (via `FLUTTER_TEST`)
+  /// or an integration test that opted in via [debugSkipPlatformCalls].
+  static bool get _skipPlatformCalls =>
+      _flutterTestEnv || debugSkipPlatformCalls;
+
   /// `flutter test` sets the `FLUTTER_TEST` env var. Skipping platform calls
   /// here means the run-page widget tests don't need to mock the channel.
-  static final bool _skipPlatformCalls = () {
+  static final bool _flutterTestEnv = () {
     if (kIsWeb) return false;
     try {
       return Platform.environment['FLUTTER_TEST'] == 'true';
