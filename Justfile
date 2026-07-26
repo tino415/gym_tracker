@@ -72,8 +72,12 @@ up:
       --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true \
       --dart-define=FIREBASE_EMULATOR_HOST=dev.local
 
-# Build the prod web app (Firestore-direct)
+# Build the prod web app (Firestore-direct). `flutter clean` first: the web
+# plugin registrant is cached per build-config and can go stale across
+# dart-define configs, silently dropping a plugin (e.g. shared_preferences)
+# from the release bundle -> MissingPluginException / white screen at runtime.
 web:
+    flutter clean
     flutter build web --dart-define=SYNC_BACKEND=firestore
 
 # Build + deploy the web app to Firebase Hosting (prod)
