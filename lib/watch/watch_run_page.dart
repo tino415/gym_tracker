@@ -55,6 +55,12 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   late int _exerciseIdx;
   late int _setIdx;
 
+  // Sets the user chose to skip this session, keyed by workoutSetId. No
+  // SetCompletion is written — a skipped set stays 'not done' in history — but
+  // navigation and the Finish gate treat it as resolved so the run doesn't
+  // route back to it. In-memory only; gone when the page is disposed.
+  final Set<String> _skipped = <String>{};
+
   // Reps-kind input buffer.
   int _reps = 0;
   double _weightKg = 0;
@@ -343,11 +349,29 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     return snap.exercises[eIdx].sets[sIdx].completion != null;
   }
 
+  String? _workoutSetIdAt(int eIdx, int sIdx) {
+    final snap = _snapshot;
+    if (snap == null || eIdx >= snap.exercises.length) return null;
+    final sets = snap.exercises[eIdx].sets;
+    if (sIdx >= sets.length) return null;
+    return sets[sIdx].workoutSet.syncId;
+  }
+
+  bool _isSkippedAt(int eIdx, int sIdx) {
+    final id = _workoutSetIdAt(eIdx, sIdx);
+    return id != null && _skipped.contains(id);
+  }
+
+  /// A set is "resolved" for navigation once it's either completed or skipped —
+  /// so the walker steps over skipped sets instead of routing back to them.
+  bool _isDoneForNav(int eIdx, int sIdx) =>
+      _isCompletedAt(eIdx, sIdx) || _isSkippedAt(eIdx, sIdx);
+
   /// Completion-aware advance target from the current position. Used by the
   /// Done flow, the post-rest advance and the rest screen's up-next label so
-  /// all three agree.
+  /// all three agree. Treats skipped sets as resolved.
   ({int eIdx, int sIdx})? _nextForCompletion() =>
-      _seq.nextForCompletion(_exerciseIdx, _setIdx, _isCompletedAt);
+      _seq.nextForCompletion(_exerciseIdx, _setIdx, _isDoneForNav);
 
   ({int eIdx, int sIdx})? _prevBefore(int eIdx, int sIdx) =>
       _seq.prevBefore(eIdx, sIdx);
@@ -554,6 +578,50 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       return;
     }
     // Workout is genuinely complete — stay on logSet so the user can Finish.
+  }
+
+  // --- Skip (end sooner) --------------------------------------------------
+
+  /// Advance past the current set without recording it. The set is remembered
+  /// as skipped so the walker won't route back to it and it counts toward the
+  /// Finish gate.
+  void _skipCurrentSet() {
+    final wsId = _currentWorkoutSetId();
+    if (wsId == null) return;
+    _skipped.add(wsId);
+    _advanceAfterSkip();
+  }
+
+  /// Skip every remaining set of the current exercise slot. In a superset only
+  /// this slot's sets are skipped — the other group members keep their turns
+  /// via the alternation walker. Confirmed first, since it can drop several
+  /// sets at once.
+  Future<void> _confirmSkipExercise() async {
+    if (_snapshot == null) return;
+    final ok = await ConfirmDialog.show(
+      context,
+      title: 'Skip exercise?',
+      subtitle: 'Remaining sets will be skipped.',
+    );
+    if (!ok || !mounted) return;
+    final sets = _snapshot!.exercises[_exerciseIdx].sets;
+    for (var s = 0; s < sets.length; s++) {
+      if (sets[s].completion == null) _skipped.add(sets[s].workoutSet.syncId);
+    }
+    _advanceAfterSkip();
+  }
+
+  /// Move to the next unresolved set after a skip, or, when nothing is left,
+  /// stay put and refresh so the now-enabled Finish surfaces (same end state as
+  /// completing the final set). No rest — skipping isn't finishing a working
+  /// set.
+  void _advanceAfterSkip() {
+    final next = _nextForCompletion();
+    if (next != null) {
+      _goTo(next.eIdx, next.sIdx);
+    } else {
+      setState(() {});
+    }
   }
 
   // --- Rest timer ---------------------------------------------------------
@@ -1049,6 +1117,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
           if (n != null) _goTo(n.eIdx, n.sIdx);
         },
         onSwap: _openSwapPicker,
+        onSkipSet: _skipCurrentSet,
+        onSkipExercise: _confirmSkipExercise,
       );
     }
     return _RepsSetView(
@@ -1074,6 +1144,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         if (n != null) _goTo(n.eIdx, n.sIdx);
       },
       onSwap: _openSwapPicker,
+      onSkipSet: _skipCurrentSet,
+      onSkipExercise: _confirmSkipExercise,
     );
   }
 
@@ -1138,9 +1210,10 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   bool _allDone() {
     if (_snapshot == null) return false;
     if (_snapshot!.exercises.isEmpty) return false;
-    for (final e in _snapshot!.exercises) {
-      for (final s in e.sets) {
-        if (s.completion == null) return false;
+    for (var e = 0; e < _snapshot!.exercises.length; e++) {
+      final sets = _snapshot!.exercises[e].sets;
+      for (var s = 0; s < sets.length; s++) {
+        if (sets[s].completion == null && !_isSkippedAt(e, s)) return false;
       }
     }
     return true;
@@ -1179,6 +1252,8 @@ class _RepsSetView extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onSwap,
+    required this.onSkipSet,
+    required this.onSkipExercise,
     this.heartRateBpm,
     this.lastTimeText,
   });
@@ -1197,6 +1272,8 @@ class _RepsSetView extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onSwap;
+  final VoidCallback onSkipSet;
+  final VoidCallback onSkipExercise;
   final int? heartRateBpm;
   final String? lastTimeText;
 
@@ -1208,6 +1285,8 @@ class _RepsSetView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ScrollableSetView(
       onSwap: onSwap,
+      onSkipSet: onSkipSet,
+      onSkipExercise: onSkipExercise,
       main: _SetViewScaffold(
         prevEnabled: hasPrev,
         nextEnabled: hasNext,
@@ -1282,6 +1361,8 @@ class _TimeSetView extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onSwap,
+    required this.onSkipSet,
+    required this.onSkipExercise,
     this.heartRateBpm,
     this.lastTimeText,
   });
@@ -1301,6 +1382,8 @@ class _TimeSetView extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onSwap;
+  final VoidCallback onSkipSet;
+  final VoidCallback onSkipExercise;
   final int? heartRateBpm;
   final String? lastTimeText;
 
@@ -1319,6 +1402,8 @@ class _TimeSetView extends StatelessWidget {
     final hInset = isRound ? 24.0 : 0.0;
     return _ScrollableSetView(
       onSwap: onSwap,
+      onSkipSet: onSkipSet,
+      onSkipExercise: onSkipExercise,
       main: _SetViewScaffold(
         prevEnabled: hasPrev,
         nextEnabled: hasNext,
@@ -1563,10 +1648,14 @@ class _ScrollableSetView extends StatelessWidget {
   const _ScrollableSetView({
     required this.main,
     required this.onSwap,
+    required this.onSkipSet,
+    required this.onSkipExercise,
   });
 
   final Widget main;
   final VoidCallback onSwap;
+  final VoidCallback onSkipSet;
+  final VoidCallback onSkipExercise;
 
   @override
   Widget build(BuildContext context) {
@@ -1582,23 +1671,62 @@ class _ScrollableSetView extends StatelessWidget {
               Padding(
                 padding:
                     EdgeInsets.fromLTRB(hInset, 4, hInset, isRound ? 24 : 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: onSwap,
-                    icon: const Icon(Icons.swap_horiz, size: 16),
-                    label: const Text('Swap exercise'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(32),
-                      visualDensity: VisualDensity.compact,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TrayButton(
+                      icon: Icons.swap_horiz,
+                      label: 'Swap exercise',
+                      onPressed: onSwap,
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    _TrayButton(
+                      icon: Icons.skip_next,
+                      label: 'Skip set',
+                      onPressed: onSkipSet,
+                    ),
+                    const SizedBox(height: 6),
+                    _TrayButton(
+                      icon: Icons.done_all,
+                      label: 'Skip exercise',
+                      onPressed: onSkipExercise,
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// One compact, full-width action button for the set view's actions tray.
+class _TrayButton extends StatelessWidget {
+  const _TrayButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(32),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
     );
   }
 }

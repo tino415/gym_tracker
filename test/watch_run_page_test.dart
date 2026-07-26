@@ -464,4 +464,143 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
     });
   });
+
+  group('Watch run page — end sooner (skip)', () {
+    testWidgets('"Skip set" advances without completing the set',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Skip set',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      expect(find.text('1/2'), findsOneWidget);
+
+      // The tray button lives below the fold — scroll it in, then tap.
+      final skipSet = find.widgetWithText(OutlinedButton, 'Skip set');
+      await tester.ensureVisible(skipSet);
+      await tester.pumpAndSettle();
+      await tester.tap(skipSet);
+      await tester.pumpAndSettle();
+
+      // Moved to set 2/2, which is still uncompleted (no rest kicked in).
+      expect(find.text('2/2'), findsOneWidget);
+      expect(find.text('Rest'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
+      // Nothing was written for the skipped set.
+      final completions = await db.customSelect(
+        'SELECT COUNT(*) AS c FROM set_completions',
+      ).getSingle();
+      expect(completions.data['c'], 0);
+    });
+
+    testWidgets('"Skip exercise" confirms, skips remaining sets, enables Finish',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Skip ex',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      final skipEx = find.widgetWithText(OutlinedButton, 'Skip exercise');
+      await tester.ensureVisible(skipEx);
+      await tester.pumpAndSettle();
+      await tester.tap(skipEx);
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog appears; confirm with the ✓ round choice.
+      expect(find.text('Skip exercise?'), findsOneWidget);
+      await tester.tap(find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byIcon(Icons.check),
+      ));
+      await tester.pumpAndSettle();
+
+      // Both sets skipped → the workout is complete. Swipe back to the list;
+      // Finish is now enabled (every set is done or skipped).
+      await tester.drag(find.byType(PageView), const Offset(500, 0));
+      await tester.pumpAndSettle();
+      final finish = find.widgetWithText(FilledButton, 'Finish');
+      await tester.ensureVisible(finish);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<FilledButton>(finish).onPressed,
+        isNotNull,
+        reason: 'skipping every set should enable Finish',
+      );
+    });
+
+    testWidgets('"Skip exercise" in a superset keeps the other member',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Skip super',
+        restSeconds: 2,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'A',
+            group: 1,
+            sets: [
+              _SetFixture(reps: 5, weight: 50),
+              _SetFixture(reps: 5, weight: 50),
+            ],
+          ),
+          _ExerciseFixture(
+            name: 'B',
+            group: 1,
+            sets: [
+              _SetFixture(reps: 8, weight: 20),
+              _SetFixture(reps: 8, weight: 20),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      expect(find.text('A'), findsWidgets);
+
+      // Skip exercise A — its sets drop out, but B (same group) keeps its turn.
+      final skipEx = find.widgetWithText(OutlinedButton, 'Skip exercise');
+      await tester.ensureVisible(skipEx);
+      await tester.pumpAndSettle();
+      await tester.tap(skipEx);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byIcon(Icons.check),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('B'), findsWidgets);
+      expect(find.text('Rest'), findsNothing);
+    });
+  });
 }
