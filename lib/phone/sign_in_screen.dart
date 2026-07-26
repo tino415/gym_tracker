@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../sync/auth_service.dart';
@@ -34,6 +35,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     setState(() => _busy = true);
     try {
       await action();
+      // Sign-in submitted successfully — tell the platform the autofill context
+      // is complete so password managers can offer to save the credentials.
+      TextInput.finishAutofillContext();
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -77,36 +81,52 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               const SizedBox(height: 24),
               Form(
                 key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
+                // Group the fields so a password manager treats them as one
+                // credential (autofill + save-on-submit via
+                // finishAutofillContext in _run).
+                child: AutofillGroup(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Email is required';
+                          if (!value.contains('@')) return 'Enter a valid email';
+                          return null;
+                        },
                       ),
-                      validator: (v) {
-                        final value = v?.trim() ?? '';
-                        if (value.isEmpty) return 'Email is required';
-                        if (!value.contains('@')) return 'Enter a valid email';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.password],
-                      decoration: const InputDecoration(
-                        labelText: 'Password',
-                        border: OutlineInputBorder(),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) =>
+                            (v ?? '').length < 6 ? 'At least 6 characters' : null,
+                        // Enter submits sign-in (keyboard-first desktop), guarded
+                        // by the busy flag so it can't double-fire.
+                        onFieldSubmitted: (_) {
+                          if (_busy) return;
+                          _run(() => auth.signInWithEmail(
+                                _emailController.text.trim(),
+                                _passwordController.text,
+                              ));
+                        },
                       ),
-                      validator: (v) =>
-                          (v ?? '').length < 6 ? 'At least 6 characters' : null,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

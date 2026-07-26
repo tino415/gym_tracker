@@ -6,9 +6,21 @@ import '../../data/database.dart';
 import '../../data/providers.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
-  const WorkoutDetailPage({super.key, required this.workoutId});
+  const WorkoutDetailPage({
+    super.key,
+    required this.workoutId,
+    this.embedded = false,
+    this.onDeleted,
+  });
 
   final String workoutId;
+
+  /// Hosted in the wide master-detail pane rather than pushed as a route: no
+  /// back stack, so delete reports out via [onDeleted] instead of popping.
+  final bool embedded;
+
+  /// Called when an embedded editor deletes its workout (clears the selection).
+  final VoidCallback? onDeleted;
 
   @override
   ConsumerState<WorkoutDetailPage> createState() => _WorkoutDetailPageState();
@@ -20,6 +32,7 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
     final asyncSnap = ref.watch(fullWorkoutProvider(widget.workoutId));
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: const Text('Workout'),
         actions: [
           IconButton(
@@ -64,7 +77,11 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
     if (confirmed != true) return;
     await ref.read(workoutRepositoryProvider).deleteWorkout(widget.workoutId);
     if (!mounted) return;
-    router.pop();
+    if (widget.embedded) {
+      widget.onDeleted?.call();
+    } else {
+      router.pop();
+    }
   }
 }
 

@@ -19,9 +19,10 @@ default:
 analyze:
     flutter analyze
 
-# Unit + widget test suite
+# Unit + widget test suite. --no-pub skips the (slow) implicit `pub get` on every
+# run; run `flutter pub get` yourself after changing dependencies.
 test:
-    flutter test
+    flutter test --no-pub
 
 # Debug APK for the watch + Wear emulator (fat 32+64)
 watch-apk:
@@ -68,7 +69,8 @@ up:
     fi
     flutter run -d web-server \
       --web-hostname dev.local --web-port 4116 \
-      --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true
+      --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true \
+      --dart-define=FIREBASE_EMULATOR_HOST=dev.local
 
 # Build the prod web app (Firestore-direct)
 web:

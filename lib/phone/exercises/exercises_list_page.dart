@@ -3,53 +3,100 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../breakpoints.dart';
+import '../wide_master_detail.dart';
+import 'exercise_edit_page.dart';
 
+/// Exercises home. Narrow: single-pane list that pushes the editor. Wide:
+/// master-detail split with the editor inline (see [masterDetailBreakpoint]).
 class ExercisesListPage extends ConsumerWidget {
   const ExercisesListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final exercisesAsync = ref.watch(exercisesWithMusclesStreamProvider);
+    final wide = MediaQuery.sizeOf(context).width >= masterDetailBreakpoint;
+    if (wide) {
+      return WideMasterDetail(
+        title: 'Exercises',
+        addTooltip: 'New exercise',
+        onAdd: (api) async => api.newDraft(),
+        listBuilder: (onSelect, selectedId) =>
+            ExercisesListView(onSelect: onSelect, selectedId: selectedId),
+        detailBuilder: (selectedId, isDraft, onDeleted, onCreated) =>
+            ExerciseEditPage(
+          exerciseId: selectedId,
+          embedded: true,
+          onDeleted: onDeleted,
+          onCreated: onCreated,
+        ),
+        placeholder: const MasterDetailPlaceholder(
+          icon: Icons.list_alt,
+          label: 'Select an exercise, or + to create one.',
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Exercises')),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/exercises/new'),
         child: const Icon(Icons.add),
       ),
-      body: exercisesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (exercises) {
-          if (exercises.isEmpty) {
-            return const _EmptyState();
-          }
-          return ListView.separated(
-            itemCount: exercises.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final e = exercises[i];
-              return ListTile(
-                title: Text(e.exercise.name),
-                subtitle: e.muscles.isEmpty
-                    ? null
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Wrap(
-                          spacing: 4,
-                          runSpacing: 4,
-                          children: [
-                            for (final m in e.muscles)
-                              _MuscleTag(name: m.name),
-                          ],
-                        ),
-                      ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/exercises/${e.exercise.syncId}'),
-              );
-            },
-          );
-        },
+      body: ExercisesListView(
+        onSelect: (id) => context.push('/exercises/$id'),
       ),
+    );
+  }
+}
+
+/// List body — loading / error / empty / list of exercises — shared by the
+/// narrow page and the wide pane. [selectedId] highlights the current row.
+class ExercisesListView extends ConsumerWidget {
+  const ExercisesListView({
+    super.key,
+    required this.onSelect,
+    this.selectedId,
+  });
+
+  final void Function(String syncId) onSelect;
+  final String? selectedId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final exercisesAsync = ref.watch(exercisesWithMusclesStreamProvider);
+    return exercisesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (exercises) {
+        if (exercises.isEmpty) {
+          return const _EmptyState();
+        }
+        return ListView.separated(
+          itemCount: exercises.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            final e = exercises[i];
+            return ListTile(
+              selected: e.exercise.syncId == selectedId,
+              title: Text(e.exercise.name),
+              subtitle: e.muscles.isEmpty
+                  ? null
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (final m in e.muscles) _MuscleTag(name: m.name),
+                        ],
+                      ),
+                    ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => onSelect(e.exercise.syncId),
+            );
+          },
+        );
+      },
     );
   }
 }

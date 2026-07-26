@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'breakpoints.dart';
+
 /// App shell around the three top-level branches (Routines / Exercises /
 /// History). Adaptive navigation: a bottom [NavigationBar] on phone-width
 /// viewports, a side [NavigationRail] on wide (tablet/desktop/web) ones so the
@@ -10,15 +12,11 @@ class HomeShell extends StatelessWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  /// Below this width we're "compact" (phone) → bottom bar; at or above it,
-  /// there's room for a side rail. Matches Material's compact/medium boundary.
-  static const _railBreakpoint = 640.0;
-
   static const _destinations =
       <({IconData icon, IconData selected, String label})>[
     (icon: Icons.fitness_center_outlined, selected: Icons.fitness_center, label: 'Routines'),
     (icon: Icons.list_alt_outlined, selected: Icons.list_alt, label: 'Exercises'),
-    (icon: Icons.history_outlined, selected: Icons.history, label: 'History'),
+    (icon: Icons.history_outlined, selected: Icons.history, label: 'Workouts'),
   ];
 
   void _goBranch(int i) => navigationShell.goBranch(
@@ -29,7 +27,7 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= _railBreakpoint;
+    final wide = MediaQuery.sizeOf(context).width >= railBreakpoint;
 
     if (!wide) {
       return Scaffold(

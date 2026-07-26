@@ -3,12 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../breakpoints.dart';
 import '../exercises/muscle_selector.dart';
 
-/// Shared bottom-sheet exercise picker. Used both for adding an exercise to a
-/// routine and for adding an alternative. [excludeIds] hides anything already
-/// in the slot to avoid duplicates. Returns the picked exercise, or null when
-/// the sheet is dismissed.
+/// Shared exercise picker. Used both for adding an exercise to a routine and for
+/// adding an alternative. [excludeIds] hides anything already in the slot to
+/// avoid duplicates. Returns the picked exercise, or null when dismissed.
+///
+/// Presentation adapts to the viewport: a centered [AlertDialog] on wide
+/// (desktop/web) viewports where a bottom sheet rolling up from the corner reads
+/// as awkward, and the roll-up bottom sheet on narrow (phone) widths.
 Future<Exercise?> showExercisePicker(
   BuildContext context,
   WidgetRef ref, {
@@ -20,49 +24,66 @@ Future<Exercise?> showExercisePicker(
       ? all
       : all.where((e) => !excludeIds.contains(e.syncId)).toList();
   if (!context.mounted) return null;
+
+  final wide = MediaQuery.sizeOf(context).width >= masterDetailBreakpoint;
+  if (wide) {
+    return showDialog<Exercise>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add exercise'),
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        content: SizedBox(
+          width: 420,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: _exercisePickerList(ctx, exercises),
+          ),
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<Exercise>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (ctx) {
-      return SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('Create new exercise'),
-              onTap: () async {
-                final created = await showCreateExerciseDialog(ctx);
-                if (created != null && ctx.mounted) {
-                  Navigator.of(ctx).pop(created);
-                }
-              },
+    builder: (ctx) => SafeArea(child: _exercisePickerList(ctx, exercises)),
+  );
+}
+
+/// The picker's list body, shared by the wide dialog and the narrow bottom
+/// sheet. Pops [ctx]'s route with the chosen (or freshly created) exercise.
+Widget _exercisePickerList(BuildContext ctx, List<Exercise> exercises) {
+  return ListView(
+    shrinkWrap: true,
+    children: [
+      ListTile(
+        leading: const Icon(Icons.add),
+        title: const Text('Create new exercise'),
+        onTap: () async {
+          final created = await showCreateExerciseDialog(ctx);
+          if (created != null && ctx.mounted) {
+            Navigator.of(ctx).pop(created);
+          }
+        },
+      ),
+      const Divider(height: 1),
+      if (exercises.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No exercises available.', textAlign: TextAlign.center),
+        )
+      else
+        for (final e in exercises)
+          ListTile(
+            leading: Icon(
+              e.kind == exerciseKindTime
+                  ? Icons.timer_outlined
+                  : Icons.repeat,
             ),
-            const Divider(height: 1),
-            if (exercises.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No exercises available.',
-                  textAlign: TextAlign.center,
-                ),
-              )
-            else
-              for (final e in exercises)
-                ListTile(
-                  leading: Icon(
-                    e.kind == exerciseKindTime
-                        ? Icons.timer_outlined
-                        : Icons.repeat,
-                  ),
-                  title: Text(e.name),
-                  onTap: () => Navigator.of(ctx).pop(e),
-                ),
-          ],
-        ),
-      );
-    },
+            title: Text(e.name),
+            onTap: () => Navigator.of(ctx).pop(e),
+          ),
+    ],
   );
 }
 

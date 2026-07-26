@@ -16,16 +16,39 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
     super.key,
     required this.routineId,
     required this.routineExerciseId,
+    this.embedded = false,
+    this.showBack = false,
+    this.onClose,
   });
 
   final String routineId;
   final String routineExerciseId;
+
+  /// Hosted in the Routines wide master-detail (a detail/third pane) rather than
+  /// pushed as a route: no back stack, so removal and the deleted-slot auto-pop
+  /// report out via [onClose] instead of `context.pop()`.
+  final bool embedded;
+
+  /// Show a leading back button (2-pane: returns to the routine editor). In
+  /// 3-pane the set editor is a persistent third column, so no back button.
+  final bool showBack;
+
+  /// Called to close the set editor (clear the exercise selection).
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fullAsync = ref.watch(fullRoutineProvider(routineId));
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !embedded,
+        leading: (embedded && showBack)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to routine',
+                onPressed: onClose,
+              )
+            : null,
         title: fullAsync.when(
           loading: () => const Text('…'),
           error: (_, _) => const Text('Error'),
@@ -41,15 +64,20 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
         data: (full) {
           final re = _find(full);
           if (re == null || full == null) {
-            // Routine exercise was deleted — pop back next frame.
+            // Routine exercise vanished (removed, or a concurrent sync apply).
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (context.mounted) context.pop();
+              if (embedded) {
+                onClose?.call();
+              } else if (context.mounted) {
+                context.pop();
+              }
             });
             return const SizedBox.shrink();
           }
           return _Body(
             full: full,
             re: re,
+            onRemoved: embedded ? onClose : null,
           );
         },
       ),
@@ -66,10 +94,13 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
 }
 
 class _Body extends ConsumerWidget {
-  const _Body({required this.full, required this.re});
+  const _Body({required this.full, required this.re, this.onRemoved});
 
   final FullRoutine full;
   final FullRoutineExercise re;
+
+  /// When embedded, called after removing the exercise instead of popping.
+  final VoidCallback? onRemoved;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -203,7 +234,7 @@ class _Body extends ConsumerWidget {
             ),
         const Divider(height: 32),
         OutlinedButton.icon(
-          onPressed: () => _confirmRemove(context, ref, re),
+          onPressed: () => _confirmRemove(context, ref, re, onRemoved: onRemoved),
           icon: const Icon(Icons.delete_outline),
           label: const Text('Remove from routine'),
           style: OutlinedButton.styleFrom(
@@ -218,8 +249,9 @@ class _Body extends ConsumerWidget {
 Future<void> _confirmRemove(
   BuildContext context,
   WidgetRef ref,
-  FullRoutineExercise re,
-) async {
+  FullRoutineExercise re, {
+  VoidCallback? onRemoved,
+}) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -242,7 +274,11 @@ Future<void> _confirmRemove(
   if (confirmed != true || !context.mounted) return;
   await ref.read(routineRepositoryProvider).removeRoutineExercise(re.routineExercise.syncId);
   if (!context.mounted) return;
-  context.pop();
+  if (onRemoved != null) {
+    onRemoved();
+  } else {
+    context.pop();
+  }
 }
 
 Future<void> _editRest(

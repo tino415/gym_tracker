@@ -7,9 +7,25 @@ import '../../data/providers.dart';
 import 'muscle_selector.dart';
 
 class ExerciseEditPage extends ConsumerStatefulWidget {
-  const ExerciseEditPage({super.key, this.exerciseId});
+  const ExerciseEditPage({
+    super.key,
+    this.exerciseId,
+    this.embedded = false,
+    this.onDeleted,
+    this.onCreated,
+  });
 
   final String? exerciseId;
+
+  /// Hosted in the wide master-detail pane rather than pushed as a route: no
+  /// back stack, so save/delete report out via callbacks instead of popping.
+  final bool embedded;
+
+  /// Called when an embedded editor deletes its exercise (clears the selection).
+  final VoidCallback? onDeleted;
+
+  /// Called with the syncId after a save so the host can track/highlight it.
+  final ValueChanged<String>? onCreated;
 
   @override
   ConsumerState<ExerciseEditPage> createState() => _ExerciseEditPageState();
@@ -75,6 +91,15 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
         exercise = _loaded!;
       }
       await db.setExerciseMuscles(exercise.syncId, _selectedMuscleIds.toList());
+      if (!mounted) return;
+      if (widget.embedded) {
+        // Stay in the pane on the now-persisted exercise; report the id up so
+        // the list highlights it.
+        setState(() => _loaded = exercise);
+        widget.onCreated?.call(exercise.syncId);
+      } else {
+        context.pop();
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -82,8 +107,6 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       ).showSnackBar(SnackBar(content: Text('Could not save: $e')));
       return;
     }
-    if (!mounted) return;
-    context.pop();
   }
 
   Future<void> _delete() async {
@@ -118,7 +141,11 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       return;
     }
     if (!mounted) return;
-    context.pop();
+    if (widget.embedded) {
+      widget.onDeleted?.call();
+    } else {
+      context.pop();
+    }
   }
 
   @override
@@ -129,6 +156,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     final isEdit = _loaded != null;
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: Text(isEdit ? 'Edit exercise' : 'New exercise'),
         actions: [
           if (isEdit)

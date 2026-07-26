@@ -7,9 +7,38 @@ import '../../data/providers.dart';
 import 'exercise_picker.dart';
 
 class RoutineEditPage extends ConsumerStatefulWidget {
-  const RoutineEditPage({super.key, this.routineId});
+  const RoutineEditPage({
+    super.key,
+    this.routineId,
+    this.embedded = false,
+    this.onDeleted,
+    this.onCreated,
+    this.onSelectExercise,
+    this.selectedExerciseId,
+  });
 
   final String? routineId;
+
+  /// When true the page is hosted inside the wide-viewport master-detail pane
+  /// rather than pushed as a route. It then has no back stack of its own, so
+  /// close/delete are surfaced via [onDeleted] instead of `context.pop()`, and
+  /// draft persistence is reported via [onCreated] (see `routines_list_page`).
+  final bool embedded;
+
+  /// Called when an embedded editor deletes its routine — the host clears the
+  /// selection back to the placeholder. Ignored when not [embedded].
+  final VoidCallback? onDeleted;
+
+  /// Called with the new syncId when a draft is persisted, so the host can
+  /// track/highlight the freshly created routine. Ignored when not [embedded].
+  final ValueChanged<String>? onCreated;
+
+  /// When set (wide master-detail), tapping an exercise row selects it for the
+  /// set-editor pane instead of pushing the detail route. Null on narrow.
+  final void Function(String routineExerciseId)? onSelectExercise;
+
+  /// The currently selected exercise row (highlighted). Wide master-detail only.
+  final String? selectedExerciseId;
 
   @override
   ConsumerState<RoutineEditPage> createState() => _RoutineEditPageState();
@@ -58,6 +87,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     final created = await ref.read(routineRepositoryProvider).createRoutine(name);
     _initialName = name;
     setState(() => _routineId = created.syncId);
+    widget.onCreated?.call(created.syncId);
     return created.syncId;
   }
 
@@ -102,7 +132,11 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (confirmed != true || !mounted) return;
     await ref.read(routineRepositoryProvider).deleteRoutine(_routineId!);
     if (!mounted) return;
-    context.pop();
+    if (widget.embedded) {
+      widget.onDeleted?.call();
+    } else {
+      context.pop();
+    }
   }
 
   Future<void> _pickExerciseToAdd() async {
@@ -135,11 +169,23 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
+        // Embedded in the master-detail pane there's no route to pop; the
+        // nearest navigator is the root, so an implied back arrow would pop the
+        // whole shell.
+        automaticallyImplyLeading: !widget.embedded,
         backgroundColor:
             _reorderMode ? theme.colorScheme.primaryContainer : null,
         title: Text(isDraft ? 'New routine' : 'Edit routine'),
         actions: [
           if (!_reorderMode) ...[
+            // Embedded (wide master-detail) has no bottom FAB, so surface
+            // "Add exercise" here where it's reachable next to the other actions.
+            if (widget.embedded && !isDraft)
+              IconButton(
+                onPressed: _pickExerciseToAdd,
+                icon: const Icon(Icons.add),
+                tooltip: 'Add exercise',
+              ),
             IconButton(
               onPressed: _canSave ? _saveName : null,
               icon: const Icon(Icons.check),
@@ -165,7 +211,9 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
             ),
         ],
       ),
-      floatingActionButton: (_reorderMode || isDraft)
+      // Narrow pushes this page and uses the FAB; the wide pane hosts it
+      // embedded and puts "Add exercise" in the app bar instead (reachable).
+      floatingActionButton: (_reorderMode || isDraft || widget.embedded)
           ? null
           : FloatingActionButton.extended(
               onPressed: _pickExerciseToAdd,
@@ -184,14 +232,21 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
               TextField(
                 controller: _nameController,
                 enabled: !_reorderMode,
+                autofocus: isDraft,
+                textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
                   labelText: 'Name',
                   border: const OutlineInputBorder(),
                   helperText: isDraft
-                      ? 'Tap ✓ to save and start adding exercises'
-                      : 'Tap ✓ to save changes',
+                      ? 'Press Enter (or ✓) to save and start adding exercises'
+                      : 'Press Enter (or ✓) to save changes',
                 ),
                 onChanged: (_) => setState(() {}),
+                // Enter saves — creates the routine from a draft, or commits a
+                // rename — so keyboard-first desktop entry doesn't need the ✓.
+                onSubmitted: (_) {
+                  if (_canSave) _saveName();
+                },
               ),
               const SizedBox(height: 16),
               if (isDraft)
@@ -234,6 +289,8 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                         unit: unit,
                         routineId: _routineId!,
                         reorderMode: _reorderMode,
+                        onSelectExercise: widget.onSelectExercise,
+                        selectedExerciseId: widget.selectedExerciseId,
                         onInnerReorder: (oldIdx, newIdx) =>
                             _reorderWithinGroup(units, idx, oldIdx, newIdx),
                       ),
@@ -359,6 +416,8 @@ class _UnitTile extends StatelessWidget {
     required this.routineId,
     required this.reorderMode,
     required this.onInnerReorder,
+    this.onSelectExercise,
+    this.selectedExerciseId,
   });
 
   final int outerIndex;
@@ -366,6 +425,8 @@ class _UnitTile extends StatelessWidget {
   final String routineId;
   final bool reorderMode;
   final void Function(int oldIdx, int newIdx) onInnerReorder;
+  final void Function(String routineExerciseId)? onSelectExercise;
+  final String? selectedExerciseId;
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +453,8 @@ class _UnitTile extends StatelessWidget {
               fullExercise: single.member,
               routineId: routineId,
               reorderMode: reorderMode,
+              onSelectExercise: onSelectExercise,
+              selectedExerciseId: selectedExerciseId,
             ),
           ),
         ],
@@ -456,6 +519,8 @@ class _UnitTile extends StatelessWidget {
                         fullExercise: m,
                         routineId: routineId,
                         reorderMode: reorderMode,
+                        onSelectExercise: onSelectExercise,
+                        selectedExerciseId: selectedExerciseId,
                       ),
                     ),
                   ],
@@ -478,11 +543,15 @@ class _ExerciseRow extends StatelessWidget {
     required this.fullExercise,
     required this.routineId,
     required this.reorderMode,
+    this.onSelectExercise,
+    this.selectedExerciseId,
   });
 
   final FullRoutineExercise fullExercise;
   final String routineId;
   final bool reorderMode;
+  final void Function(String routineExerciseId)? onSelectExercise;
+  final String? selectedExerciseId;
 
   String _summary() {
     final ps = fullExercise.plannedSets;
@@ -520,7 +589,10 @@ class _ExerciseRow extends StatelessWidget {
     final theme = Theme.of(context);
     final altsCount = fullExercise.alternatives.length;
     final ex = fullExercise.exercise;
+    final reId = fullExercise.routineExercise.syncId;
+    final selected = reId == selectedExerciseId;
     final tile = ListTile(
+      selected: selected,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       leading: Icon(
         ex.kind == exerciseKindTime ? Icons.timer_outlined : Icons.repeat,
@@ -536,14 +608,21 @@ class _ExerciseRow extends StatelessWidget {
               ),
             )
           : null,
+      // Wide master-detail selects the row for the set-editor pane; narrow
+      // pushes the detail route.
       onTap: reorderMode
           ? null
-          : () => context.push(
-                '/routines/$routineId/exercises/${fullExercise.routineExercise.syncId}',
-              ),
+          : () {
+              if (onSelectExercise != null) {
+                onSelectExercise!(reId);
+              } else {
+                context.push('/routines/$routineId/exercises/$reId');
+              }
+            },
     );
     return Card(
       margin: EdgeInsets.zero,
+      color: selected ? theme.colorScheme.primaryContainer : null,
       child: tile,
     );
   }

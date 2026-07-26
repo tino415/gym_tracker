@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'breakpoints.dart';
 import 'exercises/exercise_edit_page.dart';
 import 'exercises/exercises_list_page.dart';
 import 'history/history_list_page.dart';
@@ -118,8 +119,10 @@ class PhoneApp extends StatelessWidget {
       // Cap every route to a centered max-width column so the app reads as a
       // focused editor on wide desktop/web windows instead of stretching edge
       // to edge; a no-op on phones (viewport < maxWidth). The margins take a
-      // subtle surface tint so the column reads as an app window. Applies to
-      // the shell (rail + lists) and the root-pushed editor pages alike.
+      // subtle surface tint so the column reads as an app window. The cap is
+      // [routinesWideMaxWidth] to give the Routines 3-pane view room; the 2-pane
+      // sections (Exercises / Workouts) self-cap their content to
+      // [contentMaxWidth] within it.
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         return ColoredBox(
@@ -127,7 +130,7 @@ class PhoneApp extends StatelessWidget {
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
+              constraints: const BoxConstraints(maxWidth: routinesWideMaxWidth),
               child: child,
             ),
           ),

@@ -70,19 +70,33 @@ Future<bool> initFirebaseApp() async {
     await Firebase.initializeApp(
       options: _useEmulator ? _demoOptions : _prodOptions,
     );
+  } catch (e, st) {
+    debugPrint('Firebase.initializeApp failed: $e\n$st');
+    return false;
+  }
 
-    if (_useEmulator) {
+  if (_useEmulator) {
+    // Point auth at the emulator FIRST and in its own guard. If this doesn't
+    // apply, sign-in silently hits the production identitytoolkit endpoint and
+    // 400s on the demo API key — so a Firestore-emulator hiccup (previously in
+    // the same try/catch, ahead of this call) must never prevent it from
+    // running. Log failures instead of swallowing them.
+    try {
+      await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, _authPort);
+    } catch (e, st) {
+      debugPrint('useAuthEmulator($_emulatorHost:$_authPort) failed: $e\n$st');
+    }
+    try {
       FirebaseFirestore.instance.useFirestoreEmulator(
         _emulatorHost,
         _firestorePort,
       );
-      await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, _authPort);
+    } catch (e, st) {
+      debugPrint(
+          'useFirestoreEmulator($_emulatorHost:$_firestorePort) failed: $e\n$st');
     }
-    return true;
-  } catch (e, st) {
-    debugPrint('Firebase init failed: $e\n$st');
-    return false;
   }
+  return true;
 }
 
 /// One-shot Firebase initialization. Resolves true once the app is ready (or
