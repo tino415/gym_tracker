@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../exercises/muscle_selector.dart';
 
 /// Shared bottom-sheet exercise picker. Used both for adding an exercise to a
 /// routine and for adding an alternative. [excludeIds] hides anything already
@@ -87,6 +88,7 @@ class _NewExerciseDialog extends ConsumerStatefulWidget {
 class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
   final _controller = TextEditingController();
   String _kind = exerciseKindReps;
+  final Set<String> _selectedMuscleIds = <String>{};
   bool _busy = false;
 
   @override
@@ -100,9 +102,17 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
     if (name.isEmpty) return;
     setState(() => _busy = true);
     try {
-      final created = await ref
-          .read(exerciseRepositoryProvider)
-          .createExercise(name, kind: _kind);
+      final repo = ref.read(exerciseRepositoryProvider);
+      final created = await repo.createExercise(name, kind: _kind);
+      // Only write muscles when some were picked, so creating an exercise whose
+      // name reconciles to an existing one (see createExercise) doesn't wipe its
+      // muscles with an empty selection.
+      if (_selectedMuscleIds.isNotEmpty) {
+        await repo.setExerciseMuscles(
+          created.syncId,
+          _selectedMuscleIds.toList(),
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).pop(created);
     } catch (e) {
@@ -118,25 +128,40 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('New exercise'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Name'),
-            onSubmitted: (_) => _busy ? null : _create(),
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: exerciseKindReps, label: Text('Reps')),
-              ButtonSegment(value: exerciseKindTime, label: Text('Time')),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name'),
+                onSubmitted: (_) => _busy ? null : _create(),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: exerciseKindReps, label: Text('Reps')),
+                  ButtonSegment(value: exerciseKindTime, label: Text('Time')),
+                ],
+                selected: {_kind},
+                onSelectionChanged: (s) => setState(() => _kind = s.first),
+              ),
+              const SizedBox(height: 16),
+              MuscleSelector(
+                selectedIds: _selectedMuscleIds,
+                onToggled: (id) => setState(() {
+                  if (!_selectedMuscleIds.add(id)) {
+                    _selectedMuscleIds.remove(id);
+                  }
+                }),
+              ),
             ],
-            selected: {_kind},
-            onSelectionChanged: (s) => setState(() => _kind = s.first),
           ),
-        ],
+        ),
       ),
       actions: [
         TextButton(

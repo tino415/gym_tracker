@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import 'muscle_selector.dart';
 
 class ExerciseEditPage extends ConsumerStatefulWidget {
   const ExerciseEditPage({super.key, this.exerciseId});
@@ -178,7 +179,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
                 onSelectionChanged: (s) => setState(() => _kind = s.first),
               ),
               const SizedBox(height: 16),
-              _MuscleSelector(
+              MuscleSelector(
                 selectedIds: _selectedMuscleIds,
                 onToggled: (id) => setState(() {
                   if (!_selectedMuscleIds.add(id)) {
@@ -197,40 +198,3 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   }
 }
 
-class _MuscleSelector extends ConsumerWidget {
-  const _MuscleSelector({required this.selectedIds, required this.onToggled});
-
-  final Set<String> selectedIds;
-  final ValueChanged<String> onToggled;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final musclesAsync = ref.watch(musclesStreamProvider);
-    return musclesAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (e, _) => Text('Could not load muscles: $e'),
-      data: (muscles) {
-        if (muscles.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Muscles', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final m in muscles)
-                  FilterChip(
-                    label: Text(m.name),
-                    selected: selectedIds.contains(m.syncId),
-                    onSelected: (_) => onToggled(m.syncId),
-                  ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
