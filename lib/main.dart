@@ -31,9 +31,17 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final isWatch = await _detectIsWatch();
   // Seed the theme from prefs before the first frame so the app opens in the
-  // saved light/dark mode with no flash.
-  final prefs = await SharedPreferences.getInstance();
-  final initialTheme = themeModeFromPrefs(prefs);
+  // saved light/dark mode with no flash. Never let a prefs failure block
+  // runApp: on some web builds the shared_preferences plugin can be
+  // unavailable and throw (MissingPluginException), which would white-screen
+  // the whole app. Fall back to the system theme instead.
+  var initialTheme = ThemeMode.system;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    initialTheme = themeModeFromPrefs(prefs);
+  } catch (e, st) {
+    debugPrint('theme prefs read failed, using system theme: $e\n$st');
+  }
   runApp(
     ProviderScope(
       overrides: [

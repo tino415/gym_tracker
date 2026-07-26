@@ -53,8 +53,14 @@ class ThemeController extends Notifier<ThemeMode> {
   Future<void> set(ThemeMode mode) async {
     if (mode == state) return;
     state = mode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(themeModePrefsKey, _encode(mode));
+    // Persist best-effort: apply the change to the UI regardless, and never let
+    // a prefs failure (e.g. an unavailable web plugin) throw uncaught.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(themeModePrefsKey, _encode(mode));
+    } catch (e, st) {
+      debugPrint('theme prefs write failed: $e\n$st');
+    }
   }
 }
 
