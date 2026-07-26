@@ -4,14 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+Common tasks are wrapped as `just` recipes (see `Justfile`); run `just` with no
+argument to list them all. Prefer the recipes — they bake in the flags and
+lessons below.
+
 ```bash
-flutter analyze                       # static analysis
-flutter test                          # full suite
-flutter test test/database_test.dart  # single file
+just analyze                          # static analysis (flutter analyze)
+just test                             # full unit + widget suite
+just e2e 127.0.0.1:5557               # phone integration test on a device serial
+just e2e-watch                        # watch integration test (Wear emulator, default :5555)
+just e2e-web                          # web e2e in headless Chrome (needs the emulator: just emulator)
+```
+
+Single-file / single-test runs aren't wrapped — call `flutter test` directly:
+
+```bash
+flutter test test/database_test.dart              # single file
 flutter test --plain-name 'superset alternation'  # single test by name
 ```
 
-Drift codegen — required after editing `lib/data/database.dart`:
+Other recipes: `watch-apk` / `phone-apk` (debug APKs), `web` (prod PWA build),
+`deploy` (build + Firebase Hosting), `emulator` (Firebase suite), `up` (web dev
+server), `clean`.
+
+Drift codegen — required after editing `lib/data/database.dart` (no recipe):
 
 ```bash
 flutter pub run build_runner build --force-jit
@@ -92,14 +108,9 @@ Optional server-backed sync, **off unless built with `--dart-define=SYNC_BACKEND
 
 #### Emulator dev loop
 
-Config in `firebase.json` (`demo-gym-tracker` = fully offline, no real project/billing). The Auth/Firestore emulators need a JRE — the nix env sets `JAVA_HOME` but not `java` on PATH, so start with:
+Config in `firebase.json` (`demo-gym-tracker` = fully offline, no real project/billing). Start the Auth/Firestore/hosting suite with `just emulator`.
 
-```bash
-nx bash -c 'export PATH="$JAVA_HOME/bin:$PATH"; firebase emulators:start \
-  --only hosting,auth,firestore --project demo-gym-tracker'
-```
-
-Ports: hosting 4117, UI 4118, auth 4119, firestore 4120. Build + serve the release PWA against it, and reach it over the nginx TLS vhost (`https://gym.dev.localhost`, needed for `crossOriginIsolated` → OPFS):
+Ports: hosting 4117, UI 4118, auth 4119, firestore 4120. Build + serve the release PWA against it over HTTPS (required for `crossOriginIsolated` → OPFS):
 
 ```bash
 flutter build web --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true

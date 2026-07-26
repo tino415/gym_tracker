@@ -45,6 +45,7 @@ app.*.map.json
 /android/app/release
 /default.nix
 /.claude/
+/CLAUDE.local.md
 
 # Firebase emulator cache
 /.firebase/
