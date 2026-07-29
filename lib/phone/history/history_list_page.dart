@@ -7,6 +7,7 @@ import '../../data/providers.dart';
 import '../../sync/sync_service.dart';
 import '../account_action.dart';
 import '../breakpoints.dart';
+import '../list_empty_state.dart';
 import '../wide_master_detail.dart';
 import 'workout_detail_page.dart';
 
@@ -99,9 +100,15 @@ class WorkoutsListView extends ConsumerWidget {
           ListView(physics: physics, children: [Center(child: Text('Error: $e'))]),
       data: (workouts) {
         if (workouts.isEmpty) {
-          return ListView(
+          return CustomScrollView(
             physics: physics,
-            children: const [_EmptyState()],
+            slivers: [
+              const ListEmptyState(
+                icon: Icons.history,
+                title: 'No workouts yet',
+                lines: ['Completed workouts will appear here.'],
+              ).asSliver(),
+            ],
           );
         }
         return ListView.separated(
@@ -226,35 +233,3 @@ String _formatDate(DateTime dt) {
   return '$y-$m-$d $hh:$mm';
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 64),
-          Icon(
-            Icons.history,
-            size: 64,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No workouts yet',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Completed workouts will appear here.',
-            style: TextStyle(color: Theme.of(context).colorScheme.outline),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}

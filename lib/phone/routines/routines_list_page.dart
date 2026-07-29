@@ -6,6 +6,7 @@ import '../../data/providers.dart';
 import '../../sync/sync_service.dart';
 import '../account_action.dart';
 import '../breakpoints.dart';
+import '../list_empty_state.dart';
 import '../wide_master_detail.dart';
 import 'routine_edit_page.dart';
 import 'routine_exercise_detail_page.dart';
@@ -233,9 +234,18 @@ class RoutinesListView extends ConsumerWidget {
           ListView(physics: physics, children: [Center(child: Text('Error: $e'))]),
       data: (summaries) {
         if (summaries.isEmpty) {
-          return ListView(
+          return CustomScrollView(
             physics: physics,
-            children: const [_EmptyState()],
+            slivers: [
+              const ListEmptyState(
+                icon: Icons.fitness_center,
+                title: 'No routines yet',
+                lines: [
+                  'Tap + to design your first routine.',
+                  'Pull down to sync with the watch.',
+                ],
+              ).asSliver(),
+            ],
           );
         }
         return ListView.separated(
@@ -262,41 +272,3 @@ class RoutinesListView extends ConsumerWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 64),
-          Icon(
-            Icons.fitness_center,
-            size: 64,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No routines yet',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap + to design your first routine.',
-            style: TextStyle(color: Theme.of(context).colorScheme.outline),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Pull down to sync with the watch.',
-            style: TextStyle(color: Theme.of(context).colorScheme.outline),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
