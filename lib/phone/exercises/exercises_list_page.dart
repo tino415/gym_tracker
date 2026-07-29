@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../account_action.dart';
 import '../breakpoints.dart';
 import '../wide_master_detail.dart';
 import 'exercise_edit_page.dart';
@@ -20,6 +21,7 @@ class ExercisesListPage extends ConsumerWidget {
         title: 'Exercises',
         addTooltip: 'New exercise',
         onAdd: (api) async => api.newDraft(),
+        headerActions: const [AccountAction()],
         listBuilder: (onSelect, selectedId) =>
             ExercisesListView(onSelect: onSelect, selectedId: selectedId),
         detailBuilder: (selectedId, isDraft, onDeleted, onCreated) =>
@@ -37,7 +39,10 @@ class ExercisesListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Exercises')),
+      appBar: AppBar(
+        title: const Text('Exercises'),
+        actions: const [AccountAction()],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/exercises/new'),
         child: const Icon(Icons.add),

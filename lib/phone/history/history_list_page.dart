@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../sync/sync_service.dart';
+import '../account_action.dart';
 import '../breakpoints.dart';
 import '../wide_master_detail.dart';
 import 'workout_detail_page.dart';
@@ -26,6 +27,7 @@ class HistoryListPage extends ConsumerWidget {
           final id = await logPastWorkout(context, ref);
           if (id != null) api.select(id);
         },
+        headerActions: const [AccountAction()],
         listBuilder: (onSelect, selectedId) =>
             WorkoutsListView(onSelect: onSelect, selectedId: selectedId),
         detailBuilder: (selectedId, isDraft, onDeleted, onCreated) =>
@@ -42,7 +44,10 @@ class HistoryListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Workouts')),
+      appBar: AppBar(
+        title: const Text('Workouts'),
+        actions: const [AccountAction()],
+      ),
       body: RefreshIndicator(
         // On the Firestore-direct web build there's no SyncService (Firestore
         // snapshots are already live); pull-to-refresh is a no-op there.
