@@ -42,10 +42,11 @@ class FirestoreSyncTransport implements SyncTransport {
   /// Same echo-suppression cache for exercise-library docs.
   final Map<String, Map<String, Object?>> _lastWrittenExercise = {};
 
-  /// Sync ids of workouts known to already exist on the server — populated by
-  /// both our own writes and the inbound snapshot — so repeated pushAll()s skip
-  /// them without a per-workout existence read.
-  final Set<String> _knownWorkouts = {};
+  /// Last workout doc we wrote or observed, per sync id. Doubles as the echo
+  /// suppression cache (like [_lastWrittenRoutine]) and the server-version
+  /// guard, so a push neither rewrites an identical doc nor clobbers a newer
+  /// one, without a read per push.
+  final Map<String, Map<String, Object?>> _serverWorkouts = {};
 
   CollectionReference<Map<String, Object?>> get _routines =>
       _fs.collection('users').doc(uid).collection('routines');
@@ -115,14 +116,24 @@ class FirestoreSyncTransport implements SyncTransport {
     }
   }
 
+  /// Added/modified workout docs (including tombstones) become a
+  /// [workoutCompletedType]; the receiver applies them with version-LWW. A
+  /// genuine doc removal is ignored — deletions ride as tombstone docs — but it
+  /// does drop the cache entry, so a doc deleted out of band (console, future
+  /// server-side GC) isn't suppressed forever.
   void _onWorkoutsSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
     for (final change in snap.docChanges) {
-      if (change.type == DocumentChangeType.removed) continue;
-      // Seeing it on the server means we never need to push it back.
-      _knownWorkouts.add(change.doc.id);
-      _messages.add(
-        SyncMessage(type: workoutCompletedType, payload: change.doc.data()!),
-      );
+      final id = change.doc.id;
+      if (change.type == DocumentChangeType.removed) {
+        _serverWorkouts.remove(id);
+        continue;
+      }
+      final data = change.doc.data()!;
+      // Our own write coming back: nothing to apply, and emitting it would
+      // start the apply → relay → push round trip for no reason.
+      if (jsonEquals(_serverWorkouts[id], data)) continue;
+      _serverWorkouts[id] = data;
+      _messages.add(SyncMessage(type: workoutCompletedType, payload: data));
     }
   }
 
@@ -164,7 +175,7 @@ class FirestoreSyncTransport implements SyncTransport {
       final syncId = data['syncId'] as String;
       // Skip docs whose content we already wrote, so the push → own-snapshot →
       // apply → push echo terminates without a Firestore read.
-      if (_jsonEquals(_lastWrittenRoutine[syncId], data)) continue;
+      if (jsonEquals(_lastWrittenRoutine[syncId], data)) continue;
       batch.set(_routines.doc(syncId), data);
       _lastWrittenRoutine[syncId] = data;
       writes++;
@@ -183,7 +194,7 @@ class FirestoreSyncTransport implements SyncTransport {
     for (final e in raw) {
       final data = (e as Map).cast<String, Object?>();
       final syncId = data['syncId'] as String;
-      if (_jsonEquals(_lastWrittenExercise[syncId], data)) continue;
+      if (jsonEquals(_lastWrittenExercise[syncId], data)) continue;
       batch.set(_exercises.doc(syncId), data);
       _lastWrittenExercise[syncId] = data;
       writes++;
@@ -202,22 +213,39 @@ class FirestoreSyncTransport implements SyncTransport {
     await batch.commit();
   }
 
+  /// Version-LWW upsert. Two ways to skip: the server copy is strictly newer
+  /// (don't clobber an edit made elsewhere), or it's the same version with the
+  /// same content (an idempotent re-push or our own echo — writing it would
+  /// fire a snapshot and go round again).
   Future<void> _pushWorkout(Map<String, Object?> payload) async {
     final syncId = payload['syncId'] as String?;
     if (syncId == null) return;
-    // Workouts are append-only over sync (the receiver skips known syncIds),
-    // so a doc already on the server is never rewritten. The known-set lets a
-    // repeated pushAll() skip it outright; only genuinely-unseen workouts pay
-    // for an existence read.
-    if (_knownWorkouts.contains(syncId)) return;
+    final version = (payload['version'] as num?)?.toInt() ?? 1;
     final doc = _workouts.doc(syncId);
-    final snap = await doc.get();
-    if (snap.exists) {
-      _knownWorkouts.add(syncId);
-      return;
+
+    var cached = _serverWorkouts[syncId];
+    if (cached == null) {
+      // Cold cache (first push this process): one read, then we track it.
+      final snap = await doc.get();
+      cached = snap.data();
+      if (cached != null) _serverWorkouts[syncId] = cached;
     }
-    await doc.set(payload);
-    _knownWorkouts.add(syncId);
+    if (cached != null) {
+      final cachedVersion = (cached['version'] as num?)?.toInt() ?? 1;
+      if (cachedVersion > version) return;
+      if (cachedVersion == version && jsonEquals(cached, payload)) return;
+    }
+    // Cache before writing, like _pushRoutines does: the snapshot for our own
+    // write can be delivered before `set` completes, and it must find the entry
+    // already there or it would echo back as an inbound message. Rolled back if
+    // the write fails, so a later push isn't wrongly suppressed.
+    _serverWorkouts[syncId] = payload;
+    try {
+      await doc.set(payload);
+    } catch (_) {
+      _serverWorkouts.remove(syncId);
+      rethrow;
+    }
   }
 
   @override
@@ -232,25 +260,3 @@ class FirestoreSyncTransport implements SyncTransport {
   }
 }
 
-/// Structural equality for JSON-shaped values (the DTO payloads are maps of
-/// primitives, lists, and nested maps — no Firestore Timestamps, since all
-/// times are stored as epoch-millisecond ints).
-bool _jsonEquals(Object? a, Object? b) {
-  if (identical(a, b)) return true;
-  if (a is Map && b is Map) {
-    if (a.length != b.length) return false;
-    for (final key in a.keys) {
-      if (!b.containsKey(key)) return false;
-      if (!_jsonEquals(a[key], b[key])) return false;
-    }
-    return true;
-  }
-  if (a is List && b is List) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (!_jsonEquals(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  return a == b;
-}

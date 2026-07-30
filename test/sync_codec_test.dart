@@ -248,4 +248,54 @@ void main() {
       expect(tomb.muscleSyncIds, isEmpty);
     });
   });
+
+  group('WorkoutDto versioning', () {
+    WorkoutDto live({int version = 1, int? deletedAtMs}) => WorkoutDto(
+      syncId: 'w1',
+      routineSyncId: 'r1',
+      routineName: 'Push',
+      startedAtMs: 1000,
+      endedAtMs: 2000,
+      version: version,
+      deletedAtMs: deletedAtMs,
+      exercises: const [],
+      completions: const [],
+    );
+
+    test('round-trips version and deletedAtMs', () {
+      final json = live(version: 7, deletedAtMs: 9000).toJson();
+      final back = WorkoutDto.fromJson(json);
+      expect(back.version, 7);
+      expect(back.deletedAtMs, 9000);
+    });
+
+    test('a live workout emits deletedAtMs as an explicit null', () {
+      // The Firestore content compare needs the same key set on both sides.
+      final json = live().toJson();
+      expect(json.containsKey('deletedAtMs'), isTrue);
+      expect(json['deletedAtMs'], isNull);
+    });
+
+    test('a legacy doc without version reads as version 1', () {
+      final json = live(version: 4).toJson()
+        ..remove('version')
+        ..remove('deletedAtMs');
+      final back = WorkoutDto.fromJson(json);
+      expect(back.version, 1);
+      expect(back.deletedAtMs, isNull);
+    });
+
+    test('tombstone carries no snapshot', () {
+      final tomb = WorkoutDto.tombstone(
+        syncId: 'w1',
+        version: 3,
+        deletedAtMs: 5000,
+        startedAtMs: 1000,
+      );
+      expect(tomb.exercises, isEmpty);
+      expect(tomb.completions, isEmpty);
+      expect(tomb.routineSyncId, isNull);
+      expect(WorkoutDto.fromJson(tomb.toJson()).deletedAtMs, 5000);
+    });
+  });
 }

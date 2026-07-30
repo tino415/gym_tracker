@@ -20,6 +20,30 @@ const routineDeletedType = 'routine_deleted';
 /// "delete absent" variant is needed.
 const exerciseBundleType = 'exercise_bundle';
 
+/// Structural equality for JSON-shaped values (the DTO payloads are maps of
+/// primitives, lists, and nested maps — no Firestore Timestamps, since all
+/// times are stored as epoch-millisecond ints). Dart's `Map ==` is identity, so
+/// echo suppression and no-op detection both need this.
+bool jsonEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key)) return false;
+      if (!jsonEquals(a[key], b[key])) return false;
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!jsonEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
+}
+
 class RoutineBundleMessage {
   const RoutineBundleMessage(this.routines);
 
@@ -411,10 +435,34 @@ class WorkoutDto {
     required this.endedAtMs,
     required this.exercises,
     required this.completions,
+    this.version = 1,
+    this.deletedAtMs,
     this.routineName,
     this.avgHeartRate,
     this.maxHeartRate,
   });
+
+  /// A deletion travelling as a versioned marker: no snapshot, just the id,
+  /// the version that deleted it, and when. [startedAtMs] rides along because a
+  /// receiver that has never seen this workout still has to insert a row, and
+  /// `Workouts.startedAt` is non-null.
+  factory WorkoutDto.tombstone({
+    required String syncId,
+    required int version,
+    required int deletedAtMs,
+    required int startedAtMs,
+    String? routineName,
+  }) => WorkoutDto(
+    syncId: syncId,
+    routineSyncId: null,
+    routineName: routineName,
+    startedAtMs: startedAtMs,
+    endedAtMs: null,
+    exercises: const [],
+    completions: const [],
+    version: version,
+    deletedAtMs: deletedAtMs,
+  );
 
   final String syncId;
   /// Routine sync id at the time the workout started. May reference a routine
@@ -431,6 +479,13 @@ class WorkoutDto {
   final int? avgHeartRate;
   final int? maxHeartRate;
 
+  /// Monotonic edit counter for LWW arbitration. Defaults to 1 so a message
+  /// from a pre-versioning peer (or a legacy server doc) still parses.
+  final int version;
+
+  /// Non-null marks a versioned tombstone; [exercises] / [completions] are empty.
+  final int? deletedAtMs;
+
   Map<String, Object?> toJson() => {
     'syncId': syncId,
     'routineSyncId': routineSyncId,
@@ -441,6 +496,10 @@ class WorkoutDto {
     'completions': completions.map((c) => c.toJson()).toList(),
     'avgHeartRate': avgHeartRate,
     'maxHeartRate': maxHeartRate,
+    'version': version,
+    // Always emitted, as explicit null when live, so the Firestore transport's
+    // content compare sees the same key set on both sides.
+    'deletedAtMs': deletedAtMs,
   };
 
   factory WorkoutDto.fromJson(Map<String, Object?> json) {
@@ -468,6 +527,10 @@ class WorkoutDto {
           .toList(),
       avgHeartRate: (json['avgHeartRate'] as num?)?.toInt(),
       maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
+      // Tolerant, unlike RoutineTemplateDto: workouts predate versioning, so
+      // docs and peers without the field must read as version 1, not throw.
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      deletedAtMs: (json['deletedAtMs'] as num?)?.toInt(),
     );
   }
 }

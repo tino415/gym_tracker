@@ -703,9 +703,12 @@ class FirestoreRoutineRepository implements RoutineRepository {
 /// Firestore-backed workout store. A workout is one document (`WorkoutDto`:
 /// exercises → sets, plus a workout-level completions list keyed by
 /// workoutSetSyncId). Reads map a doc to a [FullWorkout] (completions attached
-/// per set); edits touch the nested doc. Workouts have no version field — the
-/// web is the only editor of a given workout, and cross-device edit propagation
-/// is the separate "versioned workouts" task.
+/// per set); edits touch the nested doc.
+///
+/// Every edit bumps `version` inside a transaction, so a web edit and a phone
+/// push arbitrate by version-LWW instead of overwriting each other, and
+/// deletion writes a tombstone (`deletedAtMs`) rather than removing the doc so
+/// it can travel. Reads skip tombstoned docs.
 class FirestoreWorkoutRepository implements WorkoutRepository {
   FirestoreWorkoutRepository({required this.uid, FirebaseFirestore? firestore})
     : _fs = firestore ?? FirebaseFirestore.instance;
@@ -734,6 +737,10 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         : DateTime.fromMillisecondsSinceEpoch(dto.endedAtMs!),
     avgHeartRate: dto.avgHeartRate,
     maxHeartRate: dto.maxHeartRate,
+    version: dto.version,
+    deletedAt: dto.deletedAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(dto.deletedAtMs!),
   );
 
   SetCompletion _completionRow(SetCompletionDto c, String workoutId) =>
@@ -799,7 +806,9 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   Stream<List<Workout>> watchRecentWorkouts() {
     return _col.snapshots().map((snap) {
       final rows = snap.docs
-          .map((d) => _workoutRow(WorkoutDto.fromJson(d.data())))
+          .map((d) => WorkoutDto.fromJson(d.data()))
+          .where((dto) => dto.deletedAtMs == null)
+          .map(_workoutRow)
           .toList();
       rows.sort((a, b) => b.startedAt.compareTo(a.startedAt)); // newest first
       return rows;
@@ -811,7 +820,9 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     return _col.snapshots().map((snap) {
       final open = snap.docs
           .map((d) => WorkoutDto.fromJson(d.data()))
-          .where((dto) => dto.endedAtMs == null)
+          // A tombstone keeps its null endedAtMs, so it would otherwise read as
+          // forever in-progress.
+          .where((dto) => dto.endedAtMs == null && dto.deletedAtMs == null)
           .map(_workoutRow)
           .toList();
       open.sort((a, b) => b.startedAt.compareTo(a.startedAt));
@@ -823,7 +834,9 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   Stream<FullWorkout?> watchFullWorkout(String workoutId) {
     return _col.doc(workoutId).snapshots().map((doc) {
       final d = doc.data();
-      return d == null ? null : _toFullWorkout(WorkoutDto.fromJson(d));
+      if (d == null) return null;
+      final dto = WorkoutDto.fromJson(d);
+      return dto.deletedAtMs == null ? _toFullWorkout(dto) : null;
     });
   }
 
@@ -839,6 +852,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     final wData = (await _col.doc(workoutId).get()).data();
     if (wData == null) return const [];
     final w = WorkoutDto.fromJson(wData);
+    if (w.deletedAtMs != null) return const [];
     if (w.routineSyncId == null) return const [];
     final rData = (await _routCol.doc(w.routineSyncId!).get()).data();
     if (rData == null) return const [];
@@ -988,6 +1002,14 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
 
   // -- Write helpers ----------------------------------------------------
 
+  /// Read-modify-write one workout doc, bumping `version` so the edit outranks
+  /// older copies elsewhere. Deliberately **not** a transaction: Firestore
+  /// transactions need a server round-trip and fail offline, while a plain
+  /// write queues in the local cache — and offline editing matters more here
+  /// than the narrow lost-update window (a web edit landing in the same instant
+  /// as a phone push for the same workout). The routine repo makes the same
+  /// trade. The transport's version check narrows the window further by
+  /// refusing to overwrite a strictly newer server doc.
   Future<void> _editWorkout(
     String workoutId,
     void Function(Map<String, dynamic> data) mutate,
@@ -998,16 +1020,22 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     if (data == null) return;
     final m = Map<String, dynamic>.from(data);
     mutate(m);
+    m['version'] = ((m['version'] as num?)?.toInt() ?? 1) + 1;
     await ref.set(m);
   }
 
+  /// For the child-id-only APIs: scan for the doc that owns the id and edit it.
+  /// Tombstoned docs are skipped so a stale child id can't revive one.
   Future<void> _editOwningWorkout(
     bool Function(Map<String, dynamic> data) findAndMutate,
   ) async {
     final snap = await _col.get();
     for (final doc in snap.docs) {
-      final m = Map<String, dynamic>.from(doc.data());
+      final data = doc.data();
+      if (data['deletedAtMs'] != null) continue;
+      final m = Map<String, dynamic>.from(data);
       if (findAndMutate(m)) {
+        m['version'] = ((m['version'] as num?)?.toInt() ?? 1) + 1;
         await doc.reference.set(m);
         return;
       }
@@ -1067,6 +1095,8 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       'completions': <Object?>[],
       'avgHeartRate': null,
       'maxHeartRate': null,
+      'version': 1,
+      'deletedAtMs': null,
     };
     await _col.doc(id).set(doc);
     return _workoutRow(WorkoutDto.fromJson(doc));
@@ -1082,8 +1112,16 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     m['endedAtMs'] = endedAt?.millisecondsSinceEpoch;
   });
 
+  /// Soft delete: the doc stays as a versioned tombstone so the deletion can
+  /// travel to the phone/watch. Removing it would be invisible — the transport
+  /// ignores doc removals.
   @override
-  Future<void> deleteWorkout(String workoutId) => _col.doc(workoutId).delete();
+  Future<void> deleteWorkout(String workoutId) =>
+      _editWorkout(workoutId, (m) {
+        m['deletedAtMs'] = DateTime.now().millisecondsSinceEpoch;
+        m['exercises'] = <Object?>[];
+        m['completions'] = <Object?>[];
+      });
 
   @override
   Future<WorkoutExercise> addWorkoutExercise({

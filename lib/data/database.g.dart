@@ -2971,6 +2971,29 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     syncId,
@@ -2980,6 +3003,8 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
     endedAt,
     avgHeartRate,
     maxHeartRate,
+    version,
+    deletedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3048,6 +3073,18 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         ),
       );
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -3085,6 +3122,14 @@ class $WorkoutsTable extends Workouts with TableInfo<$WorkoutsTable, Workout> {
         DriftSqlType.int,
         data['${effectivePrefix}max_heart_rate'],
       ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -3102,6 +3147,8 @@ class Workout extends DataClass implements Insertable<Workout> {
   final DateTime? endedAt;
   final int? avgHeartRate;
   final int? maxHeartRate;
+  final int version;
+  final DateTime? deletedAt;
   const Workout({
     required this.syncId,
     this.routineId,
@@ -3110,6 +3157,8 @@ class Workout extends DataClass implements Insertable<Workout> {
     this.endedAt,
     this.avgHeartRate,
     this.maxHeartRate,
+    required this.version,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3130,6 +3179,10 @@ class Workout extends DataClass implements Insertable<Workout> {
     }
     if (!nullToAbsent || maxHeartRate != null) {
       map['max_heart_rate'] = Variable<int>(maxHeartRate);
+    }
+    map['version'] = Variable<int>(version);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
     }
     return map;
   }
@@ -3153,6 +3206,10 @@ class Workout extends DataClass implements Insertable<Workout> {
       maxHeartRate: maxHeartRate == null && nullToAbsent
           ? const Value.absent()
           : Value(maxHeartRate),
+      version: Value(version),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -3169,6 +3226,8 @@ class Workout extends DataClass implements Insertable<Workout> {
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
       avgHeartRate: serializer.fromJson<int?>(json['avgHeartRate']),
       maxHeartRate: serializer.fromJson<int?>(json['maxHeartRate']),
+      version: serializer.fromJson<int>(json['version']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -3182,6 +3241,8 @@ class Workout extends DataClass implements Insertable<Workout> {
       'endedAt': serializer.toJson<DateTime?>(endedAt),
       'avgHeartRate': serializer.toJson<int?>(avgHeartRate),
       'maxHeartRate': serializer.toJson<int?>(maxHeartRate),
+      'version': serializer.toJson<int>(version),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -3193,6 +3254,8 @@ class Workout extends DataClass implements Insertable<Workout> {
     Value<DateTime?> endedAt = const Value.absent(),
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
+    int? version,
+    Value<DateTime?> deletedAt = const Value.absent(),
   }) => Workout(
     syncId: syncId ?? this.syncId,
     routineId: routineId.present ? routineId.value : this.routineId,
@@ -3201,6 +3264,8 @@ class Workout extends DataClass implements Insertable<Workout> {
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
     avgHeartRate: avgHeartRate.present ? avgHeartRate.value : this.avgHeartRate,
     maxHeartRate: maxHeartRate.present ? maxHeartRate.value : this.maxHeartRate,
+    version: version ?? this.version,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Workout copyWithCompanion(WorkoutsCompanion data) {
     return Workout(
@@ -3217,6 +3282,8 @@ class Workout extends DataClass implements Insertable<Workout> {
       maxHeartRate: data.maxHeartRate.present
           ? data.maxHeartRate.value
           : this.maxHeartRate,
+      version: data.version.present ? data.version.value : this.version,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -3229,7 +3296,9 @@ class Workout extends DataClass implements Insertable<Workout> {
           ..write('startedAt: $startedAt, ')
           ..write('endedAt: $endedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
-          ..write('maxHeartRate: $maxHeartRate')
+          ..write('maxHeartRate: $maxHeartRate, ')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -3243,6 +3312,8 @@ class Workout extends DataClass implements Insertable<Workout> {
     endedAt,
     avgHeartRate,
     maxHeartRate,
+    version,
+    deletedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -3254,7 +3325,9 @@ class Workout extends DataClass implements Insertable<Workout> {
           other.startedAt == this.startedAt &&
           other.endedAt == this.endedAt &&
           other.avgHeartRate == this.avgHeartRate &&
-          other.maxHeartRate == this.maxHeartRate);
+          other.maxHeartRate == this.maxHeartRate &&
+          other.version == this.version &&
+          other.deletedAt == this.deletedAt);
 }
 
 class WorkoutsCompanion extends UpdateCompanion<Workout> {
@@ -3265,6 +3338,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
   final Value<DateTime?> endedAt;
   final Value<int?> avgHeartRate;
   final Value<int?> maxHeartRate;
+  final Value<int> version;
+  final Value<DateTime?> deletedAt;
   final Value<int> rowid;
   const WorkoutsCompanion({
     this.syncId = const Value.absent(),
@@ -3274,6 +3349,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     this.endedAt = const Value.absent(),
     this.avgHeartRate = const Value.absent(),
     this.maxHeartRate = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WorkoutsCompanion.insert({
@@ -3284,6 +3361,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     this.endedAt = const Value.absent(),
     this.avgHeartRate = const Value.absent(),
     this.maxHeartRate = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        startedAt = Value(startedAt);
@@ -3295,6 +3374,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Expression<DateTime>? endedAt,
     Expression<int>? avgHeartRate,
     Expression<int>? maxHeartRate,
+    Expression<int>? version,
+    Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3305,6 +3386,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       if (endedAt != null) 'ended_at': endedAt,
       if (avgHeartRate != null) 'avg_heart_rate': avgHeartRate,
       if (maxHeartRate != null) 'max_heart_rate': maxHeartRate,
+      if (version != null) 'version': version,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3317,6 +3400,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     Value<DateTime?>? endedAt,
     Value<int?>? avgHeartRate,
     Value<int?>? maxHeartRate,
+    Value<int>? version,
+    Value<DateTime?>? deletedAt,
     Value<int>? rowid,
   }) {
     return WorkoutsCompanion(
@@ -3327,6 +3412,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
       endedAt: endedAt ?? this.endedAt,
       avgHeartRate: avgHeartRate ?? this.avgHeartRate,
       maxHeartRate: maxHeartRate ?? this.maxHeartRate,
+      version: version ?? this.version,
+      deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3355,6 +3442,12 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
     if (maxHeartRate.present) {
       map['max_heart_rate'] = Variable<int>(maxHeartRate.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3371,6 +3464,8 @@ class WorkoutsCompanion extends UpdateCompanion<Workout> {
           ..write('endedAt: $endedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
           ..write('maxHeartRate: $maxHeartRate, ')
+          ..write('version: $version, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9100,6 +9195,8 @@ typedef $$WorkoutsTableCreateCompanionBuilder =
       Value<DateTime?> endedAt,
       Value<int?> avgHeartRate,
       Value<int?> maxHeartRate,
+      Value<int> version,
+      Value<DateTime?> deletedAt,
       Value<int> rowid,
     });
 typedef $$WorkoutsTableUpdateCompanionBuilder =
@@ -9111,6 +9208,8 @@ typedef $$WorkoutsTableUpdateCompanionBuilder =
       Value<DateTime?> endedAt,
       Value<int?> avgHeartRate,
       Value<int?> maxHeartRate,
+      Value<int> version,
+      Value<DateTime?> deletedAt,
       Value<int> rowid,
     });
 
@@ -9218,6 +9317,16 @@ class $$WorkoutsTableFilterComposer
 
   ColumnFilters<int> get maxHeartRate => $composableBuilder(
     column: $table.maxHeartRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9334,6 +9443,16 @@ class $$WorkoutsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$RoutinesTableOrderingComposer get routineId {
     final $$RoutinesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9390,6 +9509,12 @@ class $$WorkoutsTableAnnotationComposer
     column: $table.maxHeartRate,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   $$RoutinesTableAnnotationComposer get routineId {
     final $$RoutinesTableAnnotationComposer composer = $composerBuilder(
@@ -9504,6 +9629,8 @@ class $$WorkoutsTableTableManager
                 Value<DateTime?> endedAt = const Value.absent(),
                 Value<int?> avgHeartRate = const Value.absent(),
                 Value<int?> maxHeartRate = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutsCompanion(
                 syncId: syncId,
@@ -9513,6 +9640,8 @@ class $$WorkoutsTableTableManager
                 endedAt: endedAt,
                 avgHeartRate: avgHeartRate,
                 maxHeartRate: maxHeartRate,
+                version: version,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9524,6 +9653,8 @@ class $$WorkoutsTableTableManager
                 Value<DateTime?> endedAt = const Value.absent(),
                 Value<int?> avgHeartRate = const Value.absent(),
                 Value<int?> maxHeartRate = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutsCompanion.insert(
                 syncId: syncId,
@@ -9533,6 +9664,8 @@ class $$WorkoutsTableTableManager
                 endedAt: endedAt,
                 avgHeartRate: avgHeartRate,
                 maxHeartRate: maxHeartRate,
+                version: version,
+                deletedAt: deletedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

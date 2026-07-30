@@ -523,4 +523,253 @@ void main() {
     expect(accountB.sent.where((m) => m.type == routineBundleType), isNotEmpty);
     await svc.dispose();
   });
+
+  group('workout edits (version-LWW)', () {
+    /// A finished workout with one exercise, one set and one completion.
+    Future<String> seedFinishedWorkout(AppDatabase db) async {
+      final routineId = await _seedRoutine(db);
+      final w = await db.startWorkout(routineId);
+      final full = await db.loadFullWorkout(w.syncId);
+      await db.upsertSetCompletion(
+        workoutId: w.syncId,
+        workoutSetId: full!.exercises.single.sets.single.workoutSet.syncId,
+        actualReps: 10,
+        actualWeightKg: 50,
+      );
+      await db.finishWorkout(w.syncId);
+      return w.syncId;
+    }
+
+    List<SyncMessage> workoutSends(FakeTransport t) =>
+        t.sent.where((m) => m.type == workoutCompletedType).toList();
+
+    test('editing a finished workout pushes it once, with the new version',
+        () async {
+      final id = await seedFinishedWorkout(db);
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      await db.updateWorkoutTimes(
+        workoutId: id,
+        startedAt: DateTime.utc(2026, 2, 1),
+        endedAt: DateTime.utc(2026, 2, 1, 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      final sends = workoutSends(t);
+      expect(sends, hasLength(1));
+      final dto = WorkoutCompletedMessage.fromPayload(sends.single.payload);
+      expect(dto.workout.syncId, id);
+      final row = await (db.select(
+        db.workouts,
+      )..where((x) => x.syncId.equals(id))).getSingle();
+      expect(dto.workout.version, row.version);
+
+      await svc.dispose();
+    });
+
+    test('several edits inside the debounce window coalesce into one push',
+        () async {
+      final id = await seedFinishedWorkout(db);
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      await db.updateWorkoutTimes(
+        workoutId: id,
+        startedAt: DateTime.utc(2026, 2, 1),
+        endedAt: DateTime.utc(2026, 2, 1, 1),
+      );
+      await db.updateWorkoutTimes(
+        workoutId: id,
+        startedAt: DateTime.utc(2026, 2, 2),
+        endedAt: DateTime.utc(2026, 2, 2, 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(workoutSends(t), hasLength(1));
+      await svc.dispose();
+    });
+
+    test('deleting a workout pushes the tombstone even though it never ended',
+        () async {
+      final routineId = await _seedRoutine(db);
+      final w = await db.startWorkout(routineId); // no finishWorkout
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      await db.deleteWorkout(w.syncId);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      final sends = workoutSends(t);
+      expect(sends, hasLength(1));
+      final dto = WorkoutCompletedMessage.fromPayload(sends.single.payload);
+      expect(dto.workout.deletedAtMs, isNotNull);
+      await svc.dispose();
+    });
+
+    test('an in-progress workout is not pushed', () async {
+      final routineId = await _seedRoutine(db);
+      final w = await db.startWorkout(routineId);
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      final full = await db.loadFullWorkout(w.syncId);
+      await db.upsertSetCompletion(
+        workoutId: w.syncId,
+        workoutSetId: full!.exercises.single.sets.single.workoutSet.syncId,
+        actualReps: 10,
+        actualWeightKg: 50,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(workoutSends(t), isEmpty);
+      await svc.dispose();
+    });
+
+    test('applying an inbound workout produces no outbound push', () async {
+      // The core anti-loop property: an apply must never look like a local
+      // edit to the watcher, or two devices would push each other forever.
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      final dto = WorkoutDto(
+        syncId: 'remote-1',
+        routineSyncId: null,
+        routineName: 'Remote',
+        startedAtMs: 1000,
+        endedAtMs: 2000,
+        version: 3,
+        exercises: const [],
+        completions: const [],
+      );
+      t.deliver(
+        SyncMessage(
+          type: workoutCompletedType,
+          payload: WorkoutCompletedMessage(dto).toPayload(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(await db.select(db.workouts).get(), hasLength(1));
+      expect(workoutSends(t), isEmpty);
+      await svc.dispose();
+    });
+
+    test('an inbound workout relays once; a duplicate relays not at all',
+        () async {
+      final wear = FakeTransport();
+      final server = FakeTransport();
+      final svc = serviceWith([wear, server], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      wear.sent.clear();
+      server.sent.clear();
+
+      final payload = WorkoutCompletedMessage(
+        WorkoutDto(
+          syncId: 'remote-2',
+          routineSyncId: null,
+          routineName: 'Remote',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          version: 1,
+          exercises: const [],
+          completions: const [],
+        ),
+      ).toPayload();
+
+      wear.deliver(SyncMessage(type: workoutCompletedType, payload: payload));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      expect(workoutSends(server), hasLength(1));
+      expect(workoutSends(wear), isEmpty); // never back to the source
+
+      server.sent.clear();
+      // Same content again: nothing applied, so nothing relayed.
+      wear.deliver(SyncMessage(type: workoutCompletedType, payload: payload));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      expect(workoutSends(server), isEmpty);
+
+      await svc.dispose();
+    });
+
+    test('a strictly older inbound triggers one counter-push of our copy',
+        () async {
+      final id = await seedFinishedWorkout(db);
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: true);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      // Get our version well above 1.
+      await db.updateWorkoutTimes(
+        workoutId: id,
+        startedAt: DateTime.utc(2026, 3, 1),
+        endedAt: DateTime.utc(2026, 3, 1, 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      final stale = WorkoutDto(
+        syncId: id,
+        routineSyncId: null,
+        routineName: 'Stale',
+        startedAtMs: 1000,
+        endedAtMs: 2000,
+        version: 1,
+        exercises: const [],
+        completions: const [],
+      );
+      t.deliver(
+        SyncMessage(
+          type: workoutCompletedType,
+          payload: WorkoutCompletedMessage(stale).toPayload(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      final sends = workoutSends(t);
+      expect(sends, hasLength(1));
+      final dto = WorkoutCompletedMessage.fromPayload(sends.single.payload);
+      expect(dto.workout.version, greaterThan(1));
+      expect(dto.workout.routineName, isNot('Stale'));
+
+      await svc.dispose();
+    });
+
+    test('the watch pushes workout edits even though it owns no routines',
+        () async {
+      final id = await seedFinishedWorkout(db);
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: false);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      t.sent.clear();
+
+      await db.updateWorkoutTimes(
+        workoutId: id,
+        startedAt: DateTime.utc(2026, 4, 1),
+        endedAt: DateTime.utc(2026, 4, 1, 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(workoutSends(t), hasLength(1));
+      // Still not a routine authority.
+      expect(t.sent.where((m) => m.type == routineBundleType), isEmpty);
+      await svc.dispose();
+    });
+  });
 }

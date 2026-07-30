@@ -155,6 +155,14 @@ class Workouts extends Table {
   // were captured).
   IntColumn get avgHeartRate => integer().nullable()();
   IntColumn get maxHeartRate => integer().nullable()();
+  // Monotonic edit counter, bumped by every mutation of the workout or its
+  // snapshot. Sync arbitrates by it (last-writer-wins per syncId), same as
+  // [Routines] / [Exercises] — a workout is owned by the device that ran it, so
+  // whole-workout granularity is enough.
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  // Non-null marks a versioned tombstone: the child rows are gone but the row
+  // stays so the deletion can travel and outrank a stale re-creation.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -363,7 +371,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -396,6 +404,15 @@ class AppDatabase extends _$AppDatabase {
       // v11+ carries real data — migrate incrementally, never wipe.
       if (from < 12) {
         await m.addColumn(workouts, workouts.routineName);
+      }
+      // v12 → v13: version-LWW for workouts, so edits (and deletions, as
+      // tombstones) propagate instead of losing to the old append-only skip.
+      // Both columns carry their defaults into existing rows — `version`
+      // through the SQL DEFAULT 1 drift emits, `deletedAt` as NULL (= live) —
+      // so no backfill pass is needed.
+      if (from < 13) {
+        await m.addColumn(workouts, workouts.version);
+        await m.addColumn(workouts, workouts.deletedAt);
       }
     },
   );
@@ -1055,15 +1072,20 @@ class AppDatabase extends _$AppDatabase {
   // -- Workouts (runs) --------------------------------------------------
 
   Stream<List<Workout>> watchRecentWorkouts() {
-    return (select(
-      workouts,
-    )..orderBy([(t) => OrderingTerm.desc(t.startedAt)])).watch();
+    return ((select(workouts)..where((t) => t.deletedAt.isNull()))
+          ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
+        .watch();
   }
 
   /// Most recent workout with no `endedAt`. Used by the watch picker to offer
   /// a Resume entry when the user pops out of a running workout.
+  ///
+  /// The tombstone filter is load-bearing: a soft-deleted workout keeps its null
+  /// `endedAt`, so without it an abandoned-and-deleted workout would offer
+  /// "Resume" forever.
   Stream<Workout?> watchInProgressWorkout() {
-    return ((select(workouts)..where((t) => t.endedAt.isNull()))
+    return ((select(workouts)
+          ..where((t) => t.endedAt.isNull() & t.deletedAt.isNull()))
           ..orderBy([(t) => OrderingTerm.desc(t.startedAt)])
           ..limit(1))
         .watchSingleOrNull();
@@ -1158,18 +1180,61 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Bump a workout's edit counter. Raw SQL so the increment is atomic, with an
+  /// explicit `updates:` so drift's stream tracker fires — that notification is
+  /// what wakes [SyncService]'s workout watcher, so every mutation below must
+  /// call this or its edit will never leave the device.
+  ///
+  /// Never call this from [SyncRepository]: applying an inbound workout assigns
+  /// the sender's version verbatim, and a bump there would make every apply look
+  /// like a local edit and push straight back.
+  Future<void> _bumpWorkoutVersion(String workoutId) async {
+    await customUpdate(
+      'UPDATE workouts SET version = version + 1 WHERE sync_id = ?',
+      variables: [Variable.withString(workoutId)],
+      updates: {workouts},
+    );
+  }
+
+  /// Owning workout of a snapshot child, for the mutators that only receive a
+  /// child id. Must be resolved *before* a delete removes the row.
+  Future<String?> _workoutIdOfWorkoutExercise(String workoutExerciseId) async {
+    final we = await (select(
+      workoutExercises,
+    )..where((t) => t.syncId.equals(workoutExerciseId))).getSingleOrNull();
+    return we?.workoutId;
+  }
+
+  Future<String?> _workoutIdOfWorkoutSet(String workoutSetId) async {
+    final ws = await (select(
+      workoutSets,
+    )..where((t) => t.syncId.equals(workoutSetId))).getSingleOrNull();
+    if (ws == null) return null;
+    return _workoutIdOfWorkoutExercise(ws.workoutExerciseId);
+  }
+
+  Future<String?> _workoutIdOfCompletion(String completionId) async {
+    final c = await (select(
+      setCompletions,
+    )..where((t) => t.syncId.equals(completionId))).getSingleOrNull();
+    return c?.workoutId;
+  }
+
   Future<void> finishWorkout(
     String workoutId, {
     int? avgHeartRate,
     int? maxHeartRate,
   }) async {
-    await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
-      WorkoutsCompanion(
-        endedAt: Value(DateTime.now()),
-        avgHeartRate: Value(avgHeartRate),
-        maxHeartRate: Value(maxHeartRate),
-      ),
-    );
+    await transaction(() async {
+      await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
+        WorkoutsCompanion(
+          endedAt: Value(DateTime.now()),
+          avgHeartRate: Value(avgHeartRate),
+          maxHeartRate: Value(maxHeartRate),
+        ),
+      );
+      await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   Future<void> updateWorkoutTimes({
@@ -1177,16 +1242,34 @@ class AppDatabase extends _$AppDatabase {
     required DateTime startedAt,
     required DateTime? endedAt,
   }) async {
-    await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
-      WorkoutsCompanion(
-        startedAt: Value(startedAt),
-        endedAt: Value(endedAt),
-      ),
-    );
+    await transaction(() async {
+      await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
+        WorkoutsCompanion(
+          startedAt: Value(startedAt),
+          endedAt: Value(endedAt),
+        ),
+      );
+      await _bumpWorkoutVersion(workoutId);
+    });
   }
 
+  /// Soft delete: drop the snapshot but keep a versioned tombstone, so the
+  /// deletion travels over sync and outranks a peer's stale copy. Mirrors
+  /// [deleteRoutine]. Reads skip tombstoned rows.
   Future<void> deleteWorkout(String workoutId) async {
-    await (delete(workouts)..where((t) => t.syncId.equals(workoutId))).go();
+    await transaction(() async {
+      await (delete(
+        setCompletions,
+      )..where((t) => t.workoutId.equals(workoutId))).go();
+      // Cascades to workoutSets.
+      await (delete(
+        workoutExercises,
+      )..where((t) => t.workoutId.equals(workoutId))).go();
+      await (update(workouts)..where((t) => t.syncId.equals(workoutId))).write(
+        WorkoutsCompanion(deletedAt: Value(DateTime.now())),
+      );
+      await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   /// Full snapshot of a workout: its (optional) routine, every workout
@@ -1195,7 +1278,7 @@ class AppDatabase extends _$AppDatabase {
     final w = await (select(
       workouts,
     )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
-    if (w == null) return null;
+    if (w == null || w.deletedAt != null) return null;
     // A routine tombstoned via sync (backref not severed locally) reads as
     // gone here too, matching a locally-deleted routine's null backref.
     final routine = w.routineId == null
@@ -1288,6 +1371,7 @@ class AppDatabase extends _$AppDatabase {
           ..where(workoutSets.setIndex.equals(setIndex))
           ..where(workouts.syncId.equals(excludeWorkoutId).not())
           ..where(workouts.endedAt.isNotNull())
+          ..where(workouts.deletedAt.isNull())
           ..orderBy([OrderingTerm(expression: workouts.startedAt, mode: OrderingMode.desc)])
           ..limit(1);
     final row = await query.getSingleOrNull();
@@ -1301,7 +1385,7 @@ class AppDatabase extends _$AppDatabase {
     final w = await (select(
       workouts,
     )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
-    if (w == null || w.routineId == null) return const [];
+    if (w == null || w.deletedAt != null || w.routineId == null) return const [];
     final wes = await (select(workoutExercises)
           ..where((t) => t.workoutId.equals(workoutId))
           ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
@@ -1498,6 +1582,7 @@ class AppDatabase extends _$AppDatabase {
             completedAt: Value(DateTime.now()),
           ),
         );
+        await _bumpWorkoutVersion(workoutId);
         return (select(
           setCompletions,
         )..where((t) => t.syncId.equals(existing.syncId))).getSingle();
@@ -1516,6 +1601,7 @@ class AppDatabase extends _$AppDatabase {
           completedAt: DateTime.now(),
         ),
       );
+      await _bumpWorkoutVersion(workoutId);
       return (select(
         setCompletions,
       )..where((t) => t.syncId.equals(id))).getSingle();
@@ -1530,16 +1616,20 @@ class AppDatabase extends _$AppDatabase {
     int? actualSeconds,
     DateTime? completedAt,
   }) async {
-    await (update(setCompletions)..where((t) => t.syncId.equals(id))).write(
-      SetCompletionsCompanion(
-        actualReps: Value(actualReps),
-        actualWeightKg: Value(actualWeightKg),
-        actualSeconds: Value(actualSeconds),
-        completedAt: completedAt == null
-            ? const Value.absent()
-            : Value(completedAt),
-      ),
-    );
+    await transaction(() async {
+      final workoutId = await _workoutIdOfCompletion(id);
+      await (update(setCompletions)..where((t) => t.syncId.equals(id))).write(
+        SetCompletionsCompanion(
+          actualReps: Value(actualReps),
+          actualWeightKg: Value(actualWeightKg),
+          actualSeconds: Value(actualSeconds),
+          completedAt: completedAt == null
+              ? const Value.absent()
+              : Value(completedAt),
+        ),
+      );
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   /// Remove the completion (if any) for (workoutId, workoutSetId).
@@ -1547,16 +1637,24 @@ class AppDatabase extends _$AppDatabase {
     required String workoutId,
     required String workoutSetId,
   }) async {
-    await (delete(setCompletions)..where(
-          (t) =>
-              t.workoutId.equals(workoutId) &
-              t.workoutSetId.equals(workoutSetId),
-        ))
-        .go();
+    await transaction(() async {
+      await (delete(setCompletions)..where(
+            (t) =>
+                t.workoutId.equals(workoutId) &
+                t.workoutSetId.equals(workoutSetId),
+          ))
+          .go();
+      await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   Future<void> deleteCompletion(String id) async {
-    await (delete(setCompletions)..where((t) => t.syncId.equals(id))).go();
+    await transaction(() async {
+      // Resolve the owner before the delete removes the row.
+      final workoutId = await _workoutIdOfCompletion(id);
+      await (delete(setCompletions)..where((t) => t.syncId.equals(id))).go();
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   // -- Workout snapshot editing (phone history page) -------------------
@@ -1586,6 +1684,7 @@ class AppDatabase extends _$AppDatabase {
           kind: Value(ex.kind),
         ),
       );
+      await _bumpWorkoutVersion(workoutId);
       return (select(
         workoutExercises,
       )..where((t) => t.syncId.equals(id))).getSingle();
@@ -1593,9 +1692,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeWorkoutExercise(String workoutExerciseId) async {
-    await (delete(
-      workoutExercises,
-    )..where((t) => t.syncId.equals(workoutExerciseId))).go();
+    await transaction(() async {
+      // Resolve the owner before the delete removes the row.
+      final workoutId = await _workoutIdOfWorkoutExercise(workoutExerciseId);
+      await (delete(
+        workoutExercises,
+      )..where((t) => t.syncId.equals(workoutExerciseId))).go();
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   Future<WorkoutSet> addWorkoutSet({
@@ -1623,6 +1727,8 @@ class AppDatabase extends _$AppDatabase {
           targetSeconds: Value(targetSeconds),
         ),
       );
+      final workoutId = await _workoutIdOfWorkoutExercise(workoutExerciseId);
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
       return (select(
         workoutSets,
       )..where((t) => t.syncId.equals(id))).getSingle();
@@ -1630,7 +1736,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeWorkoutSet(String workoutSetId) async {
-    await (delete(workoutSets)..where((t) => t.syncId.equals(workoutSetId))).go();
+    await transaction(() async {
+      // Resolve the owner before the delete removes the row (two hops up).
+      final workoutId = await _workoutIdOfWorkoutSet(workoutSetId);
+      await (delete(
+        workoutSets,
+      )..where((t) => t.syncId.equals(workoutSetId))).go();
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
+    });
   }
 
   /// Mid-workout swap: change which canonical exercise this snapshot row
@@ -1722,6 +1835,7 @@ class AppDatabase extends _$AppDatabase {
               kind: Value(ex.kind),
             ),
           );
+      await _bumpWorkoutVersion(we.workoutId);
     });
   }
 

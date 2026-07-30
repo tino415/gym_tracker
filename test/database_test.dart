@@ -1766,5 +1766,215 @@ void main() {
       expect(full.exercises.single.exercise.name, 'Curl');
     });
   });
-}
 
+  group('workout versioning (version-LWW)', () {
+    /// A started workout with one exercise and one planned set.
+    Future<(Workout, WorkoutSet)> seededWorkout() async {
+      final ex = await db.createExercise('Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: ex.syncId,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.syncId,
+        targetReps: 5,
+        targetWeightKg: 60,
+      );
+      final w = await db.startWorkout(routine.syncId);
+      final full = await db.loadFullWorkout(w.syncId);
+      return (w, full!.exercises.single.sets.single.workoutSet);
+    }
+
+    Future<int> versionOf(String workoutId) async {
+      final w = await (db.select(
+        db.workouts,
+      )..where((t) => t.syncId.equals(workoutId))).getSingle();
+      return w.version;
+    }
+
+    test('startWorkout and createWorkout start at version 1', () async {
+      final (w, _) = await seededWorkout();
+      expect(await versionOf(w.syncId), 1);
+
+      final manual = await db.createWorkout(startedAt: DateTime(2026, 1, 1));
+      expect(await versionOf(manual.syncId), 1);
+    });
+
+    test('every workout mutation bumps the owning workout by exactly 1',
+        () async {
+      final (w, ws) = await seededWorkout();
+      final id = w.syncId;
+      var expected = 1;
+
+      Future<void> bumps(String label, Future<void> Function() action) async {
+        await action();
+        expected++;
+        expect(await versionOf(id), expected, reason: '$label should bump once');
+      }
+
+      await bumps('updateWorkoutTimes', () async {
+        await db.updateWorkoutTimes(
+          workoutId: id,
+          startedAt: DateTime(2026, 5, 1),
+          endedAt: DateTime(2026, 5, 1, 1),
+        );
+      });
+      await bumps('upsertSetCompletion (insert)', () async {
+        await db.upsertSetCompletion(
+          workoutId: id,
+          workoutSetId: ws.syncId,
+          actualReps: 5,
+          actualWeightKg: 60,
+        );
+      });
+      await bumps('upsertSetCompletion (update)', () async {
+        await db.upsertSetCompletion(
+          workoutId: id,
+          workoutSetId: ws.syncId,
+          actualReps: 6,
+          actualWeightKg: 60,
+        );
+      });
+      // Resolves the owner from the completion id, before the row is gone.
+      final completion = (await db.completionsForWorkout(id)).single;
+      await bumps('updateCompletion', () async {
+        await db.updateCompletion(id: completion.syncId, actualReps: 7);
+      });
+      await bumps('deleteCompletion', () async {
+        await db.deleteCompletion(completion.syncId);
+      });
+      await bumps('deleteSetCompletionFor', () async {
+        await db.upsertSetCompletion(
+          workoutId: id,
+          workoutSetId: ws.syncId,
+          actualReps: 5,
+          actualWeightKg: 60,
+        );
+        expected++; // the upsert above bumps too
+        await db.deleteSetCompletionFor(
+          workoutId: id,
+          workoutSetId: ws.syncId,
+        );
+      });
+
+      final extra = await db.createExercise('Chinup');
+      late WorkoutExercise we;
+      await bumps('addWorkoutExercise', () async {
+        we = await db.addWorkoutExercise(workoutId: id, exerciseId: extra.syncId);
+      });
+      late WorkoutSet extraSet;
+      await bumps('addWorkoutSet', () async {
+        extraSet = await db.addWorkoutSet(
+          workoutExerciseId: we.syncId,
+          targetReps: 8,
+          targetWeightKg: 0,
+        );
+      });
+      // Two hops up: set -> workoutExercise -> workout.
+      await bumps('removeWorkoutSet', () async {
+        await db.removeWorkoutSet(extraSet.syncId);
+      });
+      await bumps('removeWorkoutExercise', () async {
+        await db.removeWorkoutExercise(we.syncId);
+      });
+      await bumps('finishWorkout', () async {
+        await db.finishWorkout(id);
+      });
+      await bumps('deleteWorkout', () async {
+        await db.deleteWorkout(id);
+      });
+    });
+
+    test('swapWorkoutExercise bumps the workout', () async {
+      final (w, _) = await seededWorkout();
+      final before = await versionOf(w.syncId);
+      final alt = await db.createExercise('Dumbbell Press');
+      final full = await db.loadFullWorkout(w.syncId);
+      await db.swapWorkoutExercise(
+        workoutExerciseId: full!.exercises.single.workoutExercise.syncId,
+        newExerciseId: alt.syncId,
+      );
+      expect(await versionOf(w.syncId), before + 1);
+    });
+
+    test('deleteWorkout leaves a bumped tombstone with no children', () async {
+      final (w, ws) = await seededWorkout();
+      await db.upsertSetCompletion(
+        workoutId: w.syncId,
+        workoutSetId: ws.syncId,
+        actualReps: 5,
+        actualWeightKg: 60,
+      );
+      final before = await versionOf(w.syncId);
+
+      await db.deleteWorkout(w.syncId);
+
+      final row = await (db.select(
+        db.workouts,
+      )..where((t) => t.syncId.equals(w.syncId))).getSingle();
+      expect(row.deletedAt, isNotNull);
+      expect(row.version, before + 1);
+      expect(await db.select(db.workoutExercises).get(), isEmpty);
+      expect(await db.select(db.workoutSets).get(), isEmpty);
+      expect(await db.select(db.setCompletions).get(), isEmpty);
+    });
+
+    test('a tombstoned workout is invisible to every read', () async {
+      final (w, _) = await seededWorkout();
+      await db.deleteWorkout(w.syncId);
+
+      expect(await db.watchRecentWorkouts().first, isEmpty);
+      expect(await db.loadFullWorkout(w.syncId), isNull);
+      expect(await db.findWorkoutImprovements(w.syncId), isEmpty);
+      // The one that bites hardest: a tombstone keeps its null endedAt, so
+      // without the filter the watch offers "Resume" on a deleted workout.
+      expect(await db.watchInProgressWorkout().first, isNull);
+    });
+
+    test('a tombstoned workout drops out of the last-completion lookup',
+        () async {
+      final ex = await db.createExercise('Row');
+      final routine = await db.createRoutine('Pull');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: ex.syncId,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.syncId,
+        targetReps: 5,
+        targetWeightKg: 70,
+      );
+      final old = await db.startWorkout(routine.syncId);
+      final oldFull = await db.loadFullWorkout(old.syncId);
+      await db.upsertSetCompletion(
+        workoutId: old.syncId,
+        workoutSetId: oldFull!.exercises.single.sets.single.workoutSet.syncId,
+        actualReps: 5,
+        actualWeightKg: 70,
+      );
+      await db.finishWorkout(old.syncId);
+      final current = await db.startWorkout(routine.syncId);
+
+      expect(
+        await db.lastCompletionForExerciseAtSetIndex(
+          exerciseId: ex.syncId,
+          setIndex: 0,
+          excludeWorkoutId: current.syncId,
+        ),
+        isNotNull,
+      );
+
+      await db.deleteWorkout(old.syncId);
+
+      expect(
+        await db.lastCompletionForExerciseAtSetIndex(
+          exerciseId: ex.syncId,
+          setIndex: 0,
+          excludeWorkoutId: current.syncId,
+        ),
+        isNull,
+      );
+    });
+  });
+}

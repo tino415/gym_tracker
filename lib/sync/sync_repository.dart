@@ -619,11 +619,25 @@ class SyncRepository {
       _db.workouts,
     )..where((t) => t.syncId.equals(workoutId))).getSingleOrNull();
     if (workout == null) return null;
+    // A tombstone travels as a versioned deletion marker, not a snapshot — its
+    // child rows are already gone, so this also skips five pointless queries.
+    if (workout.deletedAt != null) {
+      return WorkoutDto.tombstone(
+        syncId: workout.syncId,
+        version: workout.version,
+        deletedAtMs: workout.deletedAt!.millisecondsSinceEpoch,
+        startedAtMs: workout.startedAt.millisecondsSinceEpoch,
+        routineName: workout.routineName,
+      );
+    }
     String? routineSyncId;
     if (workout.routineId != null) {
-      final r = await (_db.select(
-        _db.routines,
-      )..where((t) => t.syncId.equals(workout.routineId!))).getSingleOrNull();
+      // Tombstoned routine reads as gone, matching loadFullWorkout.
+      final r = await (_db.select(_db.routines)
+            ..where(
+              (t) => t.syncId.equals(workout.routineId!) & t.deletedAt.isNull(),
+            ))
+          .getSingleOrNull();
       routineSyncId = r?.syncId;
     }
     final wes = await (_db.select(_db.workoutExercises)
@@ -705,46 +719,110 @@ class SyncRepository {
       completions: completionDtos,
       avgHeartRate: workout.avgHeartRate,
       maxHeartRate: workout.maxHeartRate,
+      version: workout.version,
     );
   }
 
-  /// Apply an inbound workout message. Workouts are self-contained — we
-  /// insert their snapshot tables before binding completions. Append-only on
-  /// syncId.
-  Future<void> applyWorkoutCompleted(WorkoutCompletedMessage msg) async {
+  /// Apply an inbound workout message with version-LWW, replacing the whole
+  /// snapshot in one transaction. Returns true iff local rows actually changed
+  /// — [SyncService] gates the relay on that, and a false keeps a no-op echo
+  /// from waking the workout watcher.
+  ///
+  /// The applied version is taken **from the DTO and never incremented**: that
+  /// is what makes an apply invisible to the push path and keeps the relay
+  /// loop-safe now that the old append-only skip is gone.
+  Future<bool> applyWorkoutCompleted(WorkoutCompletedMessage msg) async {
     final dto = msg.workout;
-    await _db.transaction(() async {
+    return _db.transaction(() async {
       final existing = await (_db.select(
         _db.workouts,
       )..where((t) => t.syncId.equals(dto.syncId))).getSingleOrNull();
-      if (existing != null) return; // already have it; skip
+
+      // Only strictly older loses (out-of-order delivery guard). Equal versions
+      // re-apply, the same repair channel routines rely on for "Sync now".
+      if (existing != null && existing.version > dto.version) return false;
+
+      // Never let a sync clobber a workout that is open on this device right
+      // now — the watch is mid-run in front of the user.
+      if (existing != null &&
+          existing.endedAt == null &&
+          existing.deletedAt == null) {
+        return false;
+      }
+
+      // Nothing to do if we already hold exactly this content. Skipping the
+      // writes is what stops an echo from producing a table update (and so a
+      // push) on every hop.
+      if (existing != null && existing.version == dto.version) {
+        final local = await exportWorkout(dto.syncId);
+        if (local != null && jsonEquals(local.toJson(), dto.toJson())) {
+          return false;
+        }
+      }
+
+      if (dto.deletedAtMs != null) {
+        await _applyWorkoutTombstone(dto, existing);
+        return true;
+      }
 
       String? routineLocalId;
       if (dto.routineSyncId != null) {
-        final routine = await (_db.select(
-          _db.routines,
-        )..where((t) => t.syncId.equals(dto.routineSyncId!))).getSingleOrNull();
+        final routine = await (_db.select(_db.routines)
+              ..where(
+                (t) => t.syncId.equals(dto.routineSyncId!) & t.deletedAt.isNull(),
+              ))
+            .getSingleOrNull();
         routineLocalId = routine?.syncId;
       }
 
       final workoutId = dto.syncId;
-      await _db
-          .into(_db.workouts)
-          .insert(
-            WorkoutsCompanion.insert(
-              syncId: dto.syncId,
-              routineId: Value(routineLocalId),
-              routineName: Value(dto.routineName),
-              startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
-              endedAt: Value(
-                dto.endedAtMs == null
-                    ? null
-                    : DateTime.fromMillisecondsSinceEpoch(dto.endedAtMs!),
+      final startedAt = DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs);
+      final endedAt = dto.endedAtMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(dto.endedAtMs!);
+
+      if (existing == null) {
+        await _db
+            .into(_db.workouts)
+            .insert(
+              WorkoutsCompanion.insert(
+                syncId: dto.syncId,
+                routineId: Value(routineLocalId),
+                routineName: Value(dto.routineName),
+                startedAt: startedAt,
+                endedAt: Value(endedAt),
+                avgHeartRate: Value(dto.avgHeartRate),
+                maxHeartRate: Value(dto.maxHeartRate),
+                version: Value(dto.version),
               ),
-              avgHeartRate: Value(dto.avgHeartRate),
-              maxHeartRate: Value(dto.maxHeartRate),
-            ),
-          );
+            );
+      } else {
+        // Replace the snapshot wholesale. The workout row itself is updated
+        // rather than deleted: the child tables FK it, and keeping it preserves
+        // row identity for any open watchFullWorkout stream.
+        await (_db.delete(
+          _db.setCompletions,
+        )..where((t) => t.workoutId.equals(workoutId))).go();
+        // Cascades to workoutSets.
+        await (_db.delete(
+          _db.workoutExercises,
+        )..where((t) => t.workoutId.equals(workoutId))).go();
+        await (_db.update(
+          _db.workouts,
+        )..where((t) => t.syncId.equals(workoutId))).write(
+          WorkoutsCompanion(
+            routineId: Value(routineLocalId),
+            routineName: Value(dto.routineName),
+            startedAt: Value(startedAt),
+            endedAt: Value(endedAt),
+            avgHeartRate: Value(dto.avgHeartRate),
+            maxHeartRate: Value(dto.maxHeartRate),
+            version: Value(dto.version),
+            // A live edit at version >= local revives a tombstone.
+            deletedAt: const Value(null),
+          ),
+        );
+      }
 
       final workoutSetIdBySync = <String, String>{};
       for (final e in dto.exercises) {
@@ -817,7 +895,46 @@ class SyncRepository {
               ),
             );
       }
+      return true;
     });
+  }
+
+  /// Apply a workout tombstone: the deletion wins at version >= local, so the
+  /// snapshot goes and the row stays as a versioned marker. Mirrors
+  /// [_applyTombstone] for routines.
+  Future<void> _applyWorkoutTombstone(WorkoutDto dto, Workout? existing) async {
+    final deletedAt = DateTime.fromMillisecondsSinceEpoch(dto.deletedAtMs!);
+    if (existing == null) {
+      // Never seen this workout: persist the marker anyway, so a straggling
+      // create at the same or lower version can't resurrect it.
+      await _db
+          .into(_db.workouts)
+          .insert(
+            WorkoutsCompanion.insert(
+              syncId: dto.syncId,
+              routineName: Value(dto.routineName),
+              startedAt: DateTime.fromMillisecondsSinceEpoch(dto.startedAtMs),
+              version: Value(dto.version),
+              deletedAt: Value(deletedAt),
+            ),
+          );
+      return;
+    }
+    await (_db.delete(
+      _db.setCompletions,
+    )..where((t) => t.workoutId.equals(dto.syncId))).go();
+    // Cascades to workoutSets.
+    await (_db.delete(
+      _db.workoutExercises,
+    )..where((t) => t.workoutId.equals(dto.syncId))).go();
+    await (_db.update(
+      _db.workouts,
+    )..where((t) => t.syncId.equals(dto.syncId))).write(
+      WorkoutsCompanion(
+        version: Value(dto.version),
+        deletedAt: Value(deletedAt),
+      ),
+    );
   }
 
   /// Generate a stable syncId for new rows that need one on the local side.

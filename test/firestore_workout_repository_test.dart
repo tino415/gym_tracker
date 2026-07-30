@@ -21,6 +21,8 @@ void main() {
     String? routineSyncId,
     List<Map<String, dynamic>> exercises = const [],
     List<Map<String, dynamic>> completions = const [],
+    int? version,
+    int? deletedAtMs,
   }) => wcol().doc(id).set({
     'syncId': id,
     'routineSyncId': routineSyncId,
@@ -30,6 +32,8 @@ void main() {
     'completions': completions,
     'avgHeartRate': null,
     'maxHeartRate': null,
+    'version': ?version,
+    'deletedAtMs': deletedAtMs,
   });
 
   Map<String, dynamic> exercise(String id, {List<Map<String, dynamic>> sets = const []}) => {
@@ -429,5 +433,77 @@ void main() {
       completions: [completion('c1', wsId: 'ws1', reps: 10, weight: 40.0)],
     );
     expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
+  });
+
+  group('workout versioning (version-LWW)', () {
+    Future<int> versionOf(String id) async {
+      final doc = await wcol().doc(id).get();
+      return (doc.data()!['version'] as num?)?.toInt() ?? 1;
+    }
+
+    test('createWorkout seeds version 1', () async {
+      final w = await workouts.createWorkout(startedAt: DateTime(2026, 1, 1));
+      expect(await versionOf(w.syncId), 1);
+    });
+
+    test('a direct edit bumps the version', () async {
+      await seed('w1', version: 1);
+      await workouts.updateWorkoutTimes(
+        workoutId: 'w1',
+        startedAt: DateTime.fromMillisecondsSinceEpoch(500),
+        endedAt: null,
+      );
+      expect(await versionOf('w1'), 2);
+    });
+
+    test('an edit found by child id bumps the owning workout', () async {
+      await seed('w1', version: 4, exercises: [exercise('we1')]);
+      await workouts.addWorkoutSet(
+        workoutExerciseId: 'we1',
+        targetReps: 5,
+        targetWeightKg: 60,
+      );
+      expect(await versionOf('w1'), 5);
+    });
+
+    test('a legacy doc with no version edits to version 2', () async {
+      // seed() omits 'version' entirely unless asked — a legacy doc.
+      await seed('w1');
+      await workouts.updateWorkoutTimes(
+        workoutId: 'w1',
+        startedAt: DateTime.fromMillisecondsSinceEpoch(500),
+        endedAt: null,
+      );
+      expect(await versionOf('w1'), 2);
+    });
+
+    test('deleteWorkout writes a tombstone instead of removing the doc',
+        () async {
+      await seed(
+        'w1',
+        version: 2,
+        exercises: [exercise('we1', sets: [wset('s1')])],
+        completions: [completion('c1', wsId: 's1', reps: 5)],
+      );
+
+      await workouts.deleteWorkout('w1');
+
+      final doc = await wcol().doc('w1').get();
+      expect(doc.exists, isTrue, reason: 'a removal would never reach peers');
+      expect(doc.data()!['deletedAtMs'], isNotNull);
+      expect(doc.data()!['version'], 3);
+      expect(doc.data()!['exercises'], isEmpty);
+      expect(doc.data()!['completions'], isEmpty);
+    });
+
+    test('a tombstoned workout is hidden from every read', () async {
+      await seed('w1', endedAtMs: null, exercises: [exercise('we1')]);
+      await workouts.deleteWorkout('w1');
+
+      expect(await workouts.watchRecentWorkouts().first, isEmpty);
+      expect(await workouts.watchFullWorkout('w1').first, isNull);
+      expect(await workouts.watchInProgressWorkout().first, isNull);
+      expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
+    });
   });
 }

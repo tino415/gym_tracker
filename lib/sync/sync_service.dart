@@ -29,8 +29,16 @@ class SyncService {
   final List<SyncTransport> _transports;
   final Map<SyncTransport, StreamSubscription<SyncMessage>> _messageSubs = {};
   StreamSubscription<Set<TableUpdate>>? _localUpdatesSub;
+  StreamSubscription<Set<TableUpdate>>? _workoutUpdatesSub;
   Timer? _debounce;
+  Timer? _workoutDebounce;
   bool _started = false;
+
+  /// Per workout, the version we last put on the wire or accepted from it.
+  /// A workout is pushed only when its local version has moved past this, which
+  /// is what keeps applying an inbound workout from bouncing straight back —
+  /// see the loop argument on [_relayToOthers].
+  final Map<String, int> _syncedWorkoutVersions = {};
 
   void start() {
     if (_started) return;
@@ -55,6 +63,26 @@ class SyncService {
           )
           .listen((_) => _scheduleContextPush());
     }
+
+    // Workouts are watched on every device, authority or not: the watch owns
+    // the workouts it runs (and can delete them), and the phone owns the
+    // history editor. Separate subscription and debounce from the routine push
+    // so neither delays the other.
+    _workoutUpdatesSub = _db
+        .tableUpdates(
+          TableUpdateQuery.onAllTables([
+            _db.workouts,
+            _db.workoutExercises,
+            _db.workoutSets,
+            _db.setCompletions,
+          ]),
+        )
+        .listen((_) => _scheduleWorkoutPush());
+
+    // Seed the synced-version map from what's already on disk, so coming up
+    // doesn't look like every workout was just edited. Catching a peer up is
+    // the sync-request exchange's job, not the watcher's.
+    unawaited(_reconcileThenSeedWorkoutVersions());
 
     if (isRoutineAuthority) {
       _scheduleContextPush();
@@ -137,13 +165,24 @@ class SyncService {
           await _repo.applyExerciseBundle(bundle);
         case workoutCompletedType:
           final workout = WorkoutCompletedMessage.fromPayload(msg.payload);
-          await _repo.applyWorkoutCompleted(workout);
-          // Relay onward so a workout finished on the watch (arriving over the
-          // Wear bridge) reaches Firestore immediately, instead of waiting for
-          // the next manual pushAll. The phone is the only multi-transport hub;
-          // a single-transport peer relays to nothing. Routines don't need this
-          // — the routine table watcher re-pushes them on apply.
-          await _relayToOthers(source, type: msg.type, payload: msg.payload);
+          final dto = workout.workout;
+          final applied = await _repo.applyWorkoutCompleted(workout);
+          if (applied) {
+            // Mark it synced *before* the watcher's debounce can fire, so the
+            // rows this apply just wrote don't read as a local edit.
+            _syncedWorkoutVersions[dto.syncId] = dto.version;
+            // Relay onward so a workout finished on the watch (arriving over
+            // the Wear bridge) reaches Firestore immediately, instead of
+            // waiting for the next manual pushAll. The phone is the only
+            // multi-transport hub; a single-transport peer relays to nothing.
+            await _relayToOthers(source, type: msg.type, payload: msg.payload);
+          } else {
+            // Rejected. If ours is strictly newer, the sender is stale and
+            // nothing else will fix it — a rejection writes no rows, so the
+            // watcher stays quiet. Counter-push once; it carries a strictly
+            // greater version, so the peer accepts it and stops there.
+            unawaited(_repairStaleWorkout(dto.syncId, dto.version));
+          }
         case syncRequestType:
           unawaited(_respondToSyncRequest());
       }
@@ -152,13 +191,39 @@ class SyncService {
     }
   }
 
+  /// Re-push our copy when a peer sent us a strictly older one; no-op when the
+  /// message was rejected for any other reason (equal-version no-op, or a live
+  /// local session we refuse to clobber).
+  Future<void> _repairStaleWorkout(String syncId, int incomingVersion) async {
+    try {
+      final local = await (_db.select(
+        _db.workouts,
+      )..where((t) => t.syncId.equals(syncId))).getSingleOrNull();
+      if (local == null || local.version <= incomingVersion) return;
+      await pushWorkout(syncId);
+    } catch (_) {
+      // best-effort
+    }
+  }
+
   /// Forward an inbound message to every transport except the one it arrived
-  /// on. Loop-safe: the source is skipped, and workouts are append-only +
-  /// idempotent on syncId (both [SyncRepository.applyWorkoutCompleted] and the
-  /// Firestore transport's `_knownWorkouts` cache skip a known id), so an echo
-  /// (Firestore snapshot → apply → relay to Wear → watch applies, idempotent)
-  /// terminates within one bounded hop. Per-transport failures are swallowed,
-  /// and the list is snapshotted so a concurrent attach/detach can't throw.
+  /// on.
+  ///
+  /// Loop-safe by this invariant: for each workout syncId every device keeps
+  /// [_syncedWorkoutVersions] = the version it last sent or last accepted from
+  /// the wire, and pushes only when the local version has moved past it.
+  /// [SyncRepository.applyWorkoutCompleted] assigns the sender's version
+  /// verbatim and never increments, and the id is marked synced the moment it
+  /// applies — so applying can never leave the workout looking dirty, and no
+  /// inbound message can produce an outbound push. The only source of a push is
+  /// a local edit, which strictly increases the version. (Corollaries worth
+  /// guarding in review: [SyncRepository] must never call an [AppDatabase]
+  /// workout mutator, since those bump.)
+  ///
+  /// The relay itself is one hop — the source is skipped, and a receiver that
+  /// already holds the same content applies nothing and relays nothing.
+  /// Per-transport failures are swallowed, and the list is snapshotted so a
+  /// concurrent attach/detach can't throw.
   Future<void> _relayToOthers(
     SyncTransport source, {
     required String type,
@@ -178,10 +243,7 @@ class SyncService {
     if (isRoutineAuthority) {
       await _pushContext();
     }
-    final all = await (_db.select(
-      _db.workouts,
-    )..where((t) => t.endedAt.isNotNull())).get();
-    for (final w in all) {
+    for (final w in await _syncableWorkouts()) {
       await pushWorkout(w.syncId);
     }
   }
@@ -189,6 +251,65 @@ class SyncService {
   void _scheduleContextPush() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), _pushContext);
+  }
+
+  void _scheduleWorkoutPush() {
+    _workoutDebounce?.cancel();
+    _workoutDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () => unawaited(_pushDirtyWorkouts()),
+    );
+  }
+
+  /// Key marking the one-time post-migration reconciliation as done.
+  static const _workoutLwwReconciledKey = 'workout_lww_v13';
+
+  Future<void> _reconcileThenSeedWorkoutVersions() async {
+    try {
+      await _reconcileWorkoutVersionsOnce();
+      for (final w in await _syncableWorkouts()) {
+        _syncedWorkoutVersions[w.syncId] = w.version;
+      }
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  /// Schema v13 starts every local workout at version 1, and a legacy server
+  /// doc with no `version` also reads as 1 — so the first sync after upgrading
+  /// would arbitrate equal versions by arrival order and could overwrite phone
+  /// history edits that were never pushable before. Bump ours once on the
+  /// authority device so those edits win. Runs a single time, ever.
+  Future<void> _reconcileWorkoutVersionsOnce() async {
+    if (!isRoutineAuthority) return;
+    if (await _db.getSyncMeta(_workoutLwwReconciledKey) != null) return;
+    await _db.customUpdate(
+      'UPDATE workouts SET version = version + 1',
+      updates: {_db.workouts},
+    );
+    await _db.setSyncMeta(_workoutLwwReconciledKey, '1');
+  }
+
+  /// Workouts eligible to travel: finished ones, plus tombstones — a workout
+  /// abandoned and then deleted never gets an `endedAt`, and its deletion still
+  /// has to reach the other devices. A live in-progress workout stays put.
+  Future<List<Workout>> _syncableWorkouts() {
+    return (_db.select(
+      _db.workouts,
+    )..where((t) => t.endedAt.isNotNull() | t.deletedAt.isNotNull())).get();
+  }
+
+  /// Push only workouts whose local version moved past what we last synced, so
+  /// one edit sends one workout instead of re-exporting the whole history.
+  Future<void> _pushDirtyWorkouts() async {
+    try {
+      for (final w in await _syncableWorkouts()) {
+        if (_syncedWorkoutVersions[w.syncId] == w.version) continue;
+        await pushWorkout(w.syncId);
+      }
+    } catch (_) {
+      // best-effort
+    }
   }
 
   Future<void> _pushContext() async {
@@ -224,10 +345,7 @@ class SyncService {
     if (isRoutineAuthority) {
       await _pushContext();
     }
-    final all = await (_db.select(
-      _db.workouts,
-    )..where((t) => t.endedAt.isNotNull())).get();
-    for (final w in all) {
+    for (final w in await _syncableWorkouts()) {
       await pushWorkout(w.syncId);
     }
     // Ask the peer to push their side back to us. Best-effort.
@@ -239,11 +357,16 @@ class SyncService {
     if (dto == null) return;
     final msg = WorkoutCompletedMessage(dto);
     await _sendAll(type: workoutCompletedType, payload: msg.toPayload());
+    // What's on the wire is now our synced baseline; the watcher only fires
+    // again once a local edit moves the version past it.
+    _syncedWorkoutVersions[workoutId] = dto.version;
   }
 
   Future<void> dispose() async {
     _debounce?.cancel();
+    _workoutDebounce?.cancel();
     await _localUpdatesSub?.cancel();
+    await _workoutUpdatesSub?.cancel();
     for (final sub in _messageSubs.values) {
       await sub.cancel();
     }

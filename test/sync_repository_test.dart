@@ -320,4 +320,182 @@ void main() {
       expect(rows.single.syncId, isNot('other'));
     });
   });
+
+  group('workout sync (version-LWW)', () {
+    // Timestamps are whole seconds on purpose: drift stores DateTime as unix
+    // seconds, so a DTO carrying sub-second millis would not survive an
+    // apply -> export round trip byte-identical.
+    WorkoutDto workoutDto({
+      required int version,
+      String syncId = 'w1',
+      int startedAtMs = 1000,
+      int? endedAtMs = 2000,
+      int actualReps = 5,
+      List<String> setIds = const ['s1'],
+      int? deletedAtMs,
+    }) {
+      if (deletedAtMs != null) {
+        return WorkoutDto.tombstone(
+          syncId: syncId,
+          version: version,
+          deletedAtMs: deletedAtMs,
+          startedAtMs: startedAtMs,
+        );
+      }
+      return WorkoutDto(
+        syncId: syncId,
+        routineSyncId: null,
+        routineName: 'Push',
+        startedAtMs: startedAtMs,
+        endedAtMs: endedAtMs,
+        version: version,
+        exercises: [
+          WorkoutExerciseDto(
+            syncId: 'we1',
+            exerciseSyncId: null,
+            exerciseName: 'Bench',
+            kind: exerciseKindReps,
+            orderIndex: 0,
+            restSeconds: 90,
+            supersetGroup: null,
+            routineExerciseSyncId: null,
+            sets: [
+              for (var i = 0; i < setIds.length; i++)
+                WorkoutSetDto(
+                  syncId: setIds[i],
+                  setIndex: i,
+                  targetReps: 5,
+                  targetWeightKg: 60,
+                  targetSeconds: null,
+                ),
+            ],
+          ),
+        ],
+        completions: [
+          SetCompletionDto(
+            syncId: 'c1',
+            workoutSetSyncId: setIds.first,
+            actualReps: actualReps,
+            actualWeightKg: 60,
+            actualSeconds: null,
+            completedAtMs: 3000,
+          ),
+        ],
+      );
+    }
+
+    Future<bool> apply(WorkoutDto dto) =>
+        repo.applyWorkoutCompleted(WorkoutCompletedMessage(dto));
+
+    Future<Workout?> row(String syncId) => (db.select(
+      db.workouts,
+    )..where((t) => t.syncId.equals(syncId))).getSingleOrNull();
+
+    test('inserts a new workout with its snapshot and completions', () async {
+      expect(await apply(workoutDto(version: 1)), isTrue);
+
+      final full = await db.loadFullWorkout('w1');
+      expect(full!.exercises.single.sets.single.completion?.actualReps, 5);
+      expect((await row('w1'))!.version, 1);
+    });
+
+    test('a newer version replaces the whole snapshot, keeping its version',
+        () async {
+      await apply(workoutDto(version: 1, setIds: ['s1', 's2']));
+      expect(await db.select(db.workoutSets).get(), hasLength(2));
+
+      // v2 drops a set and edits the completion.
+      expect(
+        await apply(workoutDto(version: 2, actualReps: 9, setIds: ['s1'])),
+        isTrue,
+      );
+
+      final full = await db.loadFullWorkout('w1');
+      expect(full!.exercises.single.sets, hasLength(1));
+      expect(full.exercises.single.sets.single.completion?.actualReps, 9);
+      // Assigned from the DTO, never incremented — an increment here would make
+      // every apply look like a local edit and push straight back.
+      expect((await row('w1'))!.version, 2);
+    });
+
+    test('an equal version with different content re-applies', () async {
+      await apply(workoutDto(version: 3));
+      expect(await apply(workoutDto(version: 3, actualReps: 12)), isTrue);
+
+      final full = await db.loadFullWorkout('w1');
+      expect(full!.exercises.single.sets.single.completion?.actualReps, 12);
+    });
+
+    test('an identical re-delivery is a no-op and reports false', () async {
+      await apply(workoutDto(version: 1));
+      expect(await apply(workoutDto(version: 1)), isFalse);
+    });
+
+    test('a strictly older version is dropped', () async {
+      await apply(workoutDto(version: 5, actualReps: 20));
+      expect(await apply(workoutDto(version: 4, actualReps: 1)), isFalse);
+
+      final full = await db.loadFullWorkout('w1');
+      expect(full!.exercises.single.sets.single.completion?.actualReps, 20);
+      expect((await row('w1'))!.version, 5);
+    });
+
+    test('a live local session is never clobbered', () async {
+      await apply(workoutDto(version: 1, endedAtMs: null));
+      expect(await apply(workoutDto(version: 9, actualReps: 99)), isFalse);
+
+      final full = await db.loadFullWorkout('w1');
+      expect(full!.exercises.single.sets.single.completion?.actualReps, 5);
+    });
+
+    test('a tombstone wipes the snapshot and marks the row', () async {
+      await apply(workoutDto(version: 1));
+      expect(await apply(workoutDto(version: 2, deletedAtMs: 5000)), isTrue);
+
+      final w = await row('w1');
+      expect(w!.deletedAt, isNotNull);
+      expect(w.version, 2);
+      expect(await db.select(db.workoutExercises).get(), isEmpty);
+      expect(await db.select(db.setCompletions).get(), isEmpty);
+      expect(await db.loadFullWorkout('w1'), isNull);
+    });
+
+    test('a tombstone for a never-seen workout suppresses re-creation',
+        () async {
+      expect(await apply(workoutDto(version: 4, deletedAtMs: 5000)), isTrue);
+      expect((await row('w1'))!.deletedAt, isNotNull);
+
+      // A stale, strictly-older create must not resurrect it (the marker is
+      // there precisely to outrank it) ...
+      await apply(workoutDto(version: 3));
+      expect(await db.loadFullWorkout('w1'), isNull);
+
+      // ... but a newer edit revives, same as the routine tombstone rule.
+      expect(await apply(workoutDto(version: 5)), isTrue);
+      final full = await db.loadFullWorkout('w1');
+      expect(full, isNotNull);
+      expect((await row('w1'))!.deletedAt, isNull);
+    });
+
+    test('export of a tombstone is a marker, not a snapshot', () async {
+      await apply(workoutDto(version: 1));
+      await db.deleteWorkout('w1');
+
+      final dto = await repo.exportWorkout('w1');
+      expect(dto!.deletedAtMs, isNotNull);
+      expect(dto.exercises, isEmpty);
+      expect(dto.completions, isEmpty);
+    });
+
+    test('export -> json -> apply -> export is a fixed point', () async {
+      await apply(workoutDto(version: 7, setIds: ['s1', 's2']));
+      final exported = (await repo.exportWorkout('w1'))!.toJson();
+
+      // Round-trip it back in: the same content at the same version must not
+      // change anything (this is the property the anti-loop argument rests on).
+      final again = WorkoutDto.fromJson(exported);
+      expect(await apply(again), isFalse);
+      expect((await repo.exportWorkout('w1'))!.toJson(), exported);
+    });
+  });
 }
