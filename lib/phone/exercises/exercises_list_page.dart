@@ -22,7 +22,6 @@ class ExercisesListPage extends ConsumerWidget {
         title: 'Exercises',
         addTooltip: 'New exercise',
         onAdd: (api) async => api.newDraft(),
-        headerActions: const [AccountAction()],
         listBuilder: (onSelect, selectedId) =>
             ExercisesListView(onSelect: onSelect, selectedId: selectedId),
         detailBuilder: (selectedId, isDraft, onDeleted, onCreated) =>

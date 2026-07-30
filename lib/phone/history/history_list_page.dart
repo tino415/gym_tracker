@@ -28,7 +28,6 @@ class HistoryListPage extends ConsumerWidget {
           final id = await logPastWorkout(context, ref);
           if (id != null) api.select(id);
         },
-        headerActions: const [AccountAction()],
         listBuilder: (onSelect, selectedId) =>
             WorkoutsListView(onSelect: onSelect, selectedId: selectedId),
         detailBuilder: (selectedId, isDraft, onDeleted, onCreated) =>

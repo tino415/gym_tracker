@@ -26,7 +26,6 @@ class WideMasterDetail extends StatefulWidget {
     required this.listBuilder,
     required this.detailBuilder,
     required this.placeholder,
-    this.headerActions = const [],
     this.listWidth = 320,
   });
 
@@ -35,9 +34,6 @@ class WideMasterDetail extends StatefulWidget {
 
   /// Header "+" action. Async so it can run a modal before selecting.
   final Future<void> Function(WideMasterDetailApi api) onAdd;
-
-  /// Extra header widgets after the "+" (e.g. an account button).
-  final List<Widget> headerActions;
 
   /// Builds the list body, wired to select rows and highlight [selectedId].
   final Widget Function(void Function(String id) onSelect, String? selectedId)
@@ -127,7 +123,6 @@ class _WideMasterDetailState extends State<WideMasterDetail>
                         onPressed: () => widget.onAdd(this),
                         icon: const Icon(Icons.add),
                       ),
-                      ...widget.headerActions,
                     ],
                   ),
                 ),

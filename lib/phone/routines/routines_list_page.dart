@@ -188,7 +188,6 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
                   onPressed: _newDraft,
                   icon: const Icon(Icons.add),
                 ),
-                const AccountAction(),
               ],
             ),
           ),

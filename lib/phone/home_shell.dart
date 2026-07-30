@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'account_action.dart';
 import 'breakpoints.dart';
 
 /// App shell around the three top-level branches (Routines / Exercises /
@@ -54,6 +55,19 @@ class HomeShell extends StatelessWidget {
             selectedIndex: navigationShell.currentIndex,
             onDestinationSelected: _goBranch,
             labelType: NavigationRailLabelType.all,
+            // Account lives at the foot of the rail on wide viewports: one
+            // shell-level spot for every section, instead of repeating the
+            // button in each section's own list-pane header. Narrow viewports
+            // have no rail, so there it stays in each page's app bar.
+            trailing: const Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: AccountAction(),
+                ),
+              ),
+            ),
             destinations: [
               for (final d in _destinations)
                 NavigationRailDestination(
