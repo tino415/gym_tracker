@@ -24,8 +24,14 @@ flutter test --plain-name 'superset alternation'  # single test by name
 ```
 
 Other recipes: `watch-apk` / `phone-apk` (debug APKs), `web` (prod PWA build),
-`deploy` (build + Firebase Hosting), `emulator` (Firebase suite), `up` (web dev
-server), `clean`.
+`deploy` (build + Firebase Hosting), `emulator` (Firebase suite), `clean`.
+
+`up` runs the dev stack — auth/firestore emulators plus the web dev server on
+`dev.local:4116` — through **process-compose** (`process-compose.yaml`), with
+the TUI off and its REST API on 4115, so one process can be bounced without
+restarting the other: `process-compose process restart web -p 4115`. The
+`emulators` process steps aside when something is already listening on 4120
+(e.g. the hosting suite from `just emulator`), so the two loops can coexist.
 
 Drift codegen — required after editing `lib/data/database.dart` (no recipe):
 

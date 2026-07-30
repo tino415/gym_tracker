@@ -57,20 +57,17 @@ e2e-web:
       --browser-name=chrome --headless --driver-port=4444 \
       --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true
 
-# Web dev server on dev.local:4116 (auto-starts the Firebase emulator, stops it on exit)
+# Dev stack (Firebase auth/firestore emulators + web dev server on
+# dev.local:4116) via process-compose — processes, ports and the
+# already-running-emulator guard all live in process-compose.yaml.
+#
+# TUI off so this stays readable in an Emacs compilation buffer; the REST API on
+# 4115 drives it from another shell, e.g. restart just the dev server after a
+# dependency change:
+#   process-compose process restart web -p 4115
+# Run `process-compose up` by hand instead if you want the interactive TUI.
 up:
-    #!/usr/bin/env bash
-    if ! (exec 3<>/dev/tcp/127.0.0.1/4120) 2>/dev/null; then
-      echo firebase emulators:start --only auth,firestore --project demo-gym-tracker
-      firebase emulators:start --only auth,firestore --project demo-gym-tracker &
-      emu=$!
-      trap 'kill $emu 2>/dev/null' EXIT
-      for _ in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/4120) 2>/dev/null && break; sleep 0.5; done
-    fi
-    flutter run -d web-server \
-      --web-hostname dev.local --web-port 4116 \
-      --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true \
-      --dart-define=FIREBASE_EMULATOR_HOST=dev.local
+    process-compose up --tui=false --port 4115
 
 # Build the prod web app (Firestore-direct). `flutter clean` first: the web
 # plugin registrant is cached per build-config and can go stale across
