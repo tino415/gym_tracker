@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show OrderingTerm, Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value, Variable;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
@@ -12,6 +12,31 @@ void main() {
 
   tearDown(() async {
     await db.close();
+  });
+
+  /// Pins the phone/watch ordering. The Firestore repository sorted the other
+  /// way, so a routine created on the web showed up last there and first here;
+  /// `firestore_routine_repository_test.dart` pins that half.
+  test('watchRoutineSummaries is newest-first', () async {
+    final a = await db.createRoutine('Oldest');
+    final b = await db.createRoutine('Middle');
+    final c = await db.createRoutine('Newest');
+    // createRoutine stamps DateTime.now(), which can collide inside one test
+    // run — set distinct values so this asserts ordering, not clock resolution.
+    Future<void> stamp(String id, int secondsEpoch) => db.customUpdate(
+          'UPDATE routines SET created_at = ? WHERE sync_id = ?',
+          variables: [Variable.withInt(secondsEpoch), Variable.withString(id)],
+          updates: {db.routines},
+        );
+    await stamp(a.syncId, 1000);
+    await stamp(b.syncId, 2000);
+    await stamp(c.syncId, 3000);
+
+    final sums = await db.watchRoutineSummaries().first;
+    expect(
+      sums.map((s) => s.routine.name).toList(),
+      ['Newest', 'Middle', 'Oldest'],
+    );
   });
 
   group('startWorkout snapshot', () {

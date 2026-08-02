@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../routines/exercise_picker.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({
@@ -343,16 +344,12 @@ class _Body extends ConsumerWidget {
   }
 
   Future<void> _addExercise(BuildContext context, WidgetRef ref) async {
-    final exercises = ref.read(exerciseRepositoryProvider);
     final workouts = ref.read(workoutRepositoryProvider);
-    final all = await exercises.watchExercises().first;
-    if (!context.mounted) return;
-    final picked = await showModalBottomSheet<Exercise>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => _ExercisePickerSheet(exercises: all),
-    );
+    // The routine editor's picker — name search, muscle filters, and a "Create
+    // new exercise" tile. The workout editor used to roll its own list, which
+    // is why an exercise could not be created while adding one here. No
+    // excludeIds: repeating an exercise within a workout is legitimate.
+    final picked = await showExercisePicker(context, ref);
     if (picked == null) return;
     await workouts.addWorkoutExercise(
       workoutId: snap.workout.syncId,
@@ -703,103 +700,6 @@ class _StampChip extends StatelessWidget {
               Text(label),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom-sheet exercise picker with a search field, for adding an exercise to
-/// a workout. Mirrors the search in the Exercises section — with 20+ exercises
-/// scrolling a flat list to find one is the slow part.
-class _ExercisePickerSheet extends StatefulWidget {
-  const _ExercisePickerSheet({required this.exercises});
-
-  final List<Exercise> exercises;
-
-  @override
-  State<_ExercisePickerSheet> createState() => _ExercisePickerSheetState();
-}
-
-class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
-  final _searchController = TextEditingController();
-  String _query = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _clearQuery() {
-    _searchController.clear();
-    setState(() => _query = '');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final q = _query.trim().toLowerCase();
-    final filtered = q.isEmpty
-        ? widget.exercises
-        : widget.exercises
-            .where((e) => e.name.toLowerCase().contains(q))
-            .toList();
-    // Leave room for the keyboard: the sheet is scroll-controlled, so without
-    // this the field is hidden behind it on a phone.
-    final insets = MediaQuery.viewInsetsOf(context).bottom;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(bottom: insets),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: 'Search exercises',
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.clear),
-                          onPressed: _clearQuery,
-                        ),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: filtered.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text('Nothing named “${_query.trim()}”.'),
-                    )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final e = filtered[i];
-                        return ListTile(
-                          leading: Icon(
-                            e.kind == exerciseKindTime
-                                ? Icons.timer_outlined
-                                : Icons.repeat,
-                          ),
-                          title: Text(e.name),
-                          onTap: () => Navigator.of(context).pop(e),
-                        );
-                      },
-                    ),
-            ),
-          ],
         ),
       ),
     );

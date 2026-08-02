@@ -290,7 +290,11 @@ class FirestoreRoutineRepository implements RoutineRepository {
                 exerciseCount: dto.exercises.length,
               ))
           .toList();
-      rows.sort((a, b) => a.routine.createdAt.compareTo(b.routine.createdAt));
+      // Newest first, matching the Drift query the phone and watch use
+      // (`orderBy desc(createdAt)`). These used to sort opposite ways, so a
+      // routine created on the web landed at the bottom there and at the top
+      // on every other device.
+      rows.sort((a, b) => b.routine.createdAt.compareTo(a.routine.createdAt));
       return rows;
     });
   }

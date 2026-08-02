@@ -24,6 +24,33 @@ void main() {
     return (doc.data()!['version'] as num).toInt();
   }
 
+  /// Web used to sort ascending while the Drift query (phone/watch) sorted
+  /// descending, so a routine created on the web appeared last there and first
+  /// everywhere else. Both are newest-first now; `database_test.dart` pins the
+  /// Drift half.
+  test('summaries are newest-first, matching the Drift ordering', () async {
+    final a = await routines.createRoutine('Oldest');
+    final b = await routines.createRoutine('Middle');
+    final c = await routines.createRoutine('Newest');
+    // createRoutine stamps DateTime.now(), which can collide inside one test
+    // run — set distinct values so this asserts ordering, not clock resolution.
+    Future<void> stamp(String id, int ms) => fs
+        .collection('users')
+        .doc('u1')
+        .collection('routines')
+        .doc(id)
+        .update({'createdAtMs': ms});
+    await stamp(a.syncId, 1000);
+    await stamp(b.syncId, 2000);
+    await stamp(c.syncId, 3000);
+
+    final sums = await routines.watchRoutineSummaries().first;
+    expect(
+      sums.map((s) => s.routine.name).toList(),
+      ['Newest', 'Middle', 'Oldest'],
+    );
+  });
+
   test('createRoutine shows in summaries with exercise count 0', () async {
     final r = await routines.createRoutine('Push');
     final sums = await routines.watchRoutineSummaries().first;
