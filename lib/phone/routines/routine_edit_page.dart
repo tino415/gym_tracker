@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../superset_units.dart';
 import 'exercise_picker.dart';
 
 class RoutineEditPage extends ConsumerStatefulWidget {
@@ -293,7 +294,14 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                   itemBuilder: (context, idx) {
                     final unit = units[idx];
                     return Padding(
-                      key: ValueKey(unit.key),
+                      // Prefixed so a single and a group starting with the
+                      // same exercise get distinct keys — grouping one changes
+                      // the tile's shape, and reusing the element across that
+                      // would keep the old layout.
+                      key: ValueKey(
+                        '${unit.isGroup ? 'g' : 's'}-'
+                        '${unit.first.routineExercise.syncId}',
+                      ),
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _UnitTile(
                         outerIndex: idx,
@@ -317,107 +325,50 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     );
   }
 
-  List<_RoutineUnit> _buildUnits(List<FullRoutineExercise> exercises) {
-    final units = <_RoutineUnit>[];
-    var i = 0;
-    while (i < exercises.length) {
-      final cur = exercises[i];
-      final g = cur.routineExercise.supersetGroup;
-      if (g == null) {
-        units.add(_SingleUnit(cur));
-        i++;
-        continue;
-      }
-      var j = i + 1;
-      while (j < exercises.length &&
-          exercises[j].routineExercise.supersetGroup == g) {
-        j++;
-      }
-      if (j - i == 1) {
-        units.add(_SingleUnit(cur));
-      } else {
-        units.add(_GroupUnit(exercises.sublist(i, j)));
-      }
-      i = j;
-    }
-    return units;
-  }
+  List<SupersetUnit<FullRoutineExercise>> _buildUnits(
+    List<FullRoutineExercise> exercises,
+  ) => buildSupersetUnits<FullRoutineExercise>(
+    exercises,
+    (e) => e.routineExercise.supersetGroup,
+  );
 
   Future<void> _reorderUnits(
-    List<_RoutineUnit> units,
+    List<SupersetUnit<FullRoutineExercise>> units,
     int oldIndex,
     int newIndex,
   ) async {
     final routineId = _routineId;
     if (routineId == null) return;
-    final list = List<_RoutineUnit>.from(units);
-    var insertAt = newIndex;
-    if (newIndex > oldIndex) insertAt -= 1;
-    final moved = list.removeAt(oldIndex);
-    list.insert(insertAt, moved);
-    final orderedIds = <String>[
-      for (final u in list)
-        for (final m in u.members) m.routineExercise.syncId,
-    ];
-    await ref
-        .read(routineRepositoryProvider)
-        .reorderRoutineExercises(routineId: routineId, orderedIds: orderedIds);
+    await ref.read(routineRepositoryProvider).reorderRoutineExercises(
+          routineId: routineId,
+          orderedIds: reorderUnits(
+            units,
+            oldIndex,
+            newIndex,
+            (e) => e.routineExercise.syncId,
+          ),
+        );
   }
 
   Future<void> _reorderWithinGroup(
-    List<_RoutineUnit> units,
+    List<SupersetUnit<FullRoutineExercise>> units,
     int unitIdx,
     int oldIndex,
     int newIndex,
   ) async {
     final routineId = _routineId;
     if (routineId == null) return;
-    final unit = units[unitIdx];
-    if (unit is! _GroupUnit) return;
-    final reordered = List<FullRoutineExercise>.from(unit.members);
-    var insertAt = newIndex;
-    if (newIndex > oldIndex) insertAt -= 1;
-    final moved = reordered.removeAt(oldIndex);
-    reordered.insert(insertAt, moved);
-    final orderedIds = <String>[];
-    for (var i = 0; i < units.length; i++) {
-      if (i == unitIdx) {
-        for (final m in reordered) {
-          orderedIds.add(m.routineExercise.syncId);
-        }
-      } else {
-        for (final m in units[i].members) {
-          orderedIds.add(m.routineExercise.syncId);
-        }
-      }
-    }
-    await ref
-        .read(routineRepositoryProvider)
-        .reorderRoutineExercises(routineId: routineId, orderedIds: orderedIds);
+    await ref.read(routineRepositoryProvider).reorderRoutineExercises(
+          routineId: routineId,
+          orderedIds: reorderWithinUnit(
+            units,
+            unitIdx,
+            oldIndex,
+            newIndex,
+            (e) => e.routineExercise.syncId,
+          ),
+        );
   }
-}
-
-sealed class _RoutineUnit {
-  List<FullRoutineExercise> get members;
-  String get key;
-}
-
-class _SingleUnit extends _RoutineUnit {
-  _SingleUnit(this.member);
-  final FullRoutineExercise member;
-  @override
-  List<FullRoutineExercise> get members => [member];
-  @override
-  String get key => 's-${member.routineExercise.syncId}';
-}
-
-class _GroupUnit extends _RoutineUnit {
-  _GroupUnit(this._members);
-  final List<FullRoutineExercise> _members;
-  @override
-  List<FullRoutineExercise> get members => _members;
-  @override
-  String get key => 'g-${_members.first.routineExercise.syncId}';
 }
 
 class _UnitTile extends StatelessWidget {
@@ -432,7 +383,7 @@ class _UnitTile extends StatelessWidget {
   });
 
   final int outerIndex;
-  final _RoutineUnit unit;
+  final SupersetUnit<FullRoutineExercise> unit;
   final String routineId;
   final bool reorderMode;
   final void Function(int oldIdx, int newIdx) onInnerReorder;
@@ -442,7 +393,7 @@ class _UnitTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isGroup = unit is _GroupUnit;
+    final isGroup = unit.isGroup;
     final outerHandle = ReorderableDragStartListener(
       index: outerIndex,
       child: Padding(
@@ -454,14 +405,13 @@ class _UnitTile extends StatelessWidget {
       ),
     );
     if (!isGroup) {
-      final single = unit as _SingleUnit;
       return Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (reorderMode) outerHandle,
           Expanded(
             child: _ExerciseRow(
-              fullExercise: single.member,
+              fullExercise: unit.first,
               routineId: routineId,
               reorderMode: reorderMode,
               onSelectExercise: onSelectExercise,
@@ -471,7 +421,6 @@ class _UnitTile extends StatelessWidget {
         ],
       );
     }
-    final group = unit as _GroupUnit;
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.primary, width: 2),
@@ -504,9 +453,9 @@ class _UnitTile extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
-            itemCount: group.members.length,
+            itemCount: unit.members.length,
             itemBuilder: (context, innerIdx) {
-              final m = group.members[innerIdx];
+              final m = unit.members[innerIdx];
               return Padding(
                 key: ValueKey('m-${m.routineExercise.syncId}'),
                 padding: const EdgeInsets.symmetric(vertical: 2),
