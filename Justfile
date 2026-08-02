@@ -4,8 +4,9 @@
 # Lessons baked in:
 #  * The watch never uses Firebase; phone/web opt in with
 #    --dart-define=SYNC_BACKEND=firestore.
-#  * Every APK recipe writes build/app/outputs/flutter-apk/app-debug.apk
-#    (app-release.apk when APK_MODE resolves to --release).
+#  * flutter always writes app-<variant>.apk, so each APK recipe copies its
+#    output to a per-target name (gym-watch.apk / gym-phone.apk). Install from
+#    those, not from app-debug.apk, which the next build overwrites.
 
 # --- Host- and device-dependent knobs ----------------------------------------
 # Override any of these on the command line, e.g. `just PHONE_ABIS=android-x64
@@ -15,6 +16,10 @@
 # hosts; on an aarch64 host `flutter build apk --release` dies for lack of it.
 # Debug (JIT) APKs are fine for on-device testing.
 APK_MODE := if arch() == "aarch64" { "--debug" } else { "--release" }
+
+# "debug" / "release" — flutter names its output app-<variant>.apk.
+APK_VARIANT := trim_start_match(APK_MODE, "--")
+APK_OUT := "build/app/outputs/flutter-apk"
 
 # Target-device ABIs. The watch APK is fat (32 + 64) because plenty of shipping
 # Wear OS watches are 32-bit armeabi-v7a while Wear emulators are arm64 — an
@@ -58,9 +63,13 @@ test-name name:
 codegen:
     flutter pub run build_runner build --force-jit
 
-# APK for the watch + Wear emulator (fat 32+64 by default)
+# APK for the watch + Wear emulator (fat 32+64 by default). Copied to a
+# per-target name because flutter always writes app-<variant>.apk — without
+# the copy, building the other target overwrites this one.
+[doc('APK for the watch + Wear emulator (fat 32+64)')]
 watch-apk:
     flutter build apk {{APK_MODE}} --target-platform {{WATCH_ABIS}}
+    cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-watch.apk
 
 # APK for the phone + Firestore backend. The Google Web client id
 # (serverClientId for the native Android sign-in) is baked into the app as a
@@ -70,6 +79,36 @@ watch-apk:
 phone-apk:
     flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore \
       {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
+    cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
+
+# Install a built APK. Push + `pm install` rather than `adb install`: streamed
+# install fails on some Wear devices. The remote path is per-target so two
+# installs can run at once.
+[doc('Install the watch APK (build it first with watch-apk)')]
+watch-install device=WEAR_DEVICE:
+    @test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_WEAR_DEVICE" >&2; exit 1; }
+    adb -s {{device}} push {{APK_OUT}}/gym-watch.apk /data/local/tmp/gym-watch.apk
+    adb -s {{device}} shell pm install -r /data/local/tmp/gym-watch.apk
+
+[doc('Install the phone APK (build it first with phone-apk)')]
+phone-install device=PHONE_DEVICE:
+    @test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_PHONE_DEVICE" >&2; exit 1; }
+    adb -s {{device}} push {{APK_OUT}}/gym-phone.apk /data/local/tmp/gym-phone.apk
+    adb -s {{device}} shell pm install -r /data/local/tmp/gym-phone.apk
+
+# Build both APKs and install them. The builds run in sequence (they share
+# build/ and the Gradle daemon), then both installs run concurrently — over
+# wireless adb the transfer dominates, so overlapping them roughly halves it.
+[doc('Build + install both APKs (installs run in parallel)')]
+devices: watch-apk phone-apk
+    #!/usr/bin/env bash
+    set -uo pipefail
+    just watch-install & w=$!
+    just phone-install & p=$!
+    rc=0
+    wait $w || rc=1
+    wait $p || rc=1
+    exit $rc
 
 # Phone integration test on a device/emulator. Uses GYM_PHONE_DEVICE unless a
 # serial is passed; `adb devices` lists them.
