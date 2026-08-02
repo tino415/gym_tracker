@@ -3,24 +3,13 @@
 # Two processes: the Firebase emulators the app talks to, and the Flutter web
 # dev server that waits for them. Ports match firebase.json / CLAUDE.local.md:
 # auth 4119, firestore 4120, dev server dev.local:4116.
-#
-# Not covered here: the *hosting* emulator (4117) that serves the release PWA
-# over https://gym.dev.localhost — that stays `just emulator`, and it brings its
-# own auth/firestore. When it's already up, the `emulators` process below sees
-# the open Firestore port and steps aside rather than fighting for it (the same
-# guard the old shell-script `up` recipe had).
-
 version: "0.5"
 
 processes:
   emulators:
     description: Firebase Auth + Firestore emulators (demo project, fully offline)
     command: |
-      if (exec 3<>/dev/tcp/127.0.0.1/4120) 2>/dev/null; then
-        echo "Firestore emulator already listening on 4120 — reusing it, not starting a second suite."
-        exec sleep infinity
-      fi
-      exec firebase emulators:start --only auth,firestore --project demo-gym-tracker
+      exec firebase emulators:start --only hosting,auth,firestore --project demo-gym-tracker
     readiness_probe:
       exec:
         command: bash -c '(exec 3<>/dev/tcp/127.0.0.1/4120) 2>/dev/null'
@@ -33,7 +22,7 @@ processes:
       max_restarts: 3
 
   web:
-    description: Flutter web dev server on dev.local:4116 (IndexedDB, no COOP/COEP)
+    description: Flutter web dev server on dev.local:4116 (debug bundle, hot reload)
     command: |
       exec flutter run -d web-server \
         --web-hostname dev.local --web-port 4116 \

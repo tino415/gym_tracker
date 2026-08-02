@@ -4,55 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Common tasks are wrapped as `just` recipes (see `Justfile`); run `just` with no
-argument to list them all. Prefer the recipes — they bake in the flags and
-lessons below.
+Everything runnable is a `just` recipe — run `just` with no argument for the
+list. **Prefer them over raw `flutter` / `firebase` invocations**: each recipe's
+comment records why its flags are what they are, and several are load-bearing
+(`--force-jit` for codegen, the fat `--target-platform` for the watch APK, the
+`flutter clean` before a web build). Read the `Justfile` before reaching for the
+underlying tool.
 
-```bash
-just analyze                          # static analysis (flutter analyze)
-just test                             # full unit + widget suite
-just e2e 127.0.0.1:5557               # phone integration test on a device serial
-just e2e-watch                        # watch integration test (Wear emulator, default :5555)
-just e2e-web                          # web e2e in headless Chrome (needs the emulator: just emulator)
-```
-
-Single-file / single-test runs aren't wrapped — call `flutter test` directly:
-
-```bash
-flutter test test/database_test.dart              # single file
-flutter test --plain-name 'superset alternation'  # single test by name
-```
-
-Other recipes: `watch-apk` / `phone-apk` (debug APKs), `web` (prod PWA build),
-`deploy` (build + Firebase Hosting), `emulator` (Firebase suite), `clean`.
-
-`up` runs the dev stack — auth/firestore emulators plus the web dev server on
-`dev.local:4116` — through **process-compose** (`process-compose.yaml`), with
-the TUI off and its REST API on 4115, so one process can be bounced without
-restarting the other: `process-compose process restart web -p 4115`. The
-`emulators` process steps aside when something is already listening on 4120
-(e.g. the hosting suite from `just emulator`), so the two loops can coexist.
-
-Drift codegen — required after editing `lib/data/database.dart` (no recipe):
-
-```bash
-flutter pub run build_runner build --force-jit
-```
-
-`--force-jit` is mandatory: `sqlite3_flutter_libs` ≥ 3.0 has a build hook that breaks `dart compile`, which `build_runner` uses by default.
+Values that vary by machine or device — adb serials, the debug/release APK mode
+(derived from `arch()`), the target ABIs — are variables at the top of the
+`Justfile`. Override any of them inline: `just PHONE_ABIS=android-x64 phone-apk`.
+The dev stack (`just up`) is described in `process-compose.yaml`.
 
 ## Web / PWA
 
 `flutter build web` produces an installable PWA (Flutter generates the service
-worker). Two committed binaries in `web/` must stay in step with pubspec when
-upgrading drift/sqlite3: `sqlite3.wasm` (from the sqlite3.dart GitHub release
-matching the `sqlite3` package version) and `drift_worker.js` (from the drift
-release matching `drift`). A mismatch fails only at runtime in the browser.
+worker).
 
-Hosting needs `Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp` headers, otherwise drift silently
-falls back from OPFS to IndexedDB. PWA icons are generated, not hand-drawn —
-edit `tool/generate_web_icons.py` and re-run it rather than replacing the PNGs.
+The web build is **Firestore-direct**: `firestoreDirectProvider`
+(`lib/data/providers.dart`) is `kIsWeb && syncBackendEnabled`, so every
+repository reads and writes Firestore and the Drift DB is never opened on web.
+Every web build therefore passes `--dart-define=SYNC_BACKEND=firestore` (`just
+web`, `just deploy`, `just e2e-web`); a build without it falls through to the
+unsupported Drift web path in `database.dart` (`DriftWebOptions` → the
+committed `web/sqlite3.wasm` + `web/drift_worker.js`, both now vestigial).
 
 **Service-worker stale cache while iterating.** The generated service worker
 serves the *previous* `main.dart.js` across reloads (it also serves its own
@@ -61,8 +36,8 @@ old `flutter_service_worker.js`, so the new version is never detected, and
 like it never took effect. To test a fresh build: unregister the SW + clear
 caches + reload in a *fresh tab* (the old active worker keeps controlling
 existing clients until they close), or just build with `--pwa-strategy=none`
-during dev iteration. Drift's OPFS DB survives cache clears; it's separate from
-the SW app-shell cache.
+during dev iteration. Firestore's offline cache (IndexedDB) survives cache
+clears; it's separate from the SW app-shell cache.
 
 ## Architecture
 
@@ -119,23 +94,26 @@ Workouts used to be append-only + idempotent-skip, so **editing a saved workout 
 Optional server-backed sync, **off unless built with `--dart-define=SYNC_BACKEND=firestore`** — a normal phone/watch/test build pulls in no Firebase runtime. Layout: `users/{uid}/routines|workouts/{syncId}` hold the plain DTO JSON, so the server is only a document store. Data-loss traps that shaped the design:
 
 - **Push is upsert-only.** It never deletes a doc just because it's absent from the local set — with two authorities (phone *and* web are `isRoutineAuthority`) that would let each wipe the other's routines.
-- **Deletions are versioned tombstones (version-LWW).** `deleteRoutine` is a *soft* delete: it drops the routine's child rows and leaves the `Routines` row with `deletedAt` set and a bumped `version` (reads — `watchRoutineSummaries`, `loadFullRoutine`, `loadFullWorkout` — skip tombstoned rows). The tombstone travels inside the ordinary `routine_bundle`/`routine_upsert` as a routine with a non-null `deletedAtMs` and empty exercises, so `_upsertOneRoutine`'s existing version guard arbitrates delete-vs-edit like any other change: a delete at `version ≥ local` wins; a strictly-newer non-tombstone edit revives (clears `deletedAt`). The Firestore doc is *rewritten as a tombstone*, not removed, so it survives a concurrent lower-version upsert. This replaced the old `_pushContext` deletion-diff (`_lastPushedRoutineSyncIds`), which lost deletions across a restart (first push had no baseline) and let a concurrent upsert resurrect a delete. Not yet built: tombstone GC (server + local), and true read-side per-uid isolation.
+- **Deletions are versioned tombstones (version-LWW).** `deleteRoutine` is a *soft* delete: it drops the routine's child rows and leaves the `Routines` row with `deletedAt` set and a bumped `version` (reads — `watchRoutineSummaries`, `loadFullRoutine`, `loadFullWorkout` — skip tombstoned rows). The tombstone travels inside the ordinary `routine_bundle`/`routine_upsert` as a routine with a non-null `deletedAtMs` and empty exercises, so `_upsertOneRoutine`'s existing version guard arbitrates delete-vs-edit like any other change: a delete at `version ≥ local` wins; a strictly-newer non-tombstone edit revives (clears `deletedAt`). The Firestore doc is *rewritten as a tombstone*, not removed, so it survives a concurrent lower-version upsert. This replaced the old `_pushContext` deletion-diff (`_lastPushedRoutineSyncIds`), which lost deletions across a restart (first push had no baseline) and let a concurrent upsert resurrect a delete. Not yet built: tombstone GC (server + local).
 - **Receive is document-granular and non-destructive.** Snapshot listeners turn added/modified docs (including tombstones) into `routine_upsert`; a genuine doc *removal* still maps to `routine_deleted` (hard delete) as a safety net for future server-side GC; workout docs are upserted by version (never clobbering a strictly newer one) and their deletions ride as tombstone docs, since doc removals are ignored on receive. An empty or stale server snapshot can therefore never wipe local routines.
 - In-memory caches (`_lastWrittenRoutine`, `_lastWrittenExercise`, `_serverWorkouts`) suppress the push→own-snapshot→apply→push echo and avoid a per-push collection read. `_serverWorkouts` also holds the last doc *observed* per workout, so it doubles as the version guard; it's written **before** the `set` completes, because the snapshot for our own write can land first.
 - The web repo bumps `version` on every workout edit and tombstones on delete. It uses read-modify-write rather than `runTransaction` on purpose: transactions need a server round-trip and fail offline, while a plain write queues in the local cache. The residual lost-update window (a web edit landing in the same instant as a phone push) is narrowed by the transport refusing to overwrite a strictly newer doc.
-- Sign-in is **anonymous** for now (uid is per-install, so cross-device sync isn't real yet — real Google/email auth is the next step). `FIREBASE_USE_EMULATOR` defaults **off**; a prod build must not silently dial localhost.
+- Sign-in is real per-user auth — email/password plus Google (web: a `signInWithPopup`; Android: the native `google_sign_in` v7 Credential Manager flow, whose ID token is exchanged for a Firebase credential). See `auth_service.dart` for the per-platform gating. The uid is the account, not the install, so `users/{uid}/…` is genuinely shared across a user's devices, and `firestore.rules` enforces that isolation (`request.auth.uid == uid`). `FIREBASE_USE_EMULATOR` defaults **off**; a prod build must not silently dial localhost.
+- **One local store, one owning account** (`sync_ownership.dart`). The server is isolated per account by `firestore.rules`, but the local Drift store is single and global — it is *not* partitioned by uid. The guard is a persisted owner marker (`SyncMeta.owner_uid`): `decideSyncOwnership` attaches the Firestore transport only on a first-ever sign-in (which adopts whatever local data exists) or for the owning account; a **different** account signing in leaves sync paused, so this device never pushes the owner's rows into someone else's collections nor pulls theirs on top. Taking over is an explicit action on the account page. That's defensive hardening, not isolation — a non-owner still *sees* whatever the previous owner left in the local DB. Real per-account scoping is deferred to the version-based authority rework.
 
 #### Emulator dev loop
 
-Config in `firebase.json` (`demo-gym-tracker` = fully offline, no real project/billing). Start the Auth/Firestore/hosting suite with `just emulator`.
+`just up` runs the suite; ports and project live in `firebase.json`
+(`demo-gym-tracker` = fully offline, no real project/billing).
 
-Ports: hosting 4117, UI 4118, auth 4119, firestore 4120. Build + serve the release PWA against it over HTTPS (required for `crossOriginIsolated` → OPFS):
+The hosting emulator serves the *release* bundle, so it's how you exercise the
+service worker, PWA install and the `**` → `/index.html` rewrite — none of
+which the dev server produces. Build that bundle with `just web-emulator`, not
+`just web`: the latter points at the **prod** project, and serving it from the
+emulator writes to real data.
 
-```bash
-flutter build web --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true
-```
-
-Inspect emulator data over REST with the admin bypass header `Authorization: Bearer owner` (rules are otherwise enforced, even locally).
+`just fs-get <path>` reads emulator documents (rules are enforced even locally;
+the recipe carries the admin bypass header).
 
 ### Phone UI conventions
 - Routine creation is **deferred**: `_ensurePersisted()` only writes the `Routines` row on first save or first add-exercise. The explicit ✓ in the app bar is the save action; on-blur autosave was removed.
