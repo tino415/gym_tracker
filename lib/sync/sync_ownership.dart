@@ -13,8 +13,9 @@ import '../data/providers.dart';
 ///
 /// This is *defensive hardening*, not true multi-account isolation: the local
 /// store stays single and global, so a non-owner sign-in still sees whatever the
-/// previous owner left behind. Real per-account scoping is deferred to the
-/// version-based authority rework.
+/// previous owner left behind. That is accepted — per-account local scoping is a
+/// **non-goal** (decided 2026-08-02), so this marker is the permanent answer
+/// rather than a stopgap. Multi-account on one install stays unsupported.
 class SyncOwnershipDecision {
   const SyncOwnershipDecision({required this.attach, this.newOwner});
 
