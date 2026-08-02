@@ -83,18 +83,28 @@ phone-apk:
 
 # Install a built APK. Push + `pm install` rather than `adb install`: streamed
 # install fails on some Wear devices. The remote path is per-target so two
-# installs can run at once.
+# installs can run at once, and the staged copy is deleted afterwards — these
+# are 130-160 MB debug APKs, and a watch fills up fast. The rm runs even when
+# the install fails, so a bad build doesn't strand one either.
 [doc('Install the watch APK (build it first with watch-apk)')]
 watch-install device=WEAR_DEVICE:
-    @test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_WEAR_DEVICE" >&2; exit 1; }
-    adb -s {{device}} push {{APK_OUT}}/gym-watch.apk /data/local/tmp/gym-watch.apk
-    adb -s {{device}} shell pm install -r /data/local/tmp/gym-watch.apk
+    #!/usr/bin/env bash
+    set -uo pipefail
+    test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_WEAR_DEVICE" >&2; exit 1; }
+    adb -s {{device}} push {{APK_OUT}}/gym-watch.apk /data/local/tmp/gym-watch.apk || exit 1
+    adb -s {{device}} shell pm install -r /data/local/tmp/gym-watch.apk; rc=$?
+    adb -s {{device}} shell rm -f /data/local/tmp/gym-watch.apk
+    exit $rc
 
 [doc('Install the phone APK (build it first with phone-apk)')]
 phone-install device=PHONE_DEVICE:
-    @test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_PHONE_DEVICE" >&2; exit 1; }
-    adb -s {{device}} push {{APK_OUT}}/gym-phone.apk /data/local/tmp/gym-phone.apk
-    adb -s {{device}} shell pm install -r /data/local/tmp/gym-phone.apk
+    #!/usr/bin/env bash
+    set -uo pipefail
+    test -n "{{device}}" || { echo "no device: pass an adb serial or set GYM_PHONE_DEVICE" >&2; exit 1; }
+    adb -s {{device}} push {{APK_OUT}}/gym-phone.apk /data/local/tmp/gym-phone.apk || exit 1
+    adb -s {{device}} shell pm install -r /data/local/tmp/gym-phone.apk; rc=$?
+    adb -s {{device}} shell rm -f /data/local/tmp/gym-phone.apk
+    exit $rc
 
 # Build both APKs and install them. The builds run in sequence (they share
 # build/ and the Gradle daemon), then both installs run concurrently — over
