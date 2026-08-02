@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
@@ -96,7 +97,10 @@ class _Body extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
-        _ImprovementsBanner(workoutId: snap.workout.syncId),
+        _ImprovementsBanner(
+          workoutId: snap.workout.syncId,
+          version: snap.workout.version,
+        ),
         Card(
           child: Column(
             children: [
@@ -203,20 +207,35 @@ class _Body extends ConsumerWidget {
     WidgetRef ref,
     FullWorkoutExercise ex,
   ) async {
+    // A finished workout is a record of what happened, so a set added here is
+    // something the user *did* — capture it as a completion too. Without that
+    // it lands as a bare target and renders as an unfinished set. An
+    // in-progress workout keeps the old meaning: a set added there is a plan.
+    final finished = snap.workout.endedAt != null;
     final values = await _showSetEditDialog(
       context,
       kind: ex.kind,
       reps: null,
       weightKg: null,
       seconds: null,
+      title: finished ? 'Add completed set' : 'Add set',
     );
     if (values == null) return;
-    await ref.read(workoutRepositoryProvider).addWorkoutSet(
-          workoutExerciseId: ex.workoutExercise.syncId,
-          targetReps: values.$1,
-          targetWeightKg: values.$2,
-          targetSeconds: values.$3,
-        );
+    final db = ref.read(workoutRepositoryProvider);
+    final set = await db.addWorkoutSet(
+      workoutExerciseId: ex.workoutExercise.syncId,
+      targetReps: values.$1,
+      targetWeightKg: values.$2,
+      targetSeconds: values.$3,
+    );
+    if (!finished) return;
+    await db.upsertSetCompletion(
+      workoutId: snap.workout.syncId,
+      workoutSetId: set.syncId,
+      actualReps: values.$1,
+      actualWeightKg: values.$2,
+      actualSeconds: values.$3,
+    );
   }
 
   Future<void> _removeExercise(
@@ -290,23 +309,8 @@ class _Body extends ConsumerWidget {
     final picked = await showModalBottomSheet<Exercise>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final e in all)
-              ListTile(
-                leading: Icon(
-                  e.kind == exerciseKindTime
-                      ? Icons.timer_outlined
-                      : Icons.repeat,
-                ),
-                title: Text(e.name),
-                onTap: () => Navigator.of(ctx).pop(e),
-              ),
-          ],
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (ctx) => _ExercisePickerSheet(exercises: all),
     );
     if (picked == null) return;
     await workouts.addWorkoutExercise(
@@ -594,6 +598,103 @@ String _setHrLine(int? avg, int? max) {
 
 /// Returns (reps, weightKg, seconds) — at most two of them are non-null,
 /// depending on [kind]. Null overall means the user cancelled.
+/// Bottom-sheet exercise picker with a search field, for adding an exercise to
+/// a workout. Mirrors the search in the Exercises section — with 20+ exercises
+/// scrolling a flat list to find one is the slow part.
+class _ExercisePickerSheet extends StatefulWidget {
+  const _ExercisePickerSheet({required this.exercises});
+
+  final List<Exercise> exercises;
+
+  @override
+  State<_ExercisePickerSheet> createState() => _ExercisePickerSheetState();
+}
+
+class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _clearQuery() {
+    _searchController.clear();
+    setState(() => _query = '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? widget.exercises
+        : widget.exercises
+            .where((e) => e.name.toLowerCase().contains(q))
+            .toList();
+    // Leave room for the keyboard: the sheet is scroll-controlled, so without
+    // this the field is hidden behind it on a phone.
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: insets),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: 'Search exercises',
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.clear),
+                          onPressed: _clearQuery,
+                        ),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: filtered.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('Nothing named “${_query.trim()}”.'),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final e = filtered[i];
+                        return ListTile(
+                          leading: Icon(
+                            e.kind == exerciseKindTime
+                                ? Icons.timer_outlined
+                                : Icons.repeat,
+                          ),
+                          title: Text(e.name),
+                          onTap: () => Navigator.of(context).pop(e),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<(int?, double?, int?)?> _showSetEditDialog(
   BuildContext context, {
   required String kind,
@@ -688,9 +789,14 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
 }
 
 class _ImprovementsBanner extends ConsumerStatefulWidget {
-  const _ImprovementsBanner({required this.workoutId});
+  const _ImprovementsBanner({required this.workoutId, required this.version});
 
   final String workoutId;
+
+  /// The workout's version. Editing the workout bumps it, which is the signal
+  /// to recompute — otherwise the banner keeps showing improvements found when
+  /// the page opened, naming exercises the user has since removed or swapped.
+  final int version;
 
   @override
   ConsumerState<_ImprovementsBanner> createState() =>
@@ -698,13 +804,59 @@ class _ImprovementsBanner extends ConsumerStatefulWidget {
 }
 
 class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
+  /// Dismissal is persisted, not widget state: this widget is rebuilt whenever
+  /// the workout stream ticks and recreated whenever the page is reopened, so
+  /// an in-memory flag made "Dismiss" look like it did nothing.
+  static String _dismissKey(String workoutId) =>
+      'improvements_dismissed_$workoutId';
+
   Future<List<WorkoutImprovement>>? _future;
-  bool _dismissed = false;
+
+  /// null while the persisted flag is still loading — render nothing rather
+  /// than flashing a banner the user already dismissed.
+  bool? _dismissed;
 
   @override
   void initState() {
     super.initState();
     _reload();
+    _loadDismissed();
+  }
+
+  @override
+  void didUpdateWidget(_ImprovementsBanner old) {
+    super.didUpdateWidget(old);
+    if (old.workoutId != widget.workoutId) {
+      _dismissed = null;
+      _loadDismissed();
+      setState(_reload);
+    } else if (old.version != widget.version) {
+      setState(_reload);
+    }
+  }
+
+  Future<void> _loadDismissed() async {
+    bool value = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      value = prefs.getBool(_dismissKey(widget.workoutId)) ?? false;
+    } catch (e, st) {
+      // Prefs can be unavailable on some web builds; showing the banner is the
+      // safe failure (the user can dismiss again) — never block the page.
+      debugPrint('improvements dismissal read failed: $e\n$st');
+    }
+    if (!mounted) return;
+    setState(() => _dismissed = value);
+  }
+
+  Future<void> _dismiss() async {
+    setState(() => _dismissed = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_dismissKey(widget.workoutId), true);
+    } catch (e, st) {
+      debugPrint('improvements dismissal write failed: $e\n$st');
+    }
   }
 
   void _reload() {
@@ -723,7 +875,7 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
 
   @override
   Widget build(BuildContext context) {
-    if (_dismissed) return const SizedBox.shrink();
+    if (_dismissed != false) return const SizedBox.shrink();
     return FutureBuilder<List<WorkoutImprovement>>(
       future: _future,
       builder: (context, snap) {
@@ -769,7 +921,7 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: () => setState(() => _dismissed = true),
+                      onPressed: _dismiss,
                       child: const Text('Dismiss'),
                     ),
                     const SizedBox(width: 4),
