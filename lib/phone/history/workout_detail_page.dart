@@ -107,19 +107,31 @@ class _Body extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.play_arrow_outlined),
                 title: const Text('Started'),
-                subtitle: Text(_fmt(snap.workout.startedAt)),
-                onTap: () => _editTime(context, ref, isStart: true),
+                subtitle: _StampRow(
+                  value: snap.workout.startedAt,
+                  onEditDate: () => _editStamp(context, ref, isStart: true, date: true),
+                  onEditTime: () => _editStamp(context, ref, isStart: true, date: false),
+                ),
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.stop_outlined),
                 title: const Text('Ended'),
-                subtitle: Text(
-                  snap.workout.endedAt == null
-                      ? 'In progress'
-                      : _fmt(snap.workout.endedAt!),
-                ),
-                onTap: () => _editTime(context, ref, isStart: false),
+                subtitle: snap.workout.endedAt == null
+                    // No timestamp to split yet, so offer the full flow.
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: () =>
+                              _editStamp(context, ref, isStart: false, date: true, thenTime: true),
+                          child: const Text('In progress — set end'),
+                        ),
+                      )
+                    : _StampRow(
+                        value: snap.workout.endedAt!,
+                        onEditDate: () => _editStamp(context, ref, isStart: false, date: true),
+                        onEditTime: () => _editStamp(context, ref, isStart: false, date: false),
+                      ),
               ),
               if (snap.routine != null)
                 ListTile(
@@ -168,32 +180,61 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  Future<void> _editTime(
+  /// Edit one half of a timestamp. [date] picks which picker opens, so the
+  /// time is reachable in one tap instead of only after dismissing a date
+  /// dialog. [thenTime] chains both, for a workout with no end time yet —
+  /// there's no existing value to keep, so both halves have to be chosen.
+  Future<void> _editStamp(
     BuildContext context,
     WidgetRef ref, {
     required bool isStart,
+    required bool date,
+    bool thenTime = false,
   }) async {
     final initial = isStart ? snap.workout.startedAt : snap.workout.endedAt;
     final base = initial ?? DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: base,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (date == null || !context.mounted) return;
+    var merged = base;
+
+    if (date) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: base,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+      );
+      if (picked == null) return;
+      merged = DateTime(
+        picked.year,
+        picked.month,
+        picked.day,
+        base.hour,
+        base.minute,
+      );
+      if (!thenTime) return _writeStamp(ref, isStart: isStart, value: merged);
+      if (!context.mounted) return;
+    }
+
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(base),
     );
     if (time == null) return;
-    final merged = DateTime(
-      date.year,
-      date.month,
-      date.day,
+    merged = DateTime(
+      merged.year,
+      merged.month,
+      merged.day,
       time.hour,
       time.minute,
     );
+    return _writeStamp(ref, isStart: isStart, value: merged);
+  }
+
+  Future<void> _writeStamp(
+    WidgetRef ref, {
+    required bool isStart,
+    required DateTime value,
+  }) async {
+    final merged = value;
     final db = ref.read(workoutRepositoryProvider);
     await db.updateWorkoutTimes(
       workoutId: snap.workout.syncId,
@@ -317,15 +358,6 @@ class _Body extends ConsumerWidget {
       workoutId: snap.workout.syncId,
       exerciseId: picked.syncId,
     );
-  }
-
-  static String _fmt(DateTime dt) {
-    final y = dt.year;
-    final mo = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    final h = dt.hour.toString().padLeft(2, '0');
-    final mi = dt.minute.toString().padLeft(2, '0');
-    return '$y-$mo-$d $h:$mi';
   }
 
   static String _hrLine(int? avg, int? max) {
@@ -598,6 +630,85 @@ String _setHrLine(int? avg, int? max) {
 
 /// Returns (reps, weightKg, seconds) — at most two of them are non-null,
 /// depending on [kind]. Null overall means the user cancelled.
+/// A timestamp shown as two separately tappable halves, so changing just the
+/// time doesn't mean walking through a date picker first.
+class _StampRow extends StatelessWidget {
+  const _StampRow({
+    required this.value,
+    required this.onEditDate,
+    required this.onEditTime,
+  });
+
+  final DateTime value;
+  final VoidCallback onEditDate;
+  final VoidCallback onEditTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = value;
+    final dateLabel =
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final timeLabel =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 4,
+        children: [
+          _StampChip(
+            icon: Icons.event_outlined,
+            label: dateLabel,
+            tooltip: 'Change date',
+            onTap: onEditDate,
+          ),
+          _StampChip(
+            icon: Icons.schedule_outlined,
+            label: timeLabel,
+            tooltip: 'Change time',
+            onTap: onEditTime,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StampChip extends StatelessWidget {
+  const _StampChip({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16),
+              const SizedBox(width: 4),
+              Text(label),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Bottom-sheet exercise picker with a search field, for adding an exercise to
 /// a workout. Mirrors the search in the Exercises section — with 20+ exercises
 /// scrolling a flat list to find one is the slow part.
