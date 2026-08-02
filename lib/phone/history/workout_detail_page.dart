@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../routines/exercise_picker.dart';
+import '../superset_units.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({
@@ -87,14 +88,30 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
   }
 }
 
-class _Body extends ConsumerWidget {
+class _Body extends ConsumerStatefulWidget {
   const _Body({required this.snap});
 
   final FullWorkout snap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends ConsumerState<_Body> {
+  bool _reorderMode = false;
+
+  FullWorkout get snap => widget.snap;
+
+  @override
+  Widget build(BuildContext context) {
     final db = ref.watch(workoutRepositoryProvider);
+    // Supersets are positional: consecutive exercises sharing a group are one.
+    // Reordering therefore moves whole units, so a drag can never interleave
+    // two groups and silently change what the workout means.
+    final units = buildSupersetUnits<FullWorkoutExercise>(
+      snap.exercises,
+      (e) => e.workoutExercise.supersetGroup,
+    );
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
       children: [
@@ -158,28 +175,86 @@ class _Body extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 16),
-        for (final ex in snap.exercises) ...[
-          _ExerciseSection(
-            ex: ex,
-            onAddSet: () => _addSet(context, ref, ex),
-            onRemoveExercise: () => _removeExercise(context, ref, ex),
-            onEditCompletion: (set) =>
-                _editCompletion(context, ref, ex: ex, set: set),
-            onRemoveCompletion: (id) => db.deleteCompletion(id),
-            onRemoveSet: (id) => db.removeWorkoutSet(id),
+        if (snap.exercises.length > 1)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _reorderMode = !_reorderMode),
+              icon: Icon(_reorderMode ? Icons.check : Icons.swap_vert),
+              label: Text(_reorderMode ? 'Done' : 'Reorder'),
+            ),
           ),
-          const SizedBox(height: 12),
-        ],
-        Center(
-          child: TextButton.icon(
-            onPressed: () => _addExercise(context, ref),
-            icon: const Icon(Icons.add),
-            label: const Text('Add exercise'),
+        if (_reorderMode)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: units.length,
+            itemBuilder: (context, idx) => _ReorderUnitTile(
+              key: ValueKey(units[idx].first.workoutExercise.syncId),
+              unit: units[idx],
+              index: idx,
+              onInnerReorder: (o, n) => _reorderInside(units, idx, o, n),
+            ),
+            onReorder: (o, n) => _reorderUnits(units, o, n),
+          )
+        else
+          for (final unit in units) ...[
+            if (unit.isGroup) const _SupersetHeader(),
+            for (final ex in unit.members) ...[
+              _ExerciseSection(
+                ex: ex,
+                inSuperset: unit.isGroup,
+                onAddSet: () => _addSet(context, ref, ex),
+                onRemoveExercise: () => _removeExercise(context, ref, ex),
+                onEditCompletion: (set) =>
+                    _editCompletion(context, ref, ex: ex, set: set),
+                onRemoveCompletion: (id) => db.deleteCompletion(id),
+                onRemoveSet: (id) => db.removeWorkoutSet(id),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        if (!_reorderMode)
+          Center(
+            child: TextButton.icon(
+              onPressed: () => _addExercise(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Add exercise'),
+            ),
           ),
-        ),
       ],
     );
   }
+
+  Future<void> _reorderUnits(
+    List<SupersetUnit<FullWorkoutExercise>> units,
+    int oldIndex,
+    int newIndex,
+  ) => ref.read(workoutRepositoryProvider).reorderWorkoutExercises(
+    workoutId: snap.workout.syncId,
+    orderedIds: reorderUnits(
+      units,
+      oldIndex,
+      newIndex,
+      (e) => e.workoutExercise.syncId,
+    ),
+  );
+
+  Future<void> _reorderInside(
+    List<SupersetUnit<FullWorkoutExercise>> units,
+    int unitIndex,
+    int oldIndex,
+    int newIndex,
+  ) => ref.read(workoutRepositoryProvider).reorderWorkoutExercises(
+    workoutId: snap.workout.syncId,
+    orderedIds: reorderWithinUnit(
+      units,
+      unitIndex,
+      oldIndex,
+      newIndex,
+      (e) => e.workoutExercise.syncId,
+    ),
+  );
 
   /// Edit one half of a timestamp. [date] picks which picker opens, so the
   /// time is reachable in one tap instead of only after dismissing a date
@@ -371,9 +446,110 @@ class _Body extends ConsumerWidget {
   }
 }
 
+/// Labels a run of exercises that form a superset, so reordering them as one
+/// block reads as deliberate rather than as the list refusing to move.
+class _SupersetHeader extends StatelessWidget {
+  const _SupersetHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4, left: 4),
+      child: Row(
+        children: [
+          Icon(Icons.link, size: 14, color: theme.colorScheme.primary),
+          const SizedBox(width: 4),
+          Text(
+            'Superset',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One draggable row in reorder mode: a lone exercise, or a superset block
+/// whose members can be dragged among themselves but never out of the block.
+class _ReorderUnitTile extends StatelessWidget {
+  const _ReorderUnitTile({
+    super.key,
+    required this.unit,
+    required this.index,
+    required this.onInnerReorder,
+  });
+
+  final SupersetUnit<FullWorkoutExercise> unit;
+  final int index;
+  final void Function(int oldIndex, int newIndex) onInnerReorder;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (!unit.isGroup) {
+      return Card(
+        key: ValueKey('u-${unit.first.workoutExercise.syncId}'),
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          leading: ReorderableDragStartListener(
+            index: index,
+            child: const Icon(Icons.drag_handle),
+          ),
+          title: Text(unit.first.workoutExercise.exerciseName),
+        ),
+      );
+    }
+    return Card(
+      key: ValueKey('u-${unit.first.workoutExercise.syncId}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Row(
+                children: [
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: const Icon(Icons.drag_handle),
+                  ),
+                  const SizedBox(width: 12),
+                  const _SupersetHeader(),
+                ],
+              ),
+            ),
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: unit.members.length,
+              itemBuilder: (context, i) => ListTile(
+                key: ValueKey('m-${unit.members[i].workoutExercise.syncId}'),
+                dense: true,
+                leading: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_indicator, size: 18),
+                ),
+                title: Text(unit.members[i].workoutExercise.exerciseName),
+              ),
+              onReorder: onInnerReorder,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ExerciseSection extends ConsumerWidget {
   const _ExerciseSection({
     required this.ex,
+    this.inSuperset = false,
     required this.onAddSet,
     required this.onRemoveExercise,
     required this.onEditCompletion,
@@ -382,6 +558,9 @@ class _ExerciseSection extends ConsumerWidget {
   });
 
   final FullWorkoutExercise ex;
+
+  /// Indents the card so a superset's members read as one block.
+  final bool inSuperset;
   final VoidCallback onAddSet;
   final VoidCallback onRemoveExercise;
   final void Function(FullWorkoutSet set) onEditCompletion;
@@ -393,6 +572,9 @@ class _ExerciseSection extends ConsumerWidget {
     final theme = Theme.of(context);
     final exerciseId = ex.workoutExercise.exerciseId;
     return Card(
+      margin: inSuperset
+          ? const EdgeInsets.only(left: 12)
+          : EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(

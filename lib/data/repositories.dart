@@ -116,6 +116,13 @@ abstract class WorkoutRepository {
     required String exerciseId,
   });
   Future<void> removeWorkoutExercise(String workoutExerciseId);
+
+  /// Reorder the workout's own exercise snapshot. [orderedIds] is every
+  /// workout-exercise syncId in the wanted order.
+  Future<void> reorderWorkoutExercises({
+    required String workoutId,
+    required List<String> orderedIds,
+  });
   Future<WorkoutSet> addWorkoutSet({
     required String workoutExerciseId,
     int? targetReps,

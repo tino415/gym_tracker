@@ -1188,6 +1188,28 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       });
 
   @override
+  Future<void> reorderWorkoutExercises({
+    required String workoutId,
+    required List<String> orderedIds,
+  }) => _editWorkout(workoutId, (m) {
+    final exs = _asMaps(m['exercises']);
+    final bySync = {for (final e in exs) e['syncId'] as String: e};
+    final reordered = <Map<String, dynamic>>[];
+    for (var i = 0; i < orderedIds.length; i++) {
+      final e = bySync[orderedIds[i]];
+      if (e != null) {
+        e['orderIndex'] = i;
+        reordered.add(e);
+      }
+    }
+    // Keep any not named in orderedIds (defensive), after the ordered ones.
+    for (final e in exs) {
+      if (!orderedIds.contains(e['syncId'])) reordered.add(e);
+    }
+    m['exercises'] = reordered;
+  });
+
+  @override
   Future<WorkoutSet> addWorkoutSet({
     required String workoutExerciseId,
     int? targetReps,

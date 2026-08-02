@@ -783,6 +783,24 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Reorder a workout's own snapshot rows. Mirrors [reorderRoutineExercises];
+  /// edits the workout, never the routine it was taken from.
+  Future<void> reorderWorkoutExercises({
+    required String workoutId,
+    required List<String> orderedIds,
+  }) async {
+    await transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (update(workoutExercises)..where(
+              (t) =>
+                  t.syncId.equals(orderedIds[i]) & t.workoutId.equals(workoutId),
+            ))
+            .write(WorkoutExercisesCompanion(orderIndex: Value(i)));
+      }
+      await _bumpWorkoutVersion(workoutId);
+    });
+  }
+
   Future<void> setRestSeconds(String routineExerciseId, int seconds) async {
     await transaction(() async {
       final re = await (select(

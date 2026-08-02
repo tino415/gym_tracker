@@ -96,6 +96,10 @@ void main() {
     await db.addWorkoutExercise(workoutId: w.syncId, exerciseId: bench.syncId);
     await pumpDetail(tester, w.syncId);
 
+    // Two exercise cards push the button below the fold; tapping without this
+    // silently misses (warnIfMissed) and the picker never opens.
+    await tester.ensureVisible(find.text('Add exercise'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Add exercise'));
     await tester.pumpAndSettle();
 

@@ -506,4 +506,26 @@ void main() {
       expect(await workouts.findWorkoutImprovements('w1'), isEmpty);
     });
   });
+
+  test('reorderWorkoutExercises rewrites order and bumps version', () async {
+    await seed(
+      'w1',
+      version: 3,
+      exercises: [exercise('we1'), exercise('we2'), exercise('we3')],
+    );
+
+    await workouts.reorderWorkoutExercises(
+      workoutId: 'w1',
+      orderedIds: ['we3', 'we1', 'we2'],
+    );
+
+    final doc = (await wcol().doc('w1').get()).data()!;
+    final exs = (doc['exercises'] as List).cast<Map<String, dynamic>>();
+    expect(exs.map((e) => e['syncId']).toList(), ['we3', 'we1', 'we2']);
+    // orderIndex is rewritten too — that is what the Drift side sorts on once
+    // the DTO round-trips through sync.
+    expect(exs.map((e) => e['orderIndex']).toList(), [0, 1, 2]);
+    // A reorder is an edit: without the bump it would lose to a peer's copy.
+    expect((doc['version'] as num).toInt(), greaterThan(3));
+  });
 }

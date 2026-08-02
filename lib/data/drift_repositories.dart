@@ -241,6 +241,15 @@ class DriftWorkoutRepository implements WorkoutRepository {
       _db.removeWorkoutExercise(workoutExerciseId);
 
   @override
+  Future<void> reorderWorkoutExercises({
+    required String workoutId,
+    required List<String> orderedIds,
+  }) => _db.reorderWorkoutExercises(
+    workoutId: workoutId,
+    orderedIds: orderedIds,
+  );
+
+  @override
   Future<WorkoutSet> addWorkoutSet({
     required String workoutExerciseId,
     int? targetReps,

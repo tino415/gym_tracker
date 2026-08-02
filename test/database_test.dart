@@ -392,6 +392,38 @@ void main() {
   });
 
   group('workout edit (history page)', () {
+    test('reorderWorkoutExercises reorders the snapshot and bumps version',
+        () async {
+      final workout = await db.createWorkout(startedAt: DateTime(2026, 3, 4));
+      final ids = <String>[];
+      for (final name in ['A', 'B', 'C']) {
+        final ex = await db.createExercise(name);
+        final we = await db.addWorkoutExercise(
+          workoutId: workout.syncId,
+          exerciseId: ex.syncId,
+        );
+        ids.add(we.syncId);
+      }
+      final before = (await db.loadFullWorkout(workout.syncId))!;
+      expect(
+        before.exercises.map((e) => e.workoutExercise.exerciseName).toList(),
+        ['A', 'B', 'C'],
+      );
+
+      await db.reorderWorkoutExercises(
+        workoutId: workout.syncId,
+        orderedIds: [ids[2], ids[0], ids[1]],
+      );
+
+      final after = (await db.loadFullWorkout(workout.syncId))!;
+      expect(
+        after.exercises.map((e) => e.workoutExercise.exerciseName).toList(),
+        ['C', 'A', 'B'],
+      );
+      // A reorder is an edit — it has to travel, so the version must move.
+      expect(after.workout.version, greaterThan(before.workout.version));
+    });
+
     test('addWorkoutExercise + addWorkoutSet + completion round-trip',
         () async {
       final ex = await db.createExercise('Pullup');
