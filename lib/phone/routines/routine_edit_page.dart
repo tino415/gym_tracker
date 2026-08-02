@@ -149,7 +149,18 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
       return;
     }
     if (!mounted) return;
-    final picked = await showExercisePicker(context, ref);
+    // Flag what's already in the routine rather than hiding it — a routine can
+    // legitimately repeat an exercise (e.g. a second, lighter block).
+    final current = ref.read(fullRoutineProvider(routineId)).valueOrNull;
+    final picked = await showExercisePicker(
+      context,
+      ref,
+      markCounts: countExerciseIds(
+        (current?.exercises ?? const <FullRoutineExercise>[])
+            .map((e) => e.routineExercise.exerciseId),
+      ),
+      markLabel: 'In this routine',
+    );
     if (picked == null || _routineId == null || !mounted) return;
     await ref.read(routineRepositoryProvider).addExerciseToRoutine(
           routineId: _routineId!,

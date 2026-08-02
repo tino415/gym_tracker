@@ -6,19 +6,40 @@ import '../../data/providers.dart';
 import '../breakpoints.dart';
 import '../exercises/muscle_selector.dart';
 
-/// Shared exercise picker. Used both for adding an exercise to a routine and for
-/// adding an alternative. [excludeIds] hides anything already in the slot to
-/// avoid duplicates. Returns the picked exercise, or null when dismissed.
+/// Shared exercise picker — adding an exercise to a routine or a workout, and
+/// adding an alternative. Returns the picked exercise, or null when dismissed.
+///
+/// Two ways to handle an exercise the caller already has:
+/// - [markCounts] flags it (with a ×N suffix past the first) but keeps it
+///   selectable. This is what routines and workouts use: repeating an exercise
+///   is legitimate, the user just wants to see that it's already in there.
+/// - [excludeIds] hides it outright. Only alternatives use this, where a
+///   duplicate would be a data error — `swapWorkoutExercise` resolves a variant
+///   by `exerciseId` and takes the first match.
 ///
 /// Presentation adapts to the viewport: a centered [AlertDialog] on wide
 /// (desktop/web) viewports where a bottom sheet rolling up from the corner reads
 /// as awkward, and the roll-up bottom sheet on narrow (phone) widths. Both host
 /// the same [_ExercisePickerBody], which offers a name search and muscle
 /// filters so a large exercise library stays navigable.
+/// Tally exercise ids for [showExercisePicker]'s `markCounts`. Nulls are
+/// skipped — a workout exercise can have a null `exerciseId` when its exercise
+/// was deleted from the library after the workout was recorded.
+Map<String, int> countExerciseIds(Iterable<String?> ids) {
+  final counts = <String, int>{};
+  for (final id in ids) {
+    if (id == null) continue;
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
+}
+
 Future<Exercise?> showExercisePicker(
   BuildContext context,
   WidgetRef ref, {
   Set<String> excludeIds = const {},
+  Map<String, int> markCounts = const {},
+  String markLabel = 'Already added',
 }) async {
   final db = ref.read(exerciseRepositoryProvider);
   final all = await db.watchExercisesWithMuscles().first;
@@ -38,7 +59,11 @@ Future<Exercise?> showExercisePicker(
           width: 420,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
-            child: _ExercisePickerBody(exercises: exercises),
+            child: _ExercisePickerBody(
+              exercises: exercises,
+              markCounts: markCounts,
+              markLabel: markLabel,
+            ),
           ),
         ),
       ),
@@ -56,7 +81,11 @@ Future<Exercise?> showExercisePicker(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(ctx).height * 0.75,
         ),
-        child: _ExercisePickerBody(exercises: exercises),
+        child: _ExercisePickerBody(
+          exercises: exercises,
+          markCounts: markCounts,
+          markLabel: markLabel,
+        ),
       ),
     ),
   );
@@ -70,10 +99,21 @@ Future<Exercise?> showExercisePicker(
 /// [TextEditingController] is owned by the element and disposed after the route
 /// detaches — see [_NewExerciseDialog] for the disposed-too-early pitfall.
 class _ExercisePickerBody extends StatefulWidget {
-  const _ExercisePickerBody({required this.exercises});
+  const _ExercisePickerBody({
+    required this.exercises,
+    this.markCounts = const {},
+    this.markLabel = 'Already added',
+  });
 
   /// Available exercises (already filtered by the caller's `excludeIds`).
   final List<ExerciseWithMuscles> exercises;
+
+  /// How many times each exercise already appears in the caller's list.
+  /// Flagged, not hidden: repeating an exercise in a routine or a workout is
+  /// legitimate, the user just wants to see that it's already in there — and
+  /// how often.
+  final Map<String, int> markCounts;
+  final String markLabel;
 
   @override
   State<_ExercisePickerBody> createState() => _ExercisePickerBodyState();
@@ -179,7 +219,12 @@ class _ExercisePickerBodyState extends State<_ExercisePickerBody> {
         const Divider(height: 1),
         // -- Scrolling filtered list --
         Expanded(
-          child: _ExerciseResultList(exercises: filtered, total: widget.exercises.length),
+          child: _ExerciseResultList(
+            exercises: filtered,
+            total: widget.exercises.length,
+            markCounts: widget.markCounts,
+            markLabel: widget.markLabel,
+          ),
         ),
       ],
     );
@@ -190,10 +235,17 @@ class _ExercisePickerBodyState extends State<_ExercisePickerBody> {
 /// count of available exercises before search/muscle filtering, so we can tell
 /// "no exercises at all" apart from "none match the current filter".
 class _ExerciseResultList extends StatelessWidget {
-  const _ExerciseResultList({required this.exercises, required this.total});
+  const _ExerciseResultList({
+    required this.exercises,
+    required this.total,
+    this.markCounts = const {},
+    this.markLabel = 'Already added',
+  });
 
   final List<ExerciseWithMuscles> exercises;
   final int total;
+  final Map<String, int> markCounts;
+  final String markLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -210,13 +262,22 @@ class _ExerciseResultList extends StatelessWidget {
       itemCount: exercises.length,
       itemBuilder: (context, i) {
         final e = exercises[i];
+        final count = markCounts[e.exercise.syncId] ?? 0;
         return ListTile(
           leading: Icon(
             e.exercise.kind == exerciseKindTime
                 ? Icons.timer_outlined
                 : Icons.repeat,
           ),
-          title: Text(e.exercise.name),
+          title: Row(
+            children: [
+              Flexible(child: Text(e.exercise.name)),
+              if (count > 0) ...[
+                const SizedBox(width: 8),
+                _AlreadyAddedTag(label: markLabel, count: count),
+              ],
+            ],
+          ),
           subtitle: e.muscles.isEmpty
               ? null
               : Padding(
@@ -232,6 +293,47 @@ class _ExerciseResultList extends StatelessWidget {
           onTap: () => Navigator.of(context).pop(e.exercise),
         );
       },
+    );
+  }
+}
+
+/// Marks an exercise the caller already has in its list. Deliberately not a
+/// disabled state — the row stays tappable, because repeating an exercise in a
+/// routine or a workout is a real thing to want.
+class _AlreadyAddedTag extends StatelessWidget {
+  const _AlreadyAddedTag({required this.label, required this.count});
+  final String label;
+
+  /// How many times it's already in the list. Rendered as a ×N suffix past the
+  /// first, so the common case stays a plain "already there" mark.
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.check,
+            size: 12,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            count > 1 ? '$label ×$count' : label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSecondaryContainer,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -80,4 +80,31 @@ void main() {
 
     await disposeTree(tester);
   });
+
+  testWidgets('marks exercises already in the workout, with a count', (
+    tester,
+  ) async {
+    final bench = await db.createExercise('Bench Press');
+    await db.createExercise('Barbell Row');
+    final w = await db.createWorkout(
+      startedAt: DateTime(2026, 3, 4, 18, 30),
+      endedAt: DateTime(2026, 3, 4, 19, 45),
+    );
+    // Bench twice, Row not at all — repeating is allowed, so it must still be
+    // offered rather than filtered out.
+    await db.addWorkoutExercise(workoutId: w.syncId, exerciseId: bench.syncId);
+    await db.addWorkoutExercise(workoutId: w.syncId, exerciseId: bench.syncId);
+    await pumpDetail(tester, w.syncId);
+
+    await tester.tap(find.text('Add exercise'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('In this workout \u00d72'), findsOneWidget);
+    // Still selectable, not hidden.
+    expect(find.widgetWithText(ListTile, 'Bench Press'), findsOneWidget);
+    // Unused exercise carries no mark.
+    expect(find.text('In this workout'), findsNothing);
+
+    await disposeTree(tester);
+  });
 }

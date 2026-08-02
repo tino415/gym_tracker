@@ -349,7 +349,14 @@ class _Body extends ConsumerWidget {
     // new exercise" tile. The workout editor used to roll its own list, which
     // is why an exercise could not be created while adding one here. No
     // excludeIds: repeating an exercise within a workout is legitimate.
-    final picked = await showExercisePicker(context, ref);
+    final picked = await showExercisePicker(
+      context,
+      ref,
+      markCounts: countExerciseIds(
+        snap.exercises.map((e) => e.workoutExercise.exerciseId),
+      ),
+      markLabel: 'In this workout',
+    );
     if (picked == null) return;
     await workouts.addWorkoutExercise(
       workoutId: snap.workout.syncId,
