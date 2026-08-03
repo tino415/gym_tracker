@@ -16,6 +16,36 @@ Values that vary by machine or device — adb serials, the debug/release APK mod
 `Justfile`. Override any of them inline: `just PHONE_ABIS=android-x64 phone-apk`.
 The dev stack (`just up`) is described in `process-compose.yaml`.
 
+Device recipes take an adb serial or the alias `phone` / `watch`, resolved by
+form factor (`tool/adb-device.sh`) so a wireless serial's changing port stops
+mattering; `just devices-list` shows what is attached. Installs print the
+resolved serial and model first — a `pm install` into the wrong device still
+says `Success`, so the echo is the only thing that tells you where a build
+went. `just phone-apk-demo` seeds demo routines (reps, a superset pair, a
+time-kind hold) on a **first launch into an empty library**, which is what makes
+on-device checks cheap; `adb shell pm clear com.otin.gym_tracker` re-arms it.
+
+`web` / `deploy` run `flutter clean` and so wipe `build/`, APKs included. Build
+device APKs *after* deploying, or use `release-all`, which orders it for you.
+
+## Testing
+
+Two traps that cost real time, neither guessable from the failure:
+
+1. **Awaiting `.first` on a drift *stream* in a widget test hangs forever.**
+   The widget tester's fake clock never advances real-time IO, so the
+   subscription never emits and the test sits until the 10-minute timeout with
+   no error. Wrap stream reads in `tester.runAsync(...)`. Plain futures
+   (`loadFullWorkout`, `createWorkout`, …) are fine awaited directly — it is
+   specifically streams. Only applies under `flutter test`: `integration_test/`
+   runs on a real binding and real clock, where `.first` is fine.
+2. **`pumpAndSettle` never settles while a periodic ticker runs.** Any page with
+   a rest/hold countdown (`watch_run_page`, `workout_run_page`) keeps a
+   `Timer.periodic` alive, so settling times out. Drive those with explicit
+   `pump(Duration(...))` calls, and unmount the tree at the end of the test
+   (`pumpWidget(const SizedBox())`) or the run ends with a pending-timer
+   failure.
+
 ## Web / PWA
 
 `flutter build web` produces an installable PWA (Flutter generates the service

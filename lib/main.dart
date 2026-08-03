@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wear_plus/wear_plus.dart';
 
+import 'data/demo_seed.dart';
 import 'data/providers.dart';
 import 'phone/phone_app.dart';
 import 'phone/settings/theme_controller.dart';
@@ -80,6 +81,10 @@ class GymTrackerRoot extends ConsumerWidget {
     // transport reactively when the user signs in, and detaches on sign-out.
     // Never on the watch, which reaches the server through the phone.
     if (!isWatch) ref.watch(firestoreSyncBinderProvider);
+    // Dev-only demo routines; a no-op without --dart-define=SEED_DEMO=true.
+    // Never on the watch, which isn't the routine authority and would only
+    // hand the phone data it didn't ask for.
+    if (!isWatch && seedDemoEnabled) ref.watch(demoSeedProvider);
     if (isWatch) return const _WearShell();
     return const PhoneApp();
   }

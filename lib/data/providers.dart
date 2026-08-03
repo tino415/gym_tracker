@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../sync/auth_service.dart';
 import '../sync/firestore_backend.dart' show syncBackendEnabled;
 import 'database.dart';
+import 'demo_seed.dart';
 import 'drift_repositories.dart';
 import 'firestore_repositories.dart';
 import 'repositories.dart';
@@ -53,6 +54,17 @@ final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
     throw StateError('workoutRepository read while signed out (web-direct)');
   }
   return DriftWorkoutRepository(ref.watch(databaseProvider));
+});
+
+/// Runs the dev-only demo seed once per app start. A no-op unless the build
+/// carries `--dart-define=SEED_DEMO=true`, and [seedDemoData] additionally
+/// refuses to touch a store that already has routines.
+final demoSeedProvider = FutureProvider<void>((ref) async {
+  if (!seedDemoEnabled) return;
+  await seedDemoData(
+    routines: ref.read(routineRepositoryProvider),
+    exercises: ref.read(exerciseRepositoryProvider),
+  );
 });
 
 final exercisesStreamProvider = StreamProvider<List<Exercise>>((ref) {
