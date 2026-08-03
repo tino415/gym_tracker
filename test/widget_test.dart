@@ -18,6 +18,12 @@ void main() {
           recentWorkoutsStreamProvider.overrideWith(
             (ref) => Stream.value(<Workout>[]),
           ),
+          // The routines page offers to resume an unfinished workout. Without
+          // this override the banner reaches the real database provider, which
+          // opens a file and leaves a pending timer.
+          inProgressWorkoutStreamProvider.overrideWith(
+            (ref) => Stream.value(null),
+          ),
         ],
         child: const PhoneApp(),
       ),

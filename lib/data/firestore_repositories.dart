@@ -931,6 +931,44 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     return out;
   }
 
+  /// Exercises and completions live inside the workout document and nothing
+  /// indexes the nested `exerciseSyncId`, so the last-completion lookup is a
+  /// scan. Bounded to this many of the most recent workouts: the answer is
+  /// always the newest match, so anything older can't change it, and a user
+  /// with more than this many workouts since they last did the exercise has no
+  /// useful reference point anyway.
+  static const _lastCompletionScanLimit = 50;
+
+  @override
+  Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
+    required String exerciseId,
+    required int setIndex,
+    required String excludeWorkoutId,
+  }) async {
+    final snap = await _col
+        .orderBy('startedAtMs', descending: true)
+        .limit(_lastCompletionScanLimit)
+        .get();
+    for (final doc in snap.docs) {
+      final dto = WorkoutDto.fromJson(doc.data());
+      if (dto.syncId == excludeWorkoutId) continue;
+      // Mirrors the Drift query: finished workouts only, tombstones excluded.
+      if (dto.endedAtMs == null || dto.deletedAtMs != null) continue;
+      final completionBySet = {
+        for (final c in dto.completions) c.workoutSetSyncId: c,
+      };
+      for (final we in dto.exercises) {
+        if (we.exerciseSyncId != exerciseId) continue;
+        for (final s in we.sets) {
+          if (s.setIndex != setIndex) continue;
+          final c = completionBySet[s.syncId];
+          if (c != null) return _completionRow(c, dto.syncId);
+        }
+      }
+    }
+    return null;
+  }
+
   /// Promote every outstanding improvement to its routine planned set (primary
   /// or alternative), in one routine-doc write with a version bump. Idempotent:
   /// once applied the targets equal the actuals, so a repeat call finds none.

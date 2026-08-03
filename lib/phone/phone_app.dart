@@ -11,6 +11,7 @@ import 'home_shell.dart';
 import 'routines/routine_edit_page.dart';
 import 'routines/routine_exercise_detail_page.dart';
 import 'routines/routines_list_page.dart';
+import 'run/workout_run_page.dart';
 import 'settings/account_page.dart';
 import 'settings/theme_controller.dart';
 
@@ -102,6 +103,24 @@ final _router = GoRouter(
       path: '/account',
       parentNavigatorKey: _rootKey,
       builder: (context, state) => const AccountPage(),
+    ),
+    // Full-screen, outside the shell: running a workout owns the whole screen.
+    // Entry points are hidden on web (see [runFlowAvailable]); the routes stay
+    // reachable there only by typing a URL, which is harmless — every
+    // repository method the page uses is implemented on both backends.
+    GoRoute(
+      path: '/run/resume/:workoutId',
+      parentNavigatorKey: _rootKey,
+      builder: (context, state) => WorkoutRunPage(
+        resumeWorkoutId: state.pathParameters['workoutId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/run/:routineId',
+      parentNavigatorKey: _rootKey,
+      builder: (context, state) => WorkoutRunPage(
+        routineId: state.pathParameters['routineId']!,
+      ),
     ),
   ],
 );

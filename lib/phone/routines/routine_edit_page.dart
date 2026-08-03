@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../run/workout_run_page.dart';
 import '../superset_units.dart';
 import 'exercise_picker.dart';
 
@@ -261,6 +262,24 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                 },
               ),
               const SizedBox(height: 16),
+              // The discoverable way to start a workout. It used to be an icon
+              // on the routines list row, a thumb-width from the row's own tap
+              // target, so opening a routine often started one instead. Here it
+              // is unmissable but can only be hit deliberately; swiping a list
+              // row left is the shortcut once you know it. Hidden while the
+              // routine is a draft or empty — there is nothing to run — and on
+              // web, which doesn't offer the run flow.
+              if (!isDraft && exercises.isNotEmpty && runFlowAvailable) ...[
+                FilledButton.icon(
+                  onPressed: () => context.push('/run/$_routineId'),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start workout'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               if (isDraft)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_tracker/data/database.dart' show SetCompletion;
 import 'package:gym_tracker/data/firestore_repositories.dart';
 
 void main() {
@@ -48,9 +49,9 @@ void main() {
     'routineExerciseSyncId': null,
   };
 
-  Map<String, dynamic> wset(String id) => {
+  Map<String, dynamic> wset(String id, {int idx = 0}) => {
     'syncId': id,
-    'setIndex': 0,
+    'setIndex': idx,
     'targetReps': 8,
     'targetWeightKg': 40.0,
     'targetSeconds': null,
@@ -527,5 +528,95 @@ void main() {
     expect(exs.map((e) => e['orderIndex']).toList(), [0, 1, 2]);
     // A reorder is an edit: without the bump it would lose to a peer's copy.
     expect((doc['version'] as num).toInt(), greaterThan(3));
+  });
+
+  group('lastCompletionForExerciseAtSetIndex', () {
+    // Seeds one finished workout containing exercise `ex-we1` with two sets,
+    // completing whichever of them the caller names.
+    Future<void> seedSession(
+      String id, {
+      required int startedAtMs,
+      required Map<int, int> repsBySetIndex,
+      int? endedAtMs = 2000,
+      int? deletedAtMs,
+    }) => seed(
+      id,
+      startedAtMs: startedAtMs,
+      endedAtMs: endedAtMs,
+      deletedAtMs: deletedAtMs,
+      exercises: [
+        exercise('we1', sets: [
+          wset('$id-s0', idx: 0),
+          wset('$id-s1', idx: 1),
+        ]),
+      ],
+      completions: [
+        for (final e in repsBySetIndex.entries)
+          completion('$id-c${e.key}', wsId: '$id-s${e.key}', reps: e.value),
+      ],
+    );
+
+    Future<SetCompletion?> lookup({int setIndex = 0, String exclude = 'live'}) =>
+        workouts.lastCompletionForExerciseAtSetIndex(
+          exerciseId: 'ex-we1',
+          setIndex: setIndex,
+          excludeWorkoutId: exclude,
+        );
+
+    test('returns the newest matching completion', () async {
+      await seedSession('old', startedAtMs: 1000, repsBySetIndex: {0: 5});
+      await seedSession('new', startedAtMs: 3000, repsBySetIndex: {0: 9});
+      await seedSession('mid', startedAtMs: 2000, repsBySetIndex: {0: 7});
+
+      expect((await lookup())?.actualReps, 9);
+    });
+
+    test('matches on set index, not just exercise', () async {
+      await seedSession('w1', startedAtMs: 1000, repsBySetIndex: {0: 5, 1: 3});
+
+      expect((await lookup(setIndex: 0))?.actualReps, 5);
+      expect((await lookup(setIndex: 1))?.actualReps, 3);
+    });
+
+    test('ignores the live workout', () async {
+      await seedSession('old', startedAtMs: 1000, repsBySetIndex: {0: 5});
+      // The session in progress is the newest, but it is the one being run.
+      await seedSession('live', startedAtMs: 3000, repsBySetIndex: {0: 99});
+
+      expect((await lookup())?.actualReps, 5);
+    });
+
+    test('ignores unfinished and tombstoned workouts', () async {
+      await seedSession('old', startedAtMs: 1000, repsBySetIndex: {0: 5});
+      await seedSession(
+        'unfinished',
+        startedAtMs: 3000,
+        endedAtMs: null,
+        repsBySetIndex: {0: 98},
+      );
+      await seedSession(
+        'deleted',
+        startedAtMs: 4000,
+        deletedAtMs: 4100,
+        repsBySetIndex: {0: 97},
+      );
+
+      expect((await lookup())?.actualReps, 5);
+    });
+
+    test('null when the exercise has no history at that set index', () async {
+      await seedSession('w1', startedAtMs: 1000, repsBySetIndex: {0: 5});
+
+      // Set 1 exists in the snapshot but was never completed.
+      expect(await lookup(setIndex: 1), isNull);
+      expect(
+        await workouts.lastCompletionForExerciseAtSetIndex(
+          exerciseId: 'ex-never-done',
+          setIndex: 0,
+          excludeWorkoutId: 'live',
+        ),
+        isNull,
+      );
+    });
   });
 }

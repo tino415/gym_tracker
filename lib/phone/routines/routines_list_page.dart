@@ -7,6 +7,7 @@ import '../../sync/sync_service.dart';
 import '../account_action.dart';
 import '../breakpoints.dart';
 import '../list_empty_state.dart';
+import '../run/workout_run_page.dart';
 import '../wide_master_detail.dart';
 import 'routine_edit_page.dart';
 import 'routine_exercise_detail_page.dart';
@@ -36,16 +37,24 @@ class RoutinesListPage extends ConsumerWidget {
         onPressed: () => context.push('/routines/new'),
         child: const Icon(Icons.add),
       ),
-      body: RefreshIndicator(
-        // On the Firestore-direct web build there's no SyncService (Firestore
-        // snapshots are already live); pull-to-refresh is a no-op there.
-        onRefresh: () => ref.read(firestoreDirectProvider)
-            ? Future<void>.value()
-            : ref.read(syncServiceProvider).pushAll(),
-        child: RoutinesListView(
-          onSelect: (id) => context.push('/routines/$id'),
-          alwaysScrollable: true,
-        ),
+      body: Column(
+        children: [
+          const ResumeWorkoutBanner(),
+          Expanded(
+            child: RefreshIndicator(
+              // On the Firestore-direct web build there's no SyncService
+              // (Firestore snapshots are already live); pull-to-refresh is a
+              // no-op there.
+              onRefresh: () => ref.read(firestoreDirectProvider)
+                  ? Future<void>.value()
+                  : ref.read(syncServiceProvider).pushAll(),
+              child: RoutinesListView(
+                onSelect: (id) => context.push('/routines/$id'),
+                alwaysScrollable: true,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -192,6 +201,7 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
             ),
           ),
           const Divider(height: 1),
+          const ResumeWorkoutBanner(),
           Expanded(
             child: RoutinesListView(
               onSelect: _selectRoutine,
@@ -199,6 +209,113 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Drag a routine row right-to-left to start a workout from it.
+///
+/// A deliberate gesture rather than a button on the row: a tap target sitting
+/// beside the row's own tap target was too easy to hit by accident when you
+/// only meant to open the routine. The discoverable path is the "Start workout"
+/// button inside the routine editor; this is the shortcut once you know it.
+///
+/// It never actually dismisses — [confirmDismiss] navigates and returns false,
+/// so the row springs back and is still there when you come out of the workout.
+class _SwipeToStart extends StatelessWidget {
+  const _SwipeToStart({required this.routineId, required this.child});
+
+  final String routineId;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Dismissible(
+      key: ValueKey('swipe-to-start-$routineId'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        context.push('/run/$routineId');
+        return false;
+      },
+      background: ColoredBox(
+        color: scheme.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Icon(Icons.play_arrow, color: scheme.onPrimaryContainer),
+              const SizedBox(width: 8),
+              Text(
+                'Start',
+                style: TextStyle(
+                  color: scheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Offers to pick up an unfinished workout. Hidden when there is none, and on
+/// web where the run flow isn't offered at all.
+///
+/// A tombstoned workout keeps its null `endedAt`, but `watchInProgressWorkout`
+/// already filters those out — otherwise an abandoned-and-deleted session would
+/// offer Resume forever.
+class ResumeWorkoutBanner extends ConsumerWidget {
+  const ResumeWorkoutBanner({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!runFlowAvailable) return const SizedBox.shrink();
+    final workout = ref.watch(inProgressWorkoutStreamProvider).valueOrNull;
+    if (workout == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.primaryContainer,
+      child: InkWell(
+        onTap: () => context.push('/run/resume/${workout.syncId}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Row(
+            children: [
+              Icon(Icons.play_circle_outline, color: scheme.onPrimaryContainer),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Workout in progress',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                    Text(
+                      workout.routineName ?? 'Ad-hoc workout',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onPrimaryContainer),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.push('/run/resume/${workout.syncId}'),
+                child: const Text('Resume'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -253,7 +370,7 @@ class RoutinesListView extends ConsumerWidget {
           separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (context, i) {
             final s = summaries[i];
-            return ListTile(
+            final tile = ListTile(
               selected: s.routine.syncId == selectedId,
               title: Text(s.routine.name),
               subtitle: Text(
@@ -263,6 +380,13 @@ class RoutinesListView extends ConsumerWidget {
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onSelect(s.routine.syncId),
+            );
+            // Nothing to run in an empty routine, and web doesn't offer the
+            // run flow at all.
+            if (!runFlowAvailable || s.exerciseCount == 0) return tile;
+            return _SwipeToStart(
+              routineId: s.routine.syncId,
+              child: tile,
             );
           },
         );

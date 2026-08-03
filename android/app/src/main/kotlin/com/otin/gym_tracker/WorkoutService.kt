@@ -114,7 +114,10 @@ class WorkoutService : Service() {
                 val routineName = intent.getStringExtra(EXTRA_ROUTINE_NAME)
                     ?: "Workout"
                 startInForeground(routineName)
-                startHeartRateIfAllowed()
+                // Health Services is a Wear API; on a phone there is nothing to
+                // subscribe to, and the phone run page never asks for
+                // BODY_SENSORS anyway.
+                if (isWatch()) startHeartRateIfAllowed()
                 _running.value = true
             }
             ACTION_STOP -> {
@@ -239,18 +242,25 @@ class WorkoutService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_WORKOUT)
 
-        val status = Status.Builder()
-            .addTemplate(routineName)
-            .build()
-        val ongoing = OngoingActivity.Builder(applicationContext, NOTIF_ID, builder)
-            .setStaticIcon(R.mipmap.ic_launcher)
-            .setTouchIntent(tapPi)
-            .setStatus(status)
-            .build()
-        ongoing.apply(applicationContext)
+        // OngoingActivity is the watch-face chip — Wear-only decoration. The
+        // plain notification below is what a phone shows.
+        if (isWatch()) {
+            val status = Status.Builder()
+                .addTemplate(routineName)
+                .build()
+            val ongoing = OngoingActivity.Builder(applicationContext, NOTIF_ID, builder)
+                .setStaticIcon(R.mipmap.ic_launcher)
+                .setTouchIntent(tapPi)
+                .setStatus(status)
+                .build()
+            ongoing.apply(applicationContext)
+        }
 
         startForeground(NOTIF_ID, builder.build())
     }
+
+    private fun isWatch(): Boolean =
+        packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
 
     private fun ensureChannel() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager

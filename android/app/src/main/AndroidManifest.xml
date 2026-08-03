@@ -7,6 +7,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- Qualifies us to start the `health` foreground service. From API 34 the
+         platform demands FOREGROUND_SERVICE_HEALTH *plus* one of
+         ACTIVITY_RECOGNITION / BODY_SENSORS / HIGH_SAMPLING_RATE_SENSORS, and
+         it must be granted. The watch satisfies that with BODY_SENSORS, which
+         it requests at workout start for heart rate — but the phone run page
+         reads no sensors, so prompting there would be asking for something we
+         never use. HIGH_SAMPLING_RATE_SENSORS is a *normal* permission, so
+         declaring it is granting it: the phone's rest countdown service starts
+         with no runtime prompt. Without this the service dies with a
+         SecurityException and Android restart-loops it. -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application

@@ -95,6 +95,16 @@ abstract class WorkoutRepository {
   Stream<FullWorkout?> watchFullWorkout(String workoutId);
   Future<List<WorkoutImprovement>> findWorkoutImprovements(String workoutId);
 
+  /// What was last logged for [exerciseId] at [setIndex], ignoring
+  /// [excludeWorkoutId] (the live session) and any unfinished or tombstoned
+  /// workout. Null when the exercise has no history at that set index. The run
+  /// pages show it as a reference point next to the current set's target.
+  Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
+    required String exerciseId,
+    required int setIndex,
+    required String excludeWorkoutId,
+  });
+
   // History-editing mutations
   /// Create a workout for manual backfill: optionally snapshot [routineId]'s
   /// exercises + target sets (no completions), with the given times. Null/
