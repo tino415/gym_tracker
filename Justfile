@@ -192,12 +192,23 @@ e2e-watch device=WEAR_DEVICE:
 
 # Web e2e in headless Chrome (needs the emulator suite running: just up)
 e2e-web:
+    @just _web-drive integration_test/web_flow_test.dart
+
+# Account deletion against the real Auth + Firestore emulators. The unit tests
+# fake Firestore; only this exercises reauthentication and user.delete().
+[doc('Account-deletion e2e in headless Chrome (needs the emulator suite)')]
+e2e-web-delete:
+    @just _web-drive integration_test/account_deletion_web_test.dart
+
+# Shared driver invocation for the web e2e targets.
+[private]
+_web-drive target:
     #!/usr/bin/env bash
     chromedriver --port=4444 & cdpid=$!
     trap 'kill $cdpid 2>/dev/null' EXIT
     sleep 1
     flutter drive --driver=test_driver/integration_test.dart \
-      --target=integration_test/web_flow_test.dart -d web-server \
+      --target={{target}} -d web-server \
       --browser-name=chrome --headless --driver-port=4444 \
       --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true
 
