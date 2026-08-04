@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/database.dart';
 import '../data/providers.dart';
 import '../main.dart';
+import '../phone/settings/health_connect_controller.dart';
+import 'health_connect_publisher.dart';
 import 'sync_codec.dart';
 import 'sync_repository.dart';
 import 'sync_transport.dart';
@@ -16,6 +18,7 @@ class SyncService {
     this._repo, {
     required this.isRoutineAuthority,
     required List<SyncTransport> transports,
+    this.onWorkoutApplied,
   }) : _transports = List.of(transports);
 
   final AppDatabase _db;
@@ -25,6 +28,17 @@ class SyncService {
   /// is false — the watch never pushes its routine bundle, so a routine
   /// deleted on the phone doesn't resurrect itself on the next sync.
   final bool isRoutineAuthority;
+
+  /// Called with a workout's syncId once an inbound copy has actually been
+  /// applied. The phone uses it to publish workouts run on the watch to Health
+  /// Connect — those are the ones carrying heart rate, and the watch has no
+  /// health store of its own to write to.
+  ///
+  /// A hook rather than a direct call so this file stays ignorant of Health
+  /// Connect. It must not write to the database: a write here would bump the
+  /// workout version and make an apply look like a local edit, which is exactly
+  /// the loop the relay invariant below depends on not happening.
+  final void Function(String workoutSyncId)? onWorkoutApplied;
 
   final List<SyncTransport> _transports;
   final Map<SyncTransport, StreamSubscription<SyncMessage>> _messageSubs = {};
@@ -176,6 +190,9 @@ class SyncService {
             // waiting for the next manual pushAll. The phone is the only
             // multi-transport hub; a single-transport peer relays to nothing.
             await _relayToOthers(source, type: msg.type, payload: msg.payload);
+            // After the relay, so publishing can never delay getting the
+            // workout onward to Firestore.
+            onWorkoutApplied?.call(dto.syncId);
           } else {
             // Rejected. If ours is strictly newer, the sender is stale and
             // nothing else will fix it — a rejection writes no rows, so the
@@ -390,6 +407,22 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     // Phone is the authority for routine state; the watch only consumes them.
     isRoutineAuthority: !ref.watch(isWatchProvider),
     transports: [WearSyncTransport()],
+    // Publish workouts that arrive from the watch — the ones that actually
+    // carry heart rate. Phone only: the watch has no Health Connect provider,
+    // so the bridge would no-op anyway, but not calling makes that explicit.
+    //
+    // The opt-in is read at delivery, not captured here, so turning the switch
+    // off takes effect immediately rather than at the next restart.
+    // Publishing is idempotent (the sync id is the clientRecordId), which is
+    // what makes it safe to fire on every apply, including re-deliveries.
+    onWorkoutApplied: ref.watch(isWatchProvider)
+        ? null
+        : (workoutId) {
+            if (!ref.read(healthConnectEnabledProvider)) return;
+            unawaited(
+              ref.read(healthConnectPublisherProvider).publish(workoutId),
+            );
+          },
   );
   svc.start();
   ref.onDispose(() => svc.dispose());

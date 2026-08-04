@@ -99,12 +99,14 @@ void main() {
   SyncService serviceWith(
     List<SyncTransport> transports, {
     required bool isRoutineAuthority,
+    void Function(String)? onWorkoutApplied,
   }) {
     return SyncService(
       db,
       repo,
       isRoutineAuthority: isRoutineAuthority,
       transports: transports,
+      onWorkoutApplied: onWorkoutApplied,
     );
   }
 
@@ -311,6 +313,79 @@ void main() {
     expect(relayed.first.payload['syncId'], 'w-1');
     expect(wear.sent.where((m) => m.type == workoutCompletedType), isEmpty);
     await svc.dispose();
+  });
+
+  group('onWorkoutApplied (Health Connect publishing)', () {
+    WorkoutDto dtoFor(String id, {int version = 1}) => WorkoutDto(
+      syncId: id,
+      routineSyncId: null,
+      startedAtMs: DateTime.utc(2026, 1, 2).millisecondsSinceEpoch,
+      endedAtMs: DateTime.utc(2026, 1, 2, 1).millisecondsSinceEpoch,
+      exercises: const [],
+      completions: const [],
+      version: version,
+    );
+
+    test('fires for a workout that arrives from the watch', () async {
+      // The point of the hook: workouts run on the watch are the ones carrying
+      // heart rate, and the watch has no health store to write them to.
+      final applied = <String>[];
+      final wear = FakeTransport();
+      final svc = serviceWith(
+        [wear],
+        isRoutineAuthority: true,
+        onWorkoutApplied: applied.add,
+      );
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      wear.deliver(
+        SyncMessage(
+          type: workoutCompletedType,
+          payload: WorkoutCompletedMessage(dtoFor('w-hc')).toPayload(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(applied, ['w-hc']);
+      await svc.dispose();
+    });
+
+    test('does not fire when the inbound copy is rejected', () async {
+      final applied = <String>[];
+      final wear = FakeTransport();
+      final svc = serviceWith(
+        [wear],
+        isRoutineAuthority: true,
+        onWorkoutApplied: applied.add,
+      );
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Apply once at version 3, then deliver a strictly older copy. The stale
+      // one writes nothing, so there is nothing new to publish.
+      wear.deliver(
+        SyncMessage(
+          type: workoutCompletedType,
+          payload:
+              WorkoutCompletedMessage(dtoFor('w-hc', version: 3)).toPayload(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      applied.clear();
+
+      wear.deliver(
+        SyncMessage(
+          type: workoutCompletedType,
+          payload:
+              WorkoutCompletedMessage(dtoFor('w-hc', version: 1)).toPayload(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(applied, isEmpty);
+      await svc.dispose();
+    });
   });
 
   test('a server-received workout relays to the watch, not back to the server',
