@@ -20,6 +20,13 @@
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Health Connect. Write-only on purpose: we publish finished workouts and
+         never read anything back, which keeps the Play health declaration
+         narrow and the review simpler. Adding a READ permission here is a
+         policy decision, not a technical one. -->
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+
     <application
         android:label="GymTracker"
         android:name="${applicationName}"
@@ -53,6 +60,33 @@
             android:name=".WorkoutService"
             android:foregroundServiceType="health"
             android:exported="false" />
+
+        <!-- Health Connect links to this from its permission screen, and
+             requires it to show the same privacy policy published in Play
+             Console. We have no policy URL yet (see the "Privacy policy URL and
+             Play data-safety form" task) — the activity currently shows an
+             in-app explanation and must be pointed at the real policy before
+             release, or the Health Connect review will bounce.
+             Two entry points: the action below is how Android 13 and earlier
+             (where Health Connect is a separate app) reach it; the alias is the
+             Android 14+ platform equivalent. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

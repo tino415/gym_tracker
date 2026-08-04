@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
+import '../../sync/health_connect_bridge.dart';
 import '../../sync/sync_ownership.dart';
+import 'health_connect_controller.dart';
 import 'theme_controller.dart';
 
 /// Opt-in "Sync & backup" account screen. Signed out, it offers email/password
@@ -73,6 +75,18 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             mode: ref.watch(themeModeProvider),
             onChanged: (m) => ref.read(themeModeProvider.notifier).set(m),
           ),
+          // A device setting, not an account one — Health Connect lives on this
+          // phone — so it sits with Appearance, above the account section, and
+          // shows at all only where a provider exists.
+          if (ref.watch(healthConnectStatusProvider).valueOrNull ==
+              HealthConnectStatus.available) ...[
+            const Divider(height: 32),
+            _HealthConnectSection(
+              enabled: ref.watch(healthConnectEnabledProvider),
+              onChanged: (v) =>
+                  ref.read(healthConnectEnabledProvider.notifier).set(v),
+            ),
+          ],
           const Divider(height: 32),
           if (!enabled)
             const _DisabledNotice()
@@ -316,6 +330,40 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Opt-in for publishing finished workouts to Health Connect.
+///
+/// Off by default and never flipped on silently — writing someone's training to
+/// a system-wide health store is their call. Turning it on asks Health Connect
+/// for permission and stays off if that is refused, so the switch never claims
+/// to be publishing when nothing can be written.
+class _HealthConnectSection extends StatelessWidget {
+  const _HealthConnectSection({required this.enabled, required this.onChanged});
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Health Connect', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: enabled,
+          onChanged: onChanged,
+          title: const Text('Write workouts to Health Connect'),
+          subtitle: const Text(
+            'Finished workouts appear in Health Connect, with heart rate when '
+            'a watch recorded it. Nothing is ever read back.',
+          ),
+        ),
+      ],
+    );
   }
 }
 

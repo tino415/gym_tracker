@@ -9,7 +9,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../sync/health_connect_publisher.dart';
 import '../../sync/workout_bridge.dart';
+import '../settings/health_connect_controller.dart';
 import '../../watch/set_target_format.dart';
 import '../../watch/superset_nav.dart';
 
@@ -555,6 +557,12 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
           endedAt: clock.now(),
         );
     _stopService();
+    // Publish to Health Connect when the user opted in. Best-effort and
+    // unawaited: the workout is saved either way, and a health-store write must
+    // not hold up leaving the run page.
+    if (ref.read(healthConnectEnabledProvider)) {
+      unawaited(ref.read(healthConnectPublisherProvider).publish(workoutId));
+    }
     if (!mounted) return;
     context.go('/history/$workoutId');
   }

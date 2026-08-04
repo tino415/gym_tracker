@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shown by PermissionsRationaleActivity, which Health Connect links to
+         from its permission screen. Must be replaced by (or point at) the
+         published privacy policy before release — see the Play tasks. -->
+    <string name="health_connect_rationale">GymTracker writes your finished
+        workouts to Health Connect so they appear alongside the rest of your
+        health data.\n\nIt writes only: the start and end time of each workout,
+        its name, and — when a workout was run on a watch with heart-rate
+        permission — the heart-rate readings recorded during it.\n\nIt never
+        reads anything from Health Connect, and nothing is shared with anyone
+        else. You can turn this off at any time on the Account screen, and
+        revoke the permission in Health Connect itself.</string>
+</resources>

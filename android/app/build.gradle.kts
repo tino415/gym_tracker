@@ -56,4 +56,8 @@ dependencies {
     // com.google.common.util.concurrent.ListenableFuture, so Guava must be on
     // the compile classpath. The -android flavour is the right one for AOSP.
     implementation("com.google.guava:guava:32.1.3-android")
+    // Health Connect, for writing finished workouts to the phone's health
+    // store. Phone-only in practice — Wear has no Health Connect provider, so
+    // the bridge reports it unavailable there and does nothing.
+    implementation("androidx.health.connect:connect-client:1.1.0")
 }

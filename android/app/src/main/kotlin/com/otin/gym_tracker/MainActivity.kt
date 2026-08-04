@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var wearBridge: GymWearBridge? = null
     private var workoutBridge: WorkoutBridge? = null
+    private var healthConnectBridge: HealthConnectBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -36,6 +37,14 @@ class MainActivity : FlutterActivity() {
             it.attach()
             it.bindActivity(this)
         }
+
+        healthConnectBridge = HealthConnectBridge(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        ).also {
+            it.attach()
+            it.bindActivity(this)
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -44,8 +53,12 @@ class MainActivity : FlutterActivity() {
         workoutBridge?.unbindActivity()
         workoutBridge?.detach()
         workoutBridge = null
+        healthConnectBridge?.unbindActivity()
+        healthConnectBridge?.detach()
+        healthConnectBridge = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
+
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -54,5 +67,8 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         workoutBridge?.handlePermissionResult(requestCode, permissions, grantResults)
+        // From Android 14 the Health Connect permissions are ordinary runtime
+        // permissions, so they arrive here alongside BODY_SENSORS et al.
+        healthConnectBridge?.handlePermissionResult(requestCode, grantResults)
     }
 }

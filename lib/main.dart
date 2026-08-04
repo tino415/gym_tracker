@@ -8,6 +8,7 @@ import 'package:wear_plus/wear_plus.dart';
 import 'data/demo_seed.dart';
 import 'data/providers.dart';
 import 'phone/phone_app.dart';
+import 'phone/settings/health_connect_controller.dart';
 import 'phone/settings/theme_controller.dart';
 import 'phone/sign_in_screen.dart';
 import 'sync/auth_service.dart';
@@ -37,9 +38,13 @@ void main() async {
   // unavailable and throw (MissingPluginException), which would white-screen
   // the whole app. Fall back to the system theme instead.
   var initialTheme = ThemeMode.system;
+  // Seeded here too, so a workout finished before the account screen is ever
+  // opened still publishes for a user who has opted in.
+  var healthConnectEnabled = false;
   try {
     final prefs = await SharedPreferences.getInstance();
     initialTheme = themeModeFromPrefs(prefs);
+    healthConnectEnabled = healthConnectEnabledFromPrefs(prefs);
   } catch (e, st) {
     debugPrint('theme prefs read failed, using system theme: $e\n$st');
   }
@@ -48,6 +53,9 @@ void main() async {
       overrides: [
         isWatchProvider.overrideWithValue(isWatch),
         initialThemeModeProvider.overrideWithValue(initialTheme),
+        initialHealthConnectEnabledProvider.overrideWithValue(
+          healthConnectEnabled,
+        ),
       ],
       child: GymTrackerRoot(isWatch: isWatch),
     ),
