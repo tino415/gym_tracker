@@ -28,6 +28,13 @@ on-device checks cheap; `adb shell pm clear com.otin.gym_tracker` re-arms it.
 `web` / `deploy` run `flutter clean` and so wipe `build/`, APKs included. Build
 device APKs *after* deploying, or use `release-all`, which orders it for you.
 
+**`flutter test integration_test/…` uninstalls the app when it finishes**, which
+takes the local Drift database with it. Fine on an emulator, data loss on a
+handset you actually train with — so `e2e` / `e2e-run` / `e2e-watch` refuse a
+physical device (`ro.build.characteristics != emulator`) unless
+`ALLOW_REAL_DEVICE=1`. Ordinary `phone-install` / `watch-install` are unaffected:
+they `pm install -r`, which keeps app data.
+
 ## Testing
 
 Two traps that cost real time, neither guessable from the failure:

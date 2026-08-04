@@ -13,11 +13,23 @@
 # attached, the normal state here) never silently picks the wrong one. That is
 # exactly the failure this script exists to prevent: an install that reports
 # Success against a device you weren't looking at.
+#
+# With --emulator-only, refuse a physical device unless ALLOW_REAL_DEVICE=1.
+# The integration-test recipes pass it, because `flutter test integration_test/`
+# UNINSTALLS the app when it finishes — which deletes the local Drift database
+# along with it. Harmless on an emulator, a data-loss event on the handset you
+# actually train with.
 set -uo pipefail
+
+emulator_only=0
+if [ "${1:-}" = "--emulator-only" ]; then
+  emulator_only=1
+  shift
+fi
 
 spec="${1:-}"
 if [ -z "$spec" ]; then
-  echo "usage: adb-device.sh phone|watch|<serial>" >&2
+  echo "usage: adb-device.sh [--emulator-only] phone|watch|<serial>" >&2
   exit 2
 fi
 
@@ -33,6 +45,26 @@ describe() {
   echo "$1 (${model:-unknown})"
 }
 
+# Emits the resolved serial, after the physical-device check.
+emit() {
+  if [ "$emulator_only" = 1 ] && [ "${ALLOW_REAL_DEVICE:-}" != 1 ]; then
+    local chars
+    chars=$(adb -s "$1" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r')
+    case "$chars" in
+      *emulator*) ;;
+      *)
+        {
+          echo "refusing to run an integration test against $(describe "$1")."
+          echo "It uninstalls the app afterwards, wiping the local database."
+          echo "Use an emulator, or ALLOW_REAL_DEVICE=1 if you truly mean it."
+        } >&2
+        exit 1
+        ;;
+    esac
+  fi
+  echo "$1"
+}
+
 case "$spec" in
   phone | watch)
     matches=()
@@ -46,7 +78,7 @@ case "$spec" in
     done
     case "${#matches[@]}" in
       1)
-        echo "${matches[0]}"
+        emit "${matches[0]}"
         ;;
       0)
         echo "no connected $spec — 'adb devices' lists what is attached" >&2
@@ -64,7 +96,7 @@ case "$spec" in
   *)
     for s in $serials; do
       if [ "$s" = "$spec" ]; then
-        echo "$spec"
+        emit "$spec"
         exit 0
       fi
     done

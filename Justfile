@@ -166,7 +166,7 @@ e2e device=PHONE_DEVICE:
     #!/usr/bin/env bash
     set -uo pipefail
     test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
-    dev=$(tool/adb-device.sh "{{device}}") || exit 1
+    dev=$(tool/adb-device.sh --emulator-only "{{device}}") || exit 1
     flutter test integration_test/routine_flow_test.dart -d "$dev"
 
 # The phone run flow end to end: start from a routine, log sets through a
@@ -176,7 +176,7 @@ e2e-run device=PHONE_DEVICE:
     #!/usr/bin/env bash
     set -uo pipefail
     test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
-    dev=$(tool/adb-device.sh "{{device}}") || exit 1
+    dev=$(tool/adb-device.sh --emulator-only "{{device}}") || exit 1
     flutter test integration_test/run_flow_test.dart -d "$dev"
 
 # Watch integration test on a Wear device/emulator (pass the adb serial, as for
@@ -187,7 +187,7 @@ e2e-watch device=WEAR_DEVICE:
     #!/usr/bin/env bash
     set -uo pipefail
     test -n "{{device}}" || { echo "no device: pass an adb serial or 'watch', or set GYM_WEAR_DEVICE" >&2; exit 1; }
-    dev=$(tool/adb-device.sh "{{device}}") || exit 1
+    dev=$(tool/adb-device.sh --emulator-only "{{device}}") || exit 1
     flutter test integration_test/watch_flow_test.dart -d "$dev"
 
 # Web e2e in headless Chrome (needs the emulator suite running: just up)
