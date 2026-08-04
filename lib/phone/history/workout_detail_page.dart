@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../watch/set_target_format.dart' show formatWeight;
 import '../routines/exercise_picker.dart';
 import '../superset_units.dart';
 
@@ -757,20 +758,27 @@ class _SetRow extends StatelessWidget {
             'target ${ts}s @ ${tw == tw.roundToDouble() ? tw.toStringAsFixed(0) : tw.toStringAsFixed(1)} kg';
       }
     } else {
+      // Bodyweight sets carry reps and no weight. Both halves below drop the
+      // weight when there isn't one, rather than inventing "0 kg" or going
+      // blank — the time branch above already degrades the same way.
       if (completion == null) {
         descActual = '—';
       } else {
-        final w = completion.actualWeightKg ?? 0;
-        final wStr = w == w.roundToDouble()
-            ? w.toStringAsFixed(0)
-            : w.toStringAsFixed(1);
-        descActual = '$wStr kg × ${completion.actualReps ?? 0}';
+        final w = completion.actualWeightKg;
+        final reps = completion.actualReps ?? 0;
+        descActual = (w == null || w == 0)
+            ? '$reps reps'
+            : '${formatWeight(w)} kg × $reps';
       }
       final tw = set.workoutSet.targetWeightKg;
       final tr = set.workoutSet.targetReps;
-      descTarget = (tw == null || tr == null)
-          ? ''
-          : 'target ${tw == tw.roundToDouble() ? tw.toStringAsFixed(0) : tw.toStringAsFixed(1)} kg × $tr';
+      if (tr == null) {
+        descTarget = '';
+      } else if (tw == null || tw == 0) {
+        descTarget = 'target $tr reps';
+      } else {
+        descTarget = 'target ${formatWeight(tw)} kg × $tr';
+      }
     }
     return InkWell(
       onTap: onEdit,

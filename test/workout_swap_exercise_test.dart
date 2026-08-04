@@ -153,6 +153,48 @@ void main() {
       await disposeTree(tester);
     });
 
+    testWidgets('a bodyweight set shows reps, not "0 kg"', (tester) async {
+      // Reps with no weight is a legitimate set — pull-ups, leg raises. The
+      // target used to render as nothing at all and the actual as "0 kg × n".
+      final ex = await db.createExercise('Hanging Leg Raise');
+      final w = await db.createWorkout(
+        startedAt: DateTime(2026, 3, 4, 18),
+        endedAt: DateTime(2026, 3, 4, 19),
+      );
+      final we = await db.addWorkoutExercise(
+        workoutId: w.syncId,
+        exerciseId: ex.syncId,
+      );
+      await db.addWorkoutSet(workoutExerciseId: we.syncId, targetReps: 12);
+      final full = await db.loadFullWorkout(w.syncId);
+      await db.upsertSetCompletion(
+        workoutId: w.syncId,
+        workoutSetId: full!.exercises.single.sets.single.workoutSet.syncId,
+        actualReps: 14,
+      );
+
+      await pumpDetail(tester, w.syncId);
+
+      expect(find.text('14 reps'), findsOneWidget);
+      expect(find.text('target 12 reps'), findsOneWidget);
+      expect(find.textContaining('0 kg'), findsNothing);
+
+      await disposeTree(tester);
+    });
+
+    testWidgets('a weighted set still shows weight × reps', (tester) async {
+      final (w, _) = await seedWorkout();
+
+      await pumpDetail(tester, w.syncId);
+
+      // seedWorkout completes the first of two sets at 62.5 kg × 9; both carry
+      // the same 60 × 8 target.
+      expect(find.text('62.5 kg × 9'), findsOneWidget);
+      expect(find.text('target 60 kg × 8'), findsNWidgets(2));
+
+      await disposeTree(tester);
+    });
+
     testWidgets('the picker offers only the same kind', (tester) async {
       final (w, _) = await seedWorkout();
       await db.createExercise('Dumbbell Press');
