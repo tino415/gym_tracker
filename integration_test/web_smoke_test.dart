@@ -15,7 +15,7 @@ void main() {
       const ProviderScope(child: MaterialApp(home: SignInScreen())),
     );
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Gym Tracker'), findsOneWidget);
+    expect(find.text('GymTracker'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
     // Web enables the Google affordance (googleSignInSupported => kIsWeb).
     expect(find.text('Continue with Google'), findsOneWidget);

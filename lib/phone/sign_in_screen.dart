@@ -68,7 +68,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               Icon(Icons.fitness_center, size: 48, color: theme.colorScheme.primary),
               const SizedBox(height: 16),
               Text(
-                'Gym Tracker',
+                'GymTracker',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.headlineSmall,
               ),

@@ -10,7 +10,7 @@ class WatchApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Gym Tracker',
+      title: 'GymTracker',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
@@ -29,7 +29,7 @@ class _AmbientFace extends StatelessWidget {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
-          child: Text('Gym Tracker', style: TextStyle(color: Colors.white70)),
+          child: Text('GymTracker', style: TextStyle(color: Colors.white70)),
         ),
       ),
     );

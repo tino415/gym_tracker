@@ -110,7 +110,7 @@ class _FirestoreDirectApp extends ConsumerWidget {
         final user = ref.watch(authStateProvider).valueOrNull;
         if (user == null) {
           return const MaterialApp(
-            title: 'Gym Tracker',
+            title: 'GymTracker',
             home: SignInScreen(),
           );
         }
@@ -127,7 +127,7 @@ class _BootScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Gym Tracker',
+      title: 'GymTracker',
       home: Scaffold(
         body: Center(
           child: message == null
