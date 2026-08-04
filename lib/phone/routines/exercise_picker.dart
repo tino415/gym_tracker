@@ -40,12 +40,17 @@ Future<Exercise?> showExercisePicker(
   Set<String> excludeIds = const {},
   Map<String, int> markCounts = const {},
   String markLabel = 'Already added',
+  String? kind,
 }) async {
   final db = ref.read(exerciseRepositoryProvider);
   final all = await db.watchExercisesWithMuscles().first;
-  final exercises = excludeIds.isEmpty
-      ? all
-      : all.where((e) => !excludeIds.contains(e.exercise.syncId)).toList();
+  // [kind] narrows the list to reps-only or time-only. Swapping a workout slot
+  // uses it: the sets come along unchanged, and reps targets on a time-kind
+  // exercise (or the reverse) would read as "—".
+  final exercises = all
+      .where((e) => !excludeIds.contains(e.exercise.syncId))
+      .where((e) => kind == null || e.exercise.kind == kind)
+      .toList();
   if (!context.mounted) return null;
 
   final wide = MediaQuery.sizeOf(context).width >= masterDetailBreakpoint;

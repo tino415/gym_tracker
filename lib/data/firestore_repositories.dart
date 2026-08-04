@@ -1225,6 +1225,42 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         return true;
       });
 
+  /// Change which exercise a workout slot records, adopting the new name and
+  /// kind. Sets, targets, completions and the routine back-pointer are all left
+  /// alone — the Drift side does exactly the same.
+  ///
+  /// Unlike the other workout edits this isn't given the *workout* id, so the
+  /// slot is located by scanning documents' exercise lists. Cheap: a workout
+  /// holds a handful.
+  @override
+  Future<void> changeWorkoutExercise({
+    required String workoutExerciseId,
+    required String exerciseId,
+  }) async {
+    final exDoc = (await _exCol.doc(exerciseId).get()).data();
+    if (exDoc == null) return;
+    final name = exDoc['name'] as String? ?? '';
+    final kind = exDoc['kind'] as String? ?? exerciseKindReps;
+
+    final snap = await _col.get();
+    for (final doc in snap.docs) {
+      final exs = _asMaps(doc.data()['exercises']);
+      if (!exs.any((e) => e['syncId'] == workoutExerciseId)) continue;
+      await _editWorkout(doc.id, (m) {
+        // _asMaps hands back copies, so the replacement list is rebuilt rather
+        // than mutated in place.
+        m['exercises'] = [
+          for (final e in _asMaps(m['exercises']))
+            if (e['syncId'] == workoutExerciseId)
+              {...e, 'exerciseSyncId': exerciseId, 'exerciseName': name, 'kind': kind}
+            else
+              e,
+        ];
+      });
+      return;
+    }
+  }
+
   @override
   Future<void> reorderWorkoutExercises({
     required String workoutId,

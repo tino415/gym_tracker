@@ -127,6 +127,14 @@ abstract class WorkoutRepository {
   });
   Future<void> removeWorkoutExercise(String workoutExerciseId);
 
+  /// Change which exercise a workout slot records — "the bench was taken, I did
+  /// dumbbell press instead". Adopts the new exercise's name and kind; the
+  /// sets, their targets and their completions are left untouched.
+  Future<void> changeWorkoutExercise({
+    required String workoutExerciseId,
+    required String exerciseId,
+  });
+
   /// Reorder the workout's own exercise snapshot. [orderedIds] is every
   /// workout-exercise syncId in the wanted order.
   Future<void> reorderWorkoutExercises({

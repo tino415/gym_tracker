@@ -530,6 +530,79 @@ void main() {
     expect((doc['version'] as num).toInt(), greaterThan(3));
   });
 
+  group('changeWorkoutExercise', () {
+    Future<void> seedLibraryExercise(
+      String id, {
+      required String name,
+      String kind = 'reps',
+    }) => fs.collection('users').doc('u1').collection('exercises').doc(id).set({
+      'syncId': id,
+      'name': name,
+      'kind': kind,
+      'muscleSyncIds': <String>[],
+    });
+
+    test('adopts the new name and kind, keeping sets and completions',
+        () async {
+      await seedLibraryExercise('ex-new', name: 'Dumbbell Press');
+      await seed(
+        'w1',
+        version: 3,
+        exercises: [
+          exercise('we1', sets: [wset('ws1'), wset('ws2', idx: 1)]),
+        ],
+        completions: [completion('c1', wsId: 'ws1', reps: 9)],
+      );
+
+      await workouts.changeWorkoutExercise(
+        workoutExerciseId: 'we1',
+        exerciseId: 'ex-new',
+      );
+
+      final doc = (await wcol().doc('w1').get()).data()!;
+      final we = (doc['exercises'] as List).cast<Map<String, dynamic>>().single;
+      expect(we['exerciseSyncId'], 'ex-new');
+      expect(we['exerciseName'], 'Dumbbell Press');
+      expect(we['kind'], 'reps');
+      // The whole point: the sets ride along untouched.
+      expect((we['sets'] as List), hasLength(2));
+      expect((doc['completions'] as List), hasLength(1));
+      // A swap is an edit, so it has to win against a peer's stale copy.
+      expect((doc['version'] as num).toInt(), greaterThan(3));
+    });
+
+    test('keeps the routine back-pointer', () async {
+      await seedLibraryExercise('ex-new', name: 'Dumbbell Press');
+      await seed('w1', exercises: [
+        {...exercise('we1'), 'routineExerciseSyncId': 're1'},
+      ]);
+
+      await workouts.changeWorkoutExercise(
+        workoutExerciseId: 'we1',
+        exerciseId: 'ex-new',
+      );
+
+      final doc = (await wcol().doc('w1').get()).data()!;
+      final we = (doc['exercises'] as List).cast<Map<String, dynamic>>().single;
+      // Safe to keep: findWorkoutImprovements skips a slot whose exercise is
+      // neither the routine's primary nor a registered alternative.
+      expect(we['routineExerciseSyncId'], 're1');
+    });
+
+    test('an unknown exercise changes nothing', () async {
+      await seed('w1', exercises: [exercise('we1')]);
+
+      await workouts.changeWorkoutExercise(
+        workoutExerciseId: 'we1',
+        exerciseId: 'nope',
+      );
+
+      final doc = (await wcol().doc('w1').get()).data()!;
+      final we = (doc['exercises'] as List).cast<Map<String, dynamic>>().single;
+      expect(we['exerciseSyncId'], 'ex-we1');
+    });
+  });
+
   group('lastCompletionForExerciseAtSetIndex', () {
     // Seeds one finished workout containing exercise `ex-we1` with two sets,
     // completing whichever of them the caller names.

@@ -1720,6 +1720,42 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Change which exercise a workout slot records, adopting the new name and
+  /// kind and touching nothing else — the sets, their targets and their
+  /// completions all stay exactly as they are.
+  ///
+  /// Distinct from [swapWorkoutExercise], which is the watch's mid-run swap and
+  /// *retargets* unfinished sets to a registered alternative's planned values.
+  /// This one is the editor's "actually, that was dumbbell press": the sets
+  /// already record what happened, so rewriting their targets would be wrong.
+  ///
+  /// `routineExerciseId` is left alone. It is safe: [findWorkoutImprovements]
+  /// skips any slot whose exercise is neither the routine's primary nor one of
+  /// its registered alternatives, so a substitute can't have its actuals
+  /// promoted onto the original exercise's targets.
+  Future<void> changeWorkoutExercise({
+    required String workoutExerciseId,
+    required String exerciseId,
+  }) async {
+    await transaction(() async {
+      final ex = await (select(
+        exercises,
+      )..where((t) => t.syncId.equals(exerciseId))).getSingleOrNull();
+      if (ex == null) return;
+      final workoutId = await _workoutIdOfWorkoutExercise(workoutExerciseId);
+      await (update(workoutExercises)
+            ..where((t) => t.syncId.equals(workoutExerciseId)))
+          .write(
+        WorkoutExercisesCompanion(
+          exerciseId: Value(ex.syncId),
+          exerciseName: Value(ex.name),
+          kind: Value(ex.kind),
+        ),
+      );
+      if (workoutId != null) await _bumpWorkoutVersion(workoutId);
+    });
+  }
+
   Future<WorkoutSet> addWorkoutSet({
     required String workoutExerciseId,
     int? targetReps,

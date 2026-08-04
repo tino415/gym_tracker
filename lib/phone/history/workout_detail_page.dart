@@ -205,6 +205,7 @@ class _BodyState extends ConsumerState<_Body> {
                 ex: ex,
                 inSuperset: unit.isGroup,
                 onAddSet: () => _addSet(context, ref, ex),
+                onSwapExercise: () => _swapExercise(context, ref, ex),
                 onRemoveExercise: () => _removeExercise(context, ref, ex),
                 onEditCompletion: (set) =>
                     _editCompletion(context, ref, ex: ex, set: set),
@@ -418,6 +419,34 @@ class _BodyState extends ConsumerState<_Body> {
     }
   }
 
+  /// Swap which exercise this slot records, keeping its sets and completions —
+  /// for when the machine you planned on was occupied.
+  ///
+  /// The picker is narrowed to the same kind: the sets carry over untouched, so
+  /// swapping a reps exercise for a time one would leave every target blank.
+  Future<void> _swapExercise(
+    BuildContext context,
+    WidgetRef ref,
+    FullWorkoutExercise ex,
+  ) async {
+    final current = ex.workoutExercise.exerciseId;
+    final picked = await showExercisePicker(
+      context,
+      ref,
+      kind: ex.kind,
+      excludeIds: {?current},
+      markCounts: countExerciseIds(
+        snap.exercises.map((e) => e.workoutExercise.exerciseId),
+      ),
+      markLabel: 'In this workout',
+    );
+    if (picked == null) return;
+    await ref.read(workoutRepositoryProvider).changeWorkoutExercise(
+          workoutExerciseId: ex.workoutExercise.syncId,
+          exerciseId: picked.syncId,
+        );
+  }
+
   Future<void> _addExercise(BuildContext context, WidgetRef ref) async {
     final workouts = ref.read(workoutRepositoryProvider);
     // The routine editor's picker — name search, muscle filters, and a "Create
@@ -551,6 +580,7 @@ class _ExerciseSection extends ConsumerWidget {
     required this.ex,
     this.inSuperset = false,
     required this.onAddSet,
+    required this.onSwapExercise,
     required this.onRemoveExercise,
     required this.onEditCompletion,
     required this.onRemoveCompletion,
@@ -562,6 +592,7 @@ class _ExerciseSection extends ConsumerWidget {
   /// Indents the card so a superset's members read as one block.
   final bool inSuperset;
   final VoidCallback onAddSet;
+  final VoidCallback onSwapExercise;
   final VoidCallback onRemoveExercise;
   final void Function(FullWorkoutSet set) onEditCompletion;
   final void Function(String completionId) onRemoveCompletion;
@@ -594,6 +625,11 @@ class _ExerciseSection extends ConsumerWidget {
                     ex.workoutExercise.exerciseName,
                     style: theme.textTheme.titleMedium,
                   ),
+                ),
+                IconButton(
+                  onPressed: onSwapExercise,
+                  icon: const Icon(Icons.swap_horiz),
+                  tooltip: 'Swap exercise',
                 ),
                 IconButton(
                   onPressed: onRemoveExercise,
