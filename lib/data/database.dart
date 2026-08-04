@@ -447,6 +447,26 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Drop a sync-metadata key.
+  Future<void> clearSyncMeta(String key) async {
+    await (delete(syncMeta)..where((t) => t.key.equals(key))).go();
+  }
+
+  /// Erase every local row — routines, workouts, exercises, sync bookkeeping.
+  /// Used when deleting an account and the user opts to clear this device too.
+  ///
+  /// Tables go in reverse declaration order so children are removed before the
+  /// parents they reference. The `ON DELETE CASCADE` rules would mostly handle
+  /// it, but not every FK cascades and the pragma is on (see `beforeOpen`), so
+  /// a parent-first pass could trip a constraint.
+  Future<void> clearAllLocalData() async {
+    await transaction(() async {
+      for (final table in allTables.toList().reversed) {
+        await delete(table).go();
+      }
+    });
+  }
+
   static QueryExecutor _openConnection() => driftDatabase(
     name: 'gym_tracker',
     web: DriftWebOptions(

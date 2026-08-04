@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
+import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/sync_ownership.dart';
 import 'theme_controller.dart';
@@ -217,7 +218,64 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           onPressed: _busy ? null : () => _run(auth.signOut, validate: false),
           child: const Text('Sign out'),
         ),
+        const Divider(height: 32),
+        _DeleteAccountSection(
+          onDelete: _busy ? null : () => _deleteAccount(user),
+        ),
     ];
+  }
+
+  /// Delete the account and its server data, after confirming and proving the
+  /// session is fresh.
+  ///
+  /// Reauthentication happens *before* anything is destroyed. Firebase rejects
+  /// `user.delete()` on a stale login, and by then the Firestore data is
+  /// already gone — leaving an account that still exists with none of its data.
+  /// Asking first means a cancelled or failed confirmation changes nothing.
+  Future<void> _deleteAccount(User user) async {
+    final direct = ref.read(firestoreDirectProvider);
+    final choice = await showDialog<_DeleteChoice>(
+      context: context,
+      builder: (context) => _DeleteAccountDialog(
+        email: user.email,
+        // The Firestore-direct web build has no local store to offer to erase.
+        offerLocalWipe: !direct,
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    await _run(() async {
+      // Step 1: prove freshness. Throws if the user cancels or gets it wrong,
+      // which aborts before any deletion.
+      final provider = ref.read(authServiceProvider).currentProviderId;
+      if (provider == 'password') {
+        await ref
+            .read(authServiceProvider)
+            .reauthenticateWithPassword(choice.password ?? '');
+      } else {
+        await ref.read(authServiceProvider).reauthenticateWithGoogle();
+      }
+
+      // Step 2: server data, then the account. Order matters — the rules key
+      // on request.auth.uid, so data must go while the account still exists.
+      await ref.read(accountDeletionServiceProvider).deleteAccount();
+
+      // Step 3: local cleanup. The owner marker always goes: it now names a
+      // uid that no longer exists, and any future account would be treated as
+      // a stranger and left with sync paused forever.
+      if (!direct) {
+        if (choice.wipeLocal) {
+          await ref.read(databaseProvider).clearAllLocalData();
+        }
+        await ref.read(syncOwnershipStoreProvider).clear();
+        ref.invalidate(syncOwnerProvider);
+        ref.invalidate(firestoreSyncBinderProvider);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account deleted.')),
+      );
+    }, validate: false);
   }
 
   /// Take over this device for the signed-in account: persist it as the sync
@@ -258,6 +316,159 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// What the confirmation dialog came back with. Null instead means cancelled.
+class _DeleteChoice {
+  const _DeleteChoice({required this.wipeLocal, this.password});
+
+  /// Also erase the routines and history held on this device.
+  final bool wipeLocal;
+
+  /// Typed to reauthenticate, for password accounts. Null for Google ones,
+  /// which reauthenticate through their own flow instead.
+  final String? password;
+}
+
+/// The permanent, discoverable way to delete the account — required by Play of
+/// any app that lets users create one. Deliberately plain and last on the page,
+/// with the consequences spelled out before the dialog rather than after.
+class _DeleteAccountSection extends StatelessWidget {
+  const _DeleteAccountSection({required this.onDelete});
+
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Delete account',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Permanently deletes your account and everything synced to it. '
+          'This cannot be undone.',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onDelete,
+          icon: const Icon(Icons.delete_forever),
+          label: const Text('Delete account'),
+          style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+        ),
+      ],
+    );
+  }
+}
+
+/// Confirms deletion, collects the password for reauthentication, and offers to
+/// clear this device as well.
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog({
+    required this.email,
+    required this.offerLocalWipe,
+  });
+
+  final String? email;
+  final bool offerLocalWipe;
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _passwordController = TextEditingController();
+
+  /// Off by default: deleting the account is about the *account*. Someone who
+  /// keeps using the app offline afterwards should not silently lose their
+  /// training history along with it.
+  bool _wipeLocal = false;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isPassword =
+        ProviderScope.containerOf(context, listen: false)
+                .read(authServiceProvider)
+                .currentProviderId ==
+            'password';
+    return AlertDialog(
+      title: const Text('Delete account?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This deletes ${widget.email ?? 'your account'} and every routine, '
+              'workout and exercise synced to it. It cannot be undone.',
+            ),
+            const SizedBox(height: 16),
+            if (isPassword) ...[
+              Text(
+                'Confirm your password to continue.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ] else
+              Text(
+                'You will be asked to sign in again to confirm.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            if (widget.offerLocalWipe) ...[
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _wipeLocal,
+                onChanged: (v) => setState(() => _wipeLocal = v ?? false),
+                title: const Text('Also erase data on this device'),
+                subtitle: const Text(
+                  'Otherwise your routines and history stay here and the app '
+                  'keeps working offline.',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(
+            _DeleteChoice(
+              wipeLocal: _wipeLocal,
+              password: isPassword ? _passwordController.text : null,
+            ),
+          ),
+          style: TextButton.styleFrom(foregroundColor: scheme.error),
+          child: const Text('Delete account'),
+        ),
+      ],
+    );
   }
 }
 

@@ -58,6 +58,11 @@ class SyncOwnershipStore {
   Future<String?> read() => _db.getSyncMeta(_ownerKey);
 
   Future<void> write(String uid) => _db.setSyncMeta(_ownerKey, uid);
+
+  /// Forget the owner, returning the install to "unclaimed". Used after account
+  /// deletion: leaving a deleted uid here would pause sync forever for whatever
+  /// account signs in next, since it would never match the marker.
+  Future<void> clear() => _db.clearSyncMeta(_ownerKey);
 }
 
 /// Shared [SyncOwnershipStore] so the binder and the account page agree on the

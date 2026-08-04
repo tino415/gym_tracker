@@ -94,6 +94,65 @@ class AuthService {
   }
 
   Future<void> signOut() => _auth.signOut();
+
+  /// Which sign-in provider backs the current user: `password`, `google.com`,
+  /// or null when signed out. Decides which reauthentication to ask for.
+  String? get currentProviderId {
+    final providers = _auth.currentUser?.providerData;
+    if (providers == null || providers.isEmpty) return null;
+    return providers.first.providerId;
+  }
+
+  /// Prove the session is fresh before a destructive action. Firebase rejects
+  /// account deletion on a stale login (`requires-recent-login`), so the delete
+  /// flow reauthenticates up front rather than discovering it half-way through.
+  Future<void> reauthenticateWithPassword(String password) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw FirebaseAuthException(
+        code: 'no-email-credential',
+        message: 'This account has no email/password credential to confirm.',
+      );
+    }
+    await user.reauthenticateWithCredential(
+      EmailAuthProvider.credential(email: email, password: password),
+    );
+  }
+
+  /// Google equivalent of [reauthenticateWithPassword]: a popup on web, the
+  /// native Credential Manager flow on Android — the same two paths as
+  /// [signInWithGoogle], differing only in reauthenticating the existing user
+  /// rather than signing a new one in.
+  Future<void> reauthenticateWithGoogle() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'Not signed in.',
+      );
+    }
+    if (kIsWeb) {
+      await user.reauthenticateWithPopup(GoogleAuthProvider());
+      return;
+    }
+    final google = GoogleSignIn.instance;
+    if (!_googleInitialized) {
+      await google.initialize(serverClientId: _googleServerClientId);
+      _googleInitialized = true;
+    }
+    final account = await google.authenticate();
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw FirebaseAuthException(
+        code: 'missing-google-id-token',
+        message: 'Google sign-in returned no ID token.',
+      );
+    }
+    await user.reauthenticateWithCredential(
+      GoogleAuthProvider.credential(idToken: idToken),
+    );
+  }
 }
 
 /// Whether the "Continue with Google" affordance is offered.
