@@ -435,6 +435,7 @@ class WorkoutDto {
     required this.endedAtMs,
     required this.exercises,
     required this.completions,
+    this.heartRateSamples = const [],
     this.version = 1,
     this.deletedAtMs,
     this.routineName,
@@ -476,6 +477,11 @@ class WorkoutDto {
   final int? endedAtMs;
   final List<WorkoutExerciseDto> exercises;
   final List<SetCompletionDto> completions;
+
+  /// Heart rate over the session, oldest first. Empty for workouts recorded
+  /// without a sensor — phone runs and backfills — and for peers that predate
+  /// the field, which is why it defaults rather than being required.
+  final List<HeartRateSampleDto> heartRateSamples;
   final int? avgHeartRate;
   final int? maxHeartRate;
 
@@ -494,6 +500,7 @@ class WorkoutDto {
     'endedAtMs': endedAtMs,
     'exercises': exercises.map((e) => e.toJson()).toList(),
     'completions': completions.map((c) => c.toJson()).toList(),
+    'heartRateSamples': heartRateSamples.map((s) => s.toJson()).toList(),
     'avgHeartRate': avgHeartRate,
     'maxHeartRate': maxHeartRate,
     'version': version,
@@ -507,6 +514,8 @@ class WorkoutDto {
         const [];
     final rawCompletions =
         (json['completions'] as List?)?.cast<Object?>() ?? const [];
+    final rawSamples =
+        (json['heartRateSamples'] as List?)?.cast<Object?>() ?? const [];
     return WorkoutDto(
       syncId: json['syncId']! as String,
       routineSyncId: json['routineSyncId'] as String?,
@@ -525,6 +534,13 @@ class WorkoutDto {
                 SetCompletionDto.fromJson((m as Map).cast<String, Object?>()),
           )
           .toList(),
+      heartRateSamples: rawSamples
+          .map(
+            (m) => HeartRateSampleDto.fromJson(
+              (m as Map).cast<String, Object?>(),
+            ),
+          )
+          .toList(),
       avgHeartRate: (json['avgHeartRate'] as num?)?.toInt(),
       maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),
       // Tolerant, unlike RoutineTemplateDto: workouts predate versioning, so
@@ -533,6 +549,30 @@ class WorkoutDto {
       deletedAtMs: (json['deletedAtMs'] as num?)?.toInt(),
     );
   }
+}
+
+/// One heart-rate reading in a workout's series.
+///
+/// Keys are terse on purpose. A workout carries hundreds of these, so at this
+/// size the field names are a real fraction of the payload — and the payload
+/// travels inside a single Firestore document, which caps at 1 MiB.
+///
+/// [tMs] is epoch milliseconds, matching the integer column it comes from:
+/// drift stores `DateTime` as unix seconds, and losing the sub-second part
+/// would break the export/apply content comparison that suppresses sync echoes.
+class HeartRateSampleDto {
+  HeartRateSampleDto({required this.tMs, required this.bpm});
+
+  final int tMs;
+  final int bpm;
+
+  Map<String, Object?> toJson() => {'t': tMs, 'bpm': bpm};
+
+  factory HeartRateSampleDto.fromJson(Map<String, Object?> json) =>
+      HeartRateSampleDto(
+        tMs: (json['t']! as num).toInt(),
+        bpm: (json['bpm']! as num).toInt(),
+      );
 }
 
 class WorkoutExerciseDto {

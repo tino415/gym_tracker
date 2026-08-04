@@ -5129,6 +5129,279 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
   }
 }
 
+class $HeartRateSamplesTable extends HeartRateSamples
+    with TableInfo<$HeartRateSamplesTable, HeartRateReading> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HeartRateSamplesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _workoutIdMeta = const VerificationMeta(
+    'workoutId',
+  );
+  @override
+  late final GeneratedColumn<String> workoutId = GeneratedColumn<String>(
+    'workout_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES workouts (sync_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _measuredAtMsMeta = const VerificationMeta(
+    'measuredAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> measuredAtMs = GeneratedColumn<int>(
+    'measured_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bpmMeta = const VerificationMeta('bpm');
+  @override
+  late final GeneratedColumn<int> bpm = GeneratedColumn<int>(
+    'bpm',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [workoutId, measuredAtMs, bpm];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'heart_rate_samples';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HeartRateReading> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('workout_id')) {
+      context.handle(
+        _workoutIdMeta,
+        workoutId.isAcceptableOrUnknown(data['workout_id']!, _workoutIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_workoutIdMeta);
+    }
+    if (data.containsKey('measured_at_ms')) {
+      context.handle(
+        _measuredAtMsMeta,
+        measuredAtMs.isAcceptableOrUnknown(
+          data['measured_at_ms']!,
+          _measuredAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_measuredAtMsMeta);
+    }
+    if (data.containsKey('bpm')) {
+      context.handle(
+        _bpmMeta,
+        bpm.isAcceptableOrUnknown(data['bpm']!, _bpmMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bpmMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {workoutId, measuredAtMs};
+  @override
+  HeartRateReading map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HeartRateReading(
+      workoutId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}workout_id'],
+      )!,
+      measuredAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}measured_at_ms'],
+      )!,
+      bpm: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bpm'],
+      )!,
+    );
+  }
+
+  @override
+  $HeartRateSamplesTable createAlias(String alias) {
+    return $HeartRateSamplesTable(attachedDatabase, alias);
+  }
+}
+
+class HeartRateReading extends DataClass
+    implements Insertable<HeartRateReading> {
+  final String workoutId;
+  final int measuredAtMs;
+  final int bpm;
+  const HeartRateReading({
+    required this.workoutId,
+    required this.measuredAtMs,
+    required this.bpm,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['workout_id'] = Variable<String>(workoutId);
+    map['measured_at_ms'] = Variable<int>(measuredAtMs);
+    map['bpm'] = Variable<int>(bpm);
+    return map;
+  }
+
+  HeartRateSamplesCompanion toCompanion(bool nullToAbsent) {
+    return HeartRateSamplesCompanion(
+      workoutId: Value(workoutId),
+      measuredAtMs: Value(measuredAtMs),
+      bpm: Value(bpm),
+    );
+  }
+
+  factory HeartRateReading.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HeartRateReading(
+      workoutId: serializer.fromJson<String>(json['workoutId']),
+      measuredAtMs: serializer.fromJson<int>(json['measuredAtMs']),
+      bpm: serializer.fromJson<int>(json['bpm']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'workoutId': serializer.toJson<String>(workoutId),
+      'measuredAtMs': serializer.toJson<int>(measuredAtMs),
+      'bpm': serializer.toJson<int>(bpm),
+    };
+  }
+
+  HeartRateReading copyWith({String? workoutId, int? measuredAtMs, int? bpm}) =>
+      HeartRateReading(
+        workoutId: workoutId ?? this.workoutId,
+        measuredAtMs: measuredAtMs ?? this.measuredAtMs,
+        bpm: bpm ?? this.bpm,
+      );
+  HeartRateReading copyWithCompanion(HeartRateSamplesCompanion data) {
+    return HeartRateReading(
+      workoutId: data.workoutId.present ? data.workoutId.value : this.workoutId,
+      measuredAtMs: data.measuredAtMs.present
+          ? data.measuredAtMs.value
+          : this.measuredAtMs,
+      bpm: data.bpm.present ? data.bpm.value : this.bpm,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HeartRateReading(')
+          ..write('workoutId: $workoutId, ')
+          ..write('measuredAtMs: $measuredAtMs, ')
+          ..write('bpm: $bpm')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(workoutId, measuredAtMs, bpm);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HeartRateReading &&
+          other.workoutId == this.workoutId &&
+          other.measuredAtMs == this.measuredAtMs &&
+          other.bpm == this.bpm);
+}
+
+class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
+  final Value<String> workoutId;
+  final Value<int> measuredAtMs;
+  final Value<int> bpm;
+  final Value<int> rowid;
+  const HeartRateSamplesCompanion({
+    this.workoutId = const Value.absent(),
+    this.measuredAtMs = const Value.absent(),
+    this.bpm = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  HeartRateSamplesCompanion.insert({
+    required String workoutId,
+    required int measuredAtMs,
+    required int bpm,
+    this.rowid = const Value.absent(),
+  }) : workoutId = Value(workoutId),
+       measuredAtMs = Value(measuredAtMs),
+       bpm = Value(bpm);
+  static Insertable<HeartRateReading> custom({
+    Expression<String>? workoutId,
+    Expression<int>? measuredAtMs,
+    Expression<int>? bpm,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (workoutId != null) 'workout_id': workoutId,
+      if (measuredAtMs != null) 'measured_at_ms': measuredAtMs,
+      if (bpm != null) 'bpm': bpm,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  HeartRateSamplesCompanion copyWith({
+    Value<String>? workoutId,
+    Value<int>? measuredAtMs,
+    Value<int>? bpm,
+    Value<int>? rowid,
+  }) {
+    return HeartRateSamplesCompanion(
+      workoutId: workoutId ?? this.workoutId,
+      measuredAtMs: measuredAtMs ?? this.measuredAtMs,
+      bpm: bpm ?? this.bpm,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (workoutId.present) {
+      map['workout_id'] = Variable<String>(workoutId.value);
+    }
+    if (measuredAtMs.present) {
+      map['measured_at_ms'] = Variable<int>(measuredAtMs.value);
+    }
+    if (bpm.present) {
+      map['bpm'] = Variable<int>(bpm.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HeartRateSamplesCompanion(')
+          ..write('workoutId: $workoutId, ')
+          ..write('measuredAtMs: $measuredAtMs, ')
+          ..write('bpm: $bpm, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncMetaTable extends SyncMeta
     with TableInfo<$SyncMetaTable, SyncMetaData> {
   @override
@@ -5360,6 +5633,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $WorkoutSetsTable workoutSets = $WorkoutSetsTable(this);
   late final $SetCompletionsTable setCompletions = $SetCompletionsTable(this);
+  late final $HeartRateSamplesTable heartRateSamples = $HeartRateSamplesTable(
+    this,
+  );
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -5378,6 +5654,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     workoutExercises,
     workoutSets,
     setCompletions,
+    heartRateSamples,
     syncMeta,
   ];
   @override
@@ -5476,6 +5753,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('set_completions', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'workouts',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('heart_rate_samples', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -9279,6 +9563,29 @@ final class $$WorkoutsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$HeartRateSamplesTable, List<HeartRateReading>>
+  _heartRateSamplesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.heartRateSamples,
+    aliasName: $_aliasNameGenerator(
+      db.workouts.syncId,
+      db.heartRateSamples.workoutId,
+    ),
+  );
+
+  $$HeartRateSamplesTableProcessedTableManager get heartRateSamplesRefs {
+    final manager =
+        $$HeartRateSamplesTableTableManager($_db, $_db.heartRateSamples).filter(
+          (f) => f.workoutId.syncId.sqlEquals($_itemColumn<String>('sync_id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _heartRateSamplesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$WorkoutsTableFilterComposer
@@ -9394,6 +9701,31 @@ class $$WorkoutsTableFilterComposer
           }) => $$SetCompletionsTableFilterComposer(
             $db: $db,
             $table: $db.setCompletions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> heartRateSamplesRefs(
+    Expression<bool> Function($$HeartRateSamplesTableFilterComposer f) f,
+  ) {
+    final $$HeartRateSamplesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.syncId,
+      referencedTable: $db.heartRateSamples,
+      getReferencedColumn: (t) => t.workoutId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HeartRateSamplesTableFilterComposer(
+            $db: $db,
+            $table: $db.heartRateSamples,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9588,6 +9920,31 @@ class $$WorkoutsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> heartRateSamplesRefs<T extends Object>(
+    Expression<T> Function($$HeartRateSamplesTableAnnotationComposer a) f,
+  ) {
+    final $$HeartRateSamplesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.syncId,
+      referencedTable: $db.heartRateSamples,
+      getReferencedColumn: (t) => t.workoutId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HeartRateSamplesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.heartRateSamples,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$WorkoutsTableTableManager
@@ -9607,6 +9964,7 @@ class $$WorkoutsTableTableManager
             bool routineId,
             bool workoutExercisesRefs,
             bool setCompletionsRefs,
+            bool heartRateSamplesRefs,
           })
         > {
   $$WorkoutsTableTableManager(_$AppDatabase db, $WorkoutsTable table)
@@ -9681,12 +10039,14 @@ class $$WorkoutsTableTableManager
                 routineId = false,
                 workoutExercisesRefs = false,
                 setCompletionsRefs = false,
+                heartRateSamplesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (workoutExercisesRefs) db.workoutExercises,
                     if (setCompletionsRefs) db.setCompletions,
+                    if (heartRateSamplesRefs) db.heartRateSamples,
                   ],
                   addJoins:
                       <
@@ -9764,6 +10124,27 @@ class $$WorkoutsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (heartRateSamplesRefs)
+                        await $_getPrefetchedData<
+                          Workout,
+                          $WorkoutsTable,
+                          HeartRateReading
+                        >(
+                          currentTable: table,
+                          referencedTable: $$WorkoutsTableReferences
+                              ._heartRateSamplesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$WorkoutsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).heartRateSamplesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.workoutId == item.syncId,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -9788,6 +10169,7 @@ typedef $$WorkoutsTableProcessedTableManager =
         bool routineId,
         bool workoutExercisesRefs,
         bool setCompletionsRefs,
+        bool heartRateSamplesRefs,
       })
     >;
 typedef $$WorkoutExercisesTableCreateCompanionBuilder =
@@ -11456,6 +11838,302 @@ typedef $$SetCompletionsTableProcessedTableManager =
       SetCompletion,
       PrefetchHooks Function({bool workoutId, bool workoutSetId})
     >;
+typedef $$HeartRateSamplesTableCreateCompanionBuilder =
+    HeartRateSamplesCompanion Function({
+      required String workoutId,
+      required int measuredAtMs,
+      required int bpm,
+      Value<int> rowid,
+    });
+typedef $$HeartRateSamplesTableUpdateCompanionBuilder =
+    HeartRateSamplesCompanion Function({
+      Value<String> workoutId,
+      Value<int> measuredAtMs,
+      Value<int> bpm,
+      Value<int> rowid,
+    });
+
+final class $$HeartRateSamplesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $HeartRateSamplesTable,
+          HeartRateReading
+        > {
+  $$HeartRateSamplesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $WorkoutsTable _workoutIdTable(_$AppDatabase db) =>
+      db.workouts.createAlias(
+        $_aliasNameGenerator(db.heartRateSamples.workoutId, db.workouts.syncId),
+      );
+
+  $$WorkoutsTableProcessedTableManager get workoutId {
+    final $_column = $_itemColumn<String>('workout_id')!;
+
+    final manager = $$WorkoutsTableTableManager(
+      $_db,
+      $_db.workouts,
+    ).filter((f) => f.syncId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_workoutIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$HeartRateSamplesTableFilterComposer
+    extends Composer<_$AppDatabase, $HeartRateSamplesTable> {
+  $$HeartRateSamplesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get measuredAtMs => $composableBuilder(
+    column: $table.measuredAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bpm => $composableBuilder(
+    column: $table.bpm,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$WorkoutsTableFilterComposer get workoutId {
+    final $$WorkoutsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.workoutId,
+      referencedTable: $db.workouts,
+      getReferencedColumn: (t) => t.syncId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WorkoutsTableFilterComposer(
+            $db: $db,
+            $table: $db.workouts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HeartRateSamplesTableOrderingComposer
+    extends Composer<_$AppDatabase, $HeartRateSamplesTable> {
+  $$HeartRateSamplesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get measuredAtMs => $composableBuilder(
+    column: $table.measuredAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bpm => $composableBuilder(
+    column: $table.bpm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$WorkoutsTableOrderingComposer get workoutId {
+    final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.workoutId,
+      referencedTable: $db.workouts,
+      getReferencedColumn: (t) => t.syncId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WorkoutsTableOrderingComposer(
+            $db: $db,
+            $table: $db.workouts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HeartRateSamplesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $HeartRateSamplesTable> {
+  $$HeartRateSamplesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get measuredAtMs => $composableBuilder(
+    column: $table.measuredAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get bpm =>
+      $composableBuilder(column: $table.bpm, builder: (column) => column);
+
+  $$WorkoutsTableAnnotationComposer get workoutId {
+    final $$WorkoutsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.workoutId,
+      referencedTable: $db.workouts,
+      getReferencedColumn: (t) => t.syncId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WorkoutsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.workouts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HeartRateSamplesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $HeartRateSamplesTable,
+          HeartRateReading,
+          $$HeartRateSamplesTableFilterComposer,
+          $$HeartRateSamplesTableOrderingComposer,
+          $$HeartRateSamplesTableAnnotationComposer,
+          $$HeartRateSamplesTableCreateCompanionBuilder,
+          $$HeartRateSamplesTableUpdateCompanionBuilder,
+          (HeartRateReading, $$HeartRateSamplesTableReferences),
+          HeartRateReading,
+          PrefetchHooks Function({bool workoutId})
+        > {
+  $$HeartRateSamplesTableTableManager(
+    _$AppDatabase db,
+    $HeartRateSamplesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HeartRateSamplesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HeartRateSamplesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HeartRateSamplesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> workoutId = const Value.absent(),
+                Value<int> measuredAtMs = const Value.absent(),
+                Value<int> bpm = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HeartRateSamplesCompanion(
+                workoutId: workoutId,
+                measuredAtMs: measuredAtMs,
+                bpm: bpm,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String workoutId,
+                required int measuredAtMs,
+                required int bpm,
+                Value<int> rowid = const Value.absent(),
+              }) => HeartRateSamplesCompanion.insert(
+                workoutId: workoutId,
+                measuredAtMs: measuredAtMs,
+                bpm: bpm,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$HeartRateSamplesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({workoutId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (workoutId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.workoutId,
+                                referencedTable:
+                                    $$HeartRateSamplesTableReferences
+                                        ._workoutIdTable(db),
+                                referencedColumn:
+                                    $$HeartRateSamplesTableReferences
+                                        ._workoutIdTable(db)
+                                        .syncId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$HeartRateSamplesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $HeartRateSamplesTable,
+      HeartRateReading,
+      $$HeartRateSamplesTableFilterComposer,
+      $$HeartRateSamplesTableOrderingComposer,
+      $$HeartRateSamplesTableAnnotationComposer,
+      $$HeartRateSamplesTableCreateCompanionBuilder,
+      $$HeartRateSamplesTableUpdateCompanionBuilder,
+      (HeartRateReading, $$HeartRateSamplesTableReferences),
+      HeartRateReading,
+      PrefetchHooks Function({bool workoutId})
+    >;
 typedef $$SyncMetaTableCreateCompanionBuilder =
     SyncMetaCompanion Function({
       required String key,
@@ -11630,6 +12308,8 @@ class $AppDatabaseManager {
       $$WorkoutSetsTableTableManager(_db, _db.workoutSets);
   $$SetCompletionsTableTableManager get setCompletions =>
       $$SetCompletionsTableTableManager(_db, _db.setCompletions);
+  $$HeartRateSamplesTableTableManager get heartRateSamples =>
+      $$HeartRateSamplesTableTableManager(_db, _db.heartRateSamples);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
 }

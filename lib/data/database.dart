@@ -230,6 +230,37 @@ class SetCompletions extends Table {
   Set<Column> get primaryKey => {syncId};
 }
 
+/// Heart rate over a workout, as a timestamped series rather than the avg/max
+/// aggregates on [Workouts] and [SetCompletions]. Health Connect's
+/// `HeartRateRecord` wants samples; averages cannot honestly be turned back
+/// into them. The aggregates stay: the history UI reads those, and recomputing
+/// them from the series on every render would be wasteful.
+///
+/// Two deliberate departures from every other table here:
+///
+/// * **No `syncId`.** Samples are replaced wholesale with the workout snapshot
+///   and never edited one at a time, so a stable id buys nothing — and at ~720
+///   rows per workout, 36-character uuids would dominate the sync payload.
+///   `{workoutId, measuredAtMs}` is the natural identity.
+/// * **`measuredAtMs` is an integer, not a `DateTime`.** Drift stores
+///   `DateTime` as unix *seconds*. Sync suppresses echoes by comparing an
+///   exported workout's JSON against the incoming DTO, so a timestamp that lost
+///   its sub-second part on the way through the database would never compare
+///   equal, and every workout carrying heart rate would re-push on every sync,
+///   forever.
+/// Row class named explicitly: the default would be `HeartRateSample`, which
+/// already means the live sensor reading from `WorkoutBridge`. Two types with
+/// one name across the run page is a needless ambiguity.
+@DataClassName('HeartRateReading')
+class HeartRateSamples extends Table {
+  TextColumn get workoutId =>
+      text().references(Workouts, #syncId, onDelete: KeyAction.cascade)();
+  IntColumn get measuredAtMs => integer()();
+  IntColumn get bpm => integer()();
+  @override
+  Set<Column> get primaryKey => {workoutId, measuredAtMs};
+}
+
 class FullRoutine {
   FullRoutine({required this.routine, required this.exercises});
   final Routine routine;
@@ -363,6 +394,7 @@ class SyncMeta extends Table {
     WorkoutExercises,
     WorkoutSets,
     SetCompletions,
+    HeartRateSamples,
     SyncMeta,
   ],
 )
@@ -371,7 +403,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -413,6 +445,13 @@ class AppDatabase extends _$AppDatabase {
       if (from < 13) {
         await m.addColumn(workouts, workouts.version);
         await m.addColumn(workouts, workouts.deletedAt);
+      }
+      // v13 → v14: heart rate as a timestamped series, for Health Connect.
+      // Purely additive — a new table, nothing renamed or recreated, so none of
+      // the FK re-pointing hazards that make the recreate-table steps above
+      // order-sensitive apply here. Existing workouts simply have no samples.
+      if (from < 14) {
+        await m.createTable(heartRateSamples);
       }
     },
   );
@@ -1258,6 +1297,39 @@ class AppDatabase extends _$AppDatabase {
     return c?.workoutId;
   }
 
+  /// Record one heart-rate reading against a workout.
+  ///
+  /// Upsert, so a repeated timestamp overwrites rather than throwing on the
+  /// composite key — sensors do occasionally repeat one.
+  ///
+  /// **Deliberately does not bump the workout version**, unlike every other
+  /// mutating workout method here. Samples arrive continuously through a live
+  /// run, and a live workout is excluded from the sync push predicate anyway
+  /// (`endedAt IS NOT NULL OR deletedAt IS NOT NULL`); bumping per sample would
+  /// be hundreds of pointless writes. The single bump in [finishWorkout] is
+  /// what carries the whole series out to peers. Don't "fix" this.
+  Future<void> addHeartRateSample({
+    required String workoutId,
+    required int measuredAtMs,
+    required int bpm,
+  }) async {
+    await into(heartRateSamples).insertOnConflictUpdate(
+      HeartRateSamplesCompanion.insert(
+        workoutId: workoutId,
+        measuredAtMs: measuredAtMs,
+        bpm: bpm,
+      ),
+    );
+  }
+
+  /// A workout's heart-rate series, oldest first.
+  Future<List<HeartRateReading>> heartRateSamplesFor(String workoutId) {
+    return (select(heartRateSamples)
+          ..where((t) => t.workoutId.equals(workoutId))
+          ..orderBy([(t) => OrderingTerm.asc(t.measuredAtMs)]))
+        .get();
+  }
+
   Future<void> finishWorkout(
     String workoutId, {
     int? avgHeartRate,
@@ -1296,6 +1368,11 @@ class AppDatabase extends _$AppDatabase {
   /// [deleteRoutine]. Reads skip tombstoned rows.
   Future<void> deleteWorkout(String workoutId) async {
     await transaction(() async {
+      // Explicit, not by cascade: this is a *soft* delete, so the Workouts row
+      // survives as a tombstone and the FK never fires.
+      await (delete(
+        heartRateSamples,
+      )..where((t) => t.workoutId.equals(workoutId))).go();
       await (delete(
         setCompletions,
       )..where((t) => t.workoutId.equals(workoutId))).go();

@@ -11,6 +11,7 @@ import '../data/database.dart';
 import '../data/providers.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
+import 'heart_rate_thinning.dart';
 import 'set_target_format.dart';
 import 'superset_nav.dart';
 import 'watch_alternative_picker_page.dart';
@@ -129,6 +130,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   double _hrWeightedSum = 0;
   int _hrWeightedMs = 0;
   int? _lastHrTsMs;
+
+  /// Timestamp of the last reading written to [HeartRateSamples], for the
+  /// thinning gate. Separate from [_lastHrTsMs], which tracks every reading for
+  /// the weighted session average.
+  int? _lastPersistedHrMs;
   int? _lastHrBpm;
   int? _sessionMaxHr;
 
@@ -161,7 +167,24 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   void _onHeartRate(HeartRateSample sample) {
     if (!mounted) return;
     _hrStaleTimer?.cancel();
-    if (_workoutId != null) {
+    final workoutId = _workoutId;
+    if (workoutId != null) {
+      // Persist the reading itself, thinned — the aggregates below are what the
+      // history UI shows, but Health Connect needs the series. Fire and forget:
+      // a database write must never stall the HR badge or the run UI.
+      if (shouldPersistHeartRate(
+        lastPersistedMs: _lastPersistedHrMs,
+        nowMs: sample.timestampMs,
+      )) {
+        _lastPersistedHrMs = sample.timestampMs;
+        unawaited(
+          ref.read(databaseProvider).addHeartRateSample(
+                workoutId: workoutId,
+                measuredAtMs: sample.timestampMs,
+                bpm: sample.bpm,
+              ),
+        );
+      }
       // Per-set aggregate stays the work-interval mean: only the logSet phase
       // (not rest, not pre-start) so it reflects effort, not recovery.
       if (_phase == _Phase.logSet) _setHrBpms.add(sample.bpm);

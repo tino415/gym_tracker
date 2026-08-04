@@ -709,6 +709,7 @@ class SyncRepository {
         ),
       );
     }
+    final samples = await _db.heartRateSamplesFor(workoutId);
     return WorkoutDto(
       syncId: workout.syncId,
       routineSyncId: routineSyncId,
@@ -717,6 +718,10 @@ class SyncRepository {
       endedAtMs: workout.endedAt?.millisecondsSinceEpoch,
       exercises: exerciseDtos,
       completions: completionDtos,
+      heartRateSamples: [
+        for (final s in samples)
+          HeartRateSampleDto(tMs: s.measuredAtMs, bpm: s.bpm),
+      ],
       avgHeartRate: workout.avgHeartRate,
       maxHeartRate: workout.maxHeartRate,
       version: workout.version,
@@ -800,6 +805,9 @@ class SyncRepository {
         // Replace the snapshot wholesale. The workout row itself is updated
         // rather than deleted: the child tables FK it, and keeping it preserves
         // row identity for any open watchFullWorkout stream.
+        await (_db.delete(
+          _db.heartRateSamples,
+        )..where((t) => t.workoutId.equals(workoutId))).go();
         await (_db.delete(
           _db.setCompletions,
         )..where((t) => t.workoutId.equals(workoutId))).go();
@@ -895,6 +903,19 @@ class SyncRepository {
               ),
             );
       }
+
+      for (final s in dto.heartRateSamples) {
+        await _db.into(_db.heartRateSamples).insert(
+              HeartRateSamplesCompanion.insert(
+                workoutId: workoutId,
+                measuredAtMs: s.tMs,
+                bpm: s.bpm,
+              ),
+              // A repeated timestamp in the payload must not abort the whole
+              // apply on the composite key.
+              mode: InsertMode.insertOrReplace,
+            );
+      }
       return true;
     });
   }
@@ -920,6 +941,11 @@ class SyncRepository {
           );
       return;
     }
+    // As in AppDatabase.deleteWorkout: the Workouts row survives as the
+    // tombstone, so no cascade fires and every child has to go explicitly.
+    await (_db.delete(
+      _db.heartRateSamples,
+    )..where((t) => t.workoutId.equals(dto.syncId))).go();
     await (_db.delete(
       _db.setCompletions,
     )..where((t) => t.workoutId.equals(dto.syncId))).go();
