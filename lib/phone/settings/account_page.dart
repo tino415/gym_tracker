@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../build_info.dart';
 import '../../data/providers.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
@@ -102,6 +103,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
               data: (user) =>
                   user == null ? _signedOutChildren() : _signedInChildren(user),
             ),
+          const Divider(height: 32),
+          const _BuildStamp(),
         ],
       ),
     );
@@ -330,6 +333,40 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+/// Which build this is, at the very bottom of the settings.
+///
+/// Deliberately unglamorous and always present. Its job is to answer "is this
+/// the bundle I just deployed?" — on web the service worker can keep serving a
+/// previous `main.dart.js` long after a deploy, so a fix looks like it never
+/// took effect. Comparing this against the commit you shipped settles it.
+///
+/// Selectable so it can be copied into a bug report, and `dev` on any build made
+/// without the Justfile — which is itself the answer when someone is unknowingly
+/// running a local debug build.
+class _BuildStamp extends StatelessWidget {
+  const _BuildStamp();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(Icons.tag, size: 16, color: scheme.outline),
+        const SizedBox(width: 8),
+        Expanded(
+          child: SelectableText(
+            'Build $buildId',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: scheme.outline),
+          ),
+        ),
+      ],
+    );
   }
 }
 

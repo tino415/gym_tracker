@@ -34,6 +34,14 @@ PHONE_ABIS := "android-arm64"
 PHONE_DEVICE := env_var_or_default("GYM_PHONE_DEVICE", "")
 WEAR_DEVICE := env_var_or_default("GYM_WEAR_DEVICE", "")
 
+# Stamped into every build and shown at the bottom of the account screen, so
+# "is the browser running the bundle I just deployed?" is answerable by looking
+# rather than by hashing main.dart.js. `-dirty` means the tree had uncommitted
+# changes, i.e. the build does not correspond to any commit. No spaces: it is
+# passed through --dart-define.
+BUILD_ID := `printf '%s%s-%s' "$(git rev-parse --short HEAD 2>/dev/null || echo nogit)" "$(git diff --quiet HEAD 2>/dev/null || echo -dirty)" "$(date +%Y%m%d-%H%M)"`
+BUILD_DEFINE := "--dart-define=BUILD_ID=" + BUILD_ID
+
 # List recipes
 default:
     @just --list
@@ -68,7 +76,7 @@ codegen:
 # the copy, building the other target overwrites this one.
 [doc('APK for the watch + Wear emulator (fat 32+64)')]
 watch-apk:
-    flutter build apk {{APK_MODE}} --target-platform {{WATCH_ABIS}}
+    flutter build apk {{APK_MODE}} --target-platform {{WATCH_ABIS}} {{BUILD_DEFINE}}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-watch.apk
 
 # APK for the phone + Firestore backend. The Google Web client id
@@ -77,7 +85,7 @@ watch-apk:
 # different Firebase project: GOOGLE_SERVER_CLIENT_ID=... just phone-apk.
 [doc('APK for the phone + Firestore backend')]
 phone-apk:
-    flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore \
+    flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} \
       {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
 
@@ -89,7 +97,7 @@ phone-apk:
 [doc('APK for the phone, pre-seeded with demo routines')]
 phone-apk-demo:
     flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} \
-      --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_DEMO=true
+      --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_DEMO=true {{BUILD_DEFINE}}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
 
 # Install a built APK. Push + `pm install` rather than `adb install`: streamed
@@ -239,7 +247,7 @@ up:
 [doc('Build the PROD web app (Firestore-direct)')]
 web:
     flutter clean
-    flutter build web --dart-define=SYNC_BACKEND=firestore
+    flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}}
 
 # Build the web app against the LOCAL emulator suite, for serving on :4117.
 # Distinct from `web`, which points the bundle at the PROD Firebase project —
@@ -247,7 +255,7 @@ web:
 [doc('Build the web app against the LOCAL emulator suite (serve on :4117)')]
 web-emulator:
     flutter clean
-    flutter build web --dart-define=SYNC_BACKEND=firestore \
+    flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} \
       --dart-define=FIREBASE_USE_EMULATOR=true
 
 # Build + deploy the web app to Firebase Hosting (prod).
