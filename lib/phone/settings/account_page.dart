@@ -8,6 +8,7 @@ import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/health_connect_bridge.dart';
 import '../../sync/sync_ownership.dart';
+import '../breakpoints.dart';
 import 'health_connect_controller.dart';
 import 'theme_controller.dart';
 
@@ -69,9 +70,17 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       // Single scroll view: the Appearance section is always shown (it isn't
       // gated on sync being enabled or the user being signed in); the account /
       // sync content follows below it.
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      //
+      // Capped and centered: this is a column of form controls, and the app's
+      // outer cap is sized for the three-pane Routines view, so without this a
+      // theme picker and two switches stretch across the whole browser window.
+      // A no-op on a phone, where the viewport is already narrower.
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: settingsMaxWidth),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
           _AppearanceSection(
             mode: ref.watch(themeModeProvider),
             onChanged: (m) => ref.read(themeModeProvider.notifier).set(m),
@@ -103,9 +112,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
               data: (user) =>
                   user == null ? _signedOutChildren() : _signedInChildren(user),
             ),
-          const Divider(height: 32),
-          const _BuildStamp(),
-        ],
+              const Divider(height: 32),
+              const _BuildStamp(),
+            ],
+          ),
+        ),
       ),
     );
   }

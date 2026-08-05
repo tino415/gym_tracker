@@ -27,3 +27,12 @@ const double contentMaxWidth = 1100.0;
 /// The Routines wide view needs room for up to three columns, so the app's
 /// centered column is allowed to grow to this before the tinted margins begin.
 const double routinesWideMaxWidth = 1500.0;
+
+/// Centered max-width for settings-style screens — a single column of form
+/// controls rather than a list of rows.
+///
+/// Without it the account screen inherits the app's [routinesWideMaxWidth] cap,
+/// which is sized for three side-by-side panes: a theme picker and a couple of
+/// switches then stretch across ~1500px of browser window. Narrow enough to
+/// read as a form, wide enough for the three-segment theme control.
+const double settingsMaxWidth = 560.0;
