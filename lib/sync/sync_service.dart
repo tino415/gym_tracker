@@ -101,9 +101,33 @@ class SyncService {
     if (isRoutineAuthority) {
       _scheduleContextPush();
     }
-    // Ask the peer for their state when we come up. Best-effort — fails
-    // silently if a transport isn't reachable yet.
-    unawaited(_sendAll(type: syncRequestType, payload: const {}));
+    // Apply anything a transport parked while this app wasn't running (Wear: a
+    // WearableListenerService writing to disk), *then* ask the peer for their
+    // state. Best-effort — fails silently if a transport isn't reachable yet.
+    //
+    // The order matters and is not cosmetic: a queued routine bundle can be
+    // days old, and if the peer's fresh reply landed first the stale bundle
+    // would clobber it — applyRoutineBundle is authoritative and deletes local
+    // routines absent from it.
+    unawaited(
+      _drainPending().then(
+        (_) => _sendAll(type: syncRequestType, payload: const {}),
+      ),
+    );
+  }
+
+  /// Drain every transport's offline queue onto its inbound stream, which
+  /// [start] has already subscribed to — so the messages land in [_onIncoming]
+  /// exactly as a live one would. Per-transport failures are swallowed: a
+  /// broken queue must not stop the others or the sync request that follows.
+  Future<void> _drainPending() async {
+    for (final transport in List<SyncTransport>.of(_transports)) {
+      try {
+        await transport.drainPending();
+      } catch (_) {
+        // best-effort
+      }
+    }
   }
 
   /// Register an extra transport after start (e.g. the Firestore channel once

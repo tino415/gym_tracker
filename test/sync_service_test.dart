@@ -18,6 +18,15 @@ class FakeTransport implements SyncTransport {
   bool started = false;
   bool disposed = false;
 
+  /// Messages the platform parked while the app wasn't running; [drainPending]
+  /// replays them onto [messages], as the Wear transport does.
+  final List<SyncMessage> pending = [];
+
+  /// When set, [drainPending] blocks on it — lets a test pin the ordering
+  /// between the drain and the sync request that follows it.
+  Completer<void>? drainGate;
+  bool drained = false;
+
   @override
   Stream<SyncMessage> get messages => _inbound.stream;
 
@@ -36,10 +45,27 @@ class FakeTransport implements SyncTransport {
   void start() => started = true;
 
   @override
+  Future<void> drainPending() async {
+    if (drainGate != null) await drainGate!.future;
+    drained = true;
+    for (final msg in pending) {
+      _inbound.add(msg);
+    }
+    pending.clear();
+  }
+
+  @override
   Future<void> dispose() async {
     disposed = true;
     await _inbound.close();
   }
+}
+
+/// A transport whose offline queue is broken. Draining must stay best-effort:
+/// one bad queue cannot stop the others or the sync request that follows.
+class _BrokenDrainTransport extends FakeTransport {
+  @override
+  Future<void> drainPending() async => throw StateError('queue unreadable');
 }
 
 Future<String> _seedRoutine(AppDatabase db, {String name = 'Push day'}) async {
@@ -225,6 +251,81 @@ void main() {
     final routines = await db.select(db.routines).get();
     expect(routines.map((r) => r.syncId), contains('routine-9'));
     await svc.dispose();
+  });
+
+  group('offline queue drain', () {
+    SyncMessage queuedBundle(String syncId) => SyncMessage(
+          type: routineBundleType,
+          payload: RoutineBundleMessage([
+            RoutineTemplateDto(
+              syncId: syncId,
+              name: 'Pull day',
+              version: 1,
+              createdAtMs: DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+              exercises: const [],
+            ),
+          ]).toPayload(),
+        );
+
+    test('a message queued while the app was closed is applied on start',
+        () async {
+      final t = FakeTransport()..pending.add(queuedBundle('routine-queued'));
+      final svc = serviceWith([t], isRoutineAuthority: false);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final routines = await db.select(db.routines).get();
+      expect(routines.map((r) => r.syncId), contains('routine-queued'));
+      expect(t.drained, isTrue);
+      await svc.dispose();
+    });
+
+    test('the sync request goes out only after the drain has finished',
+        () async {
+      // Pins the ordering in start(): a queued bundle can be days old, so the
+      // peer's fresh reply must not land before it and get clobbered.
+      final gate = Completer<void>();
+      final t = FakeTransport()
+        ..drainGate = gate
+        ..pending.add(queuedBundle('routine-queued'));
+      final svc = serviceWith([t], isRoutineAuthority: false);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(t.sent.where((m) => m.type == syncRequestType), isEmpty,
+          reason: 'sync request must wait for the drain');
+
+      gate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(t.sent.where((m) => m.type == syncRequestType), isNotEmpty);
+      await svc.dispose();
+    });
+
+    test('a transport with an empty queue is unaffected', () async {
+      final t = FakeTransport();
+      final svc = serviceWith([t], isRoutineAuthority: false);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(t.drained, isTrue);
+      expect(t.sent.where((m) => m.type == syncRequestType), isNotEmpty);
+      await svc.dispose();
+    });
+
+    test('a failing drain does not stop the other transports or the request',
+        () async {
+      final broken = _BrokenDrainTransport();
+      final ok = FakeTransport()..pending.add(queuedBundle('routine-queued'));
+      final svc = serviceWith([broken, ok], isRoutineAuthority: false);
+      svc.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final routines = await db.select(db.routines).get();
+      expect(routines.map((r) => r.syncId), contains('routine-queued'));
+      expect(ok.sent.where((m) => m.type == syncRequestType), isNotEmpty);
+      await svc.dispose();
+    });
   });
 
   test('inbound routine upsert is non-destructive — keeps other routines',

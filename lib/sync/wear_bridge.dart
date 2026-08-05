@@ -14,6 +14,11 @@ class WearMessage {
 class WearBridge {
   WearBridge._();
 
+  /// A fresh, unbound instance. The singleton latches [_bound] on first use and
+  /// keeps a process-wide subscription, so a test needs its own.
+  @visibleForTesting
+  factory WearBridge.forTesting() = WearBridge._;
+
   static final WearBridge instance = WearBridge._();
 
   static const _method = MethodChannel('gym_tracker/wear/method');
@@ -76,6 +81,26 @@ class WearBridge {
       'type': type,
       'payload': payload,
     });
+  }
+
+  /// Replay inbound messages that arrived while no Flutter engine was running.
+  ///
+  /// The native listener service parks them on disk (see `SyncQueue.kt`) and
+  /// hands them back in the same shape as a live event, so they go out on
+  /// [messages] and are applied by the ordinary inbound path — there is no
+  /// second decode and no second apply. Best-effort: a failure here must not
+  /// stop the rest of startup.
+  Future<void> drainPending() async {
+    _ensureBound();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final queued = await _method.invokeListMethod<Object?>('drainPending');
+      for (final entry in queued ?? const <Object?>[]) {
+        _onEvent(entry);
+      }
+    } catch (_) {
+      // best-effort
+    }
   }
 
   /// Subscribe to inbound events. Calling this for the first time activates

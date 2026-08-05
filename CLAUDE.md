@@ -131,6 +131,33 @@ Phone ↔ watch over the Wear Data Layer (`MessageClient`). The native bridge `G
 - `sync_repository.dart` — `applyWorkoutCompleted` inserts the snapshot tables first, then binds completions to the new `workoutSet` ids.
 - `sync_service.dart` — Phone is `isRoutineAuthority: true`; it pushes routine bundles on every local change to routines/exercises/planned_sets (500 ms debounce). Watch never pushes routines (so a phone-deleted routine doesn't get resurrected). Both sides push workouts. An **inbound `workout_completed` is relayed to the other transports** (`_relayToOthers`, skipping its source), so a workout finished on the watch reaches Firestore the moment it arrives over the Wear bridge — the phone is the only multi-transport hub. `pushAll()` is the manual "Sync now" entry point and sends a `syncRequest` to ask the peer for theirs back.
 
+#### Delivery while the app is closed
+
+`GymWearBridge`'s listener lives and dies with the Flutter engine, so a message
+sent to a killed app used to be dropped. `SyncListenerService` (manifest-declared,
+per-path `MESSAGE_RECEIVED`) now wakes the process and parks the raw envelope via
+`SyncQueue.kt`; `SyncService.start()` drains it through `SyncTransport.drainPending()`
+onto the ordinary inbound stream, so queued messages apply through `_onIncoming`
+with no second code path. Three things that are load-bearing:
+
+- **`GymWearBridge.isEngineListening` gates the queue.** Both the live listener and
+  the service fire for the same message; queueing anyway would replay a stale
+  `routine_bundle`, and that apply is authoritative (it deletes local routines
+  absent from the bundle). The flag must be cleared in `detach()` and not only in
+  `onCancel` — `setStreamHandler(null)` does **not** invoke `onCancel`, so relying
+  on it alone leaves the flag stuck `true` and silently drops every later message.
+- **The drain must complete before the `syncRequest`** (`start()` chains them). A
+  queued bundle can be days old; if the peer's fresh reply landed first it would be
+  clobbered.
+- **Kotlin owns the file.** It reads and truncates itself and hands Dart a
+  codec-safe `{type, payload}` list over the existing method channel, so there is no
+  `path_provider` dependency and no cross-language file lock. `sync_request` is
+  never queued and snapshot types collapse to the newest.
+
+`SyncQueue`'s rules are not unit-tested — there is still no Android test
+infrastructure (see the note in `CLAUDE.local.md` about bare Gradle). Keep the
+Kotlin mechanical and verify it on-device.
+
 #### Workouts are version-LWW, like routines
 
 Workouts used to be append-only + idempotent-skip, so **editing a saved workout propagated nowhere**. `Workouts` now carries `version` + `deletedAt`:

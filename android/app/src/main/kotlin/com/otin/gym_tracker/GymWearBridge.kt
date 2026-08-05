@@ -19,8 +19,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import org.json.JSONArray
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 
 class GymWearBridge(
     context: Context,
@@ -41,6 +42,10 @@ class GymWearBridge(
     private var sink: EventChannel.EventSink? = null
 
     fun attach() {
+        // Not listening until Dart subscribes: anything arriving between engine
+        // construction and onListen should be queued by SyncListenerService,
+        // not assumed delivered.
+        isEngineListening = false
         methodChannel.setMethodCallHandler(this)
         eventChannel.setStreamHandler(this)
         messageClient.addListener(this)
@@ -50,6 +55,13 @@ class GymWearBridge(
     fun detach() {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
+        // setStreamHandler(null) drops the messenger handler *without* calling
+        // onCancel, so clearing the flag there alone would leave it stuck true
+        // after the engine is torn down — and SyncListenerService would then
+        // skip queueing every later message, which is worse than the drop this
+        // whole mechanism exists to fix. Clear it here explicitly.
+        sink = null
+        isEngineListening = false
         messageClient.removeListener(this)
         capabilityClient.removeListener(this)
         scope.cancel()
@@ -70,6 +82,19 @@ class GymWearBridge(
             "refreshReachability" -> {
                 emitReachability()
                 result.success(null)
+            }
+            "drainPending" -> {
+                scope.launch {
+                    val events = withContext(Dispatchers.IO) {
+                        try {
+                            SyncQueue.drain(File(appContext.filesDir, SyncQueue.FILE_NAME))
+                        } catch (t: Throwable) {
+                            Log.w(TAG, "draining the sync queue failed: ${t.message}")
+                            emptyList()
+                        }
+                    }
+                    result.success(events)
+                }
             }
             else -> result.notImplemented()
         }
@@ -111,7 +136,7 @@ class GymWearBridge(
         }
         val type = parsed.optString("type")
         val payload = parsed.optJSONObject("payload") ?: JSONObject()
-        val map = mapOf("type" to type, "payload" to jsonObjectToMap(payload))
+        val map = mapOf("type" to type, "payload" to SyncQueue.jsonObjectToMap(payload))
         mainHandler.post {
             sink?.success(map)
         }
@@ -123,11 +148,13 @@ class GymWearBridge(
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
         sink = events
+        isEngineListening = true
         emitReachability()
     }
 
     override fun onCancel(arguments: Any?) {
         sink = null
+        isEngineListening = false
     }
 
     private fun emitReachability() {
@@ -150,34 +177,23 @@ class GymWearBridge(
         }
     }
 
-    private fun jsonObjectToMap(o: JSONObject): Map<String, Any?> {
-        val m = HashMap<String, Any?>(o.length())
-        for (key in o.keys()) {
-            m[key] = jsonValueToNative(o.opt(key))
-        }
-        return m
-    }
-
-    private fun jsonArrayToList(a: JSONArray): List<Any?> {
-        val list = ArrayList<Any?>(a.length())
-        for (i in 0 until a.length()) {
-            list.add(jsonValueToNative(a.opt(i)))
-        }
-        return list
-    }
-
-    private fun jsonValueToNative(v: Any?): Any? = when (v) {
-        JSONObject.NULL -> null
-        is JSONObject -> jsonObjectToMap(v)
-        is JSONArray -> jsonArrayToList(v)
-        else -> v
-    }
-
     companion object {
         private const val TAG = "GymWearBridge"
         private const val METHOD_CHANNEL = "gym_tracker/wear/method"
         private const val EVENT_CHANNEL = "gym_tracker/wear/events"
-        private const val PATH = "/gym_tracker/sync"
         private const val CAPABILITY = "gym_tracker_sync"
+
+        /** Wear Data Layer path both this bridge and the listener service serve. */
+        const val PATH = "/gym_tracker/sync"
+
+        /**
+         * True while a Flutter engine holds the inbound sink, i.e. this bridge
+         * will deliver a message itself. [SyncListenerService] reads it to
+         * decide whether an inbound message needs parking on disk. Written from
+         * onListen / onCancel / attach / detach — see the note in [detach] for
+         * why onCancel alone is not enough.
+         */
+        @Volatile
+        var isEngineListening: Boolean = false
     }
 }

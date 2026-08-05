@@ -26,6 +26,13 @@ abstract interface class SyncTransport {
   /// Activate the underlying channel (idempotent).
   void start();
 
+  /// Deliver messages that arrived while this device's app was not running.
+  ///
+  /// Called once by [SyncService.start] *after* it has subscribed to
+  /// [messages], and must push onto [messages] rather than applying anything
+  /// itself. Transports with no offline queue return immediately.
+  Future<void> drainPending();
+
   Future<void> dispose();
 }
 
@@ -51,6 +58,9 @@ class WearSyncTransport implements SyncTransport {
 
   @override
   void start() => _bridge.start();
+
+  @override
+  Future<void> drainPending() => _bridge.drainPending();
 
   @override
   Future<void> dispose() async {

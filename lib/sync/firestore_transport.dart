@@ -67,6 +67,12 @@ class FirestoreSyncTransport implements SyncTransport {
     _subs.add(_exercises.snapshots().listen(_onExercisesSnapshot));
   }
 
+  /// Nothing to drain: the snapshot listeners replay the whole collection on
+  /// attach, so anything written while this device was offline arrives that
+  /// way. The offline queue exists only for the Wear transport.
+  @override
+  Future<void> drainPending() async {}
+
   /// Added/modified exercise docs (including tombstones) become a non-destructive
   /// [exerciseBundleType]; the receiver applies them with version-LWW. A genuine
   /// doc removal is ignored — deletions ride as tombstone docs, not removals.

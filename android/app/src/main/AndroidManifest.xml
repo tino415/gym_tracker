@@ -61,6 +61,28 @@
             android:foregroundServiceType="health"
             android:exported="false" />
 
+        <!-- Wakes the app for inbound sync messages when no Flutter engine is
+             running — GymWearBridge's MessageClient listener only exists while
+             one is, so without this a message sent to a closed app is lost.
+             Per-path MESSAGE_RECEIVED, not the deprecated BIND_LISTENER, which
+             would wake us for every Data Layer event on every path.
+             android:host="*" is mandatory alongside pathPrefix: the host is the
+             sending node id, and omitting it makes the filter match nothing.
+             exported=true is required because Play Services binds from its own
+             process; BIND_WEARABLE_LISTENER is what stops anything else. -->
+        <service
+            android:name=".SyncListenerService"
+            android:exported="true"
+            android:permission="com.google.android.gms.permission.BIND_WEARABLE_LISTENER">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/gym_tracker/sync" />
+            </intent-filter>
+        </service>
+
         <!-- Health Connect links to this from its permission screen, and
              requires it to show the same privacy policy published in Play
              Console. We have no policy URL yet (see the "Privacy policy URL and
