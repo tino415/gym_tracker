@@ -46,7 +46,24 @@ Two traps that cost real time, neither guessable from the failure:
    (`loadFullWorkout`, `createWorkout`, …) are fine awaited directly — it is
    specifically streams. Only applies under `flutter test`: `integration_test/`
    runs on a real binding and real clock, where `.first` is fine.
-2. **`pumpAndSettle` never settles while a periodic ticker runs.** Any page with
+2. **`integration_test/` files share one browser and one Firebase session.** A
+   second `testWidgets` in the same file starts already signed in from the
+   first, so it never sees the sign-up form it tries to fill and dies on a
+   finder index. Put the extra assertions in one test, or handle both states.
+3. **Measuring a dialog's width: scope the finder to *that* dialog.**
+   `find.byType(Dialog).first` returns whichever opened first, so a dialog
+   opened from another (the exercise picker → "New exercise") silently measures
+   the one underneath — a test that passed identically with and without the bug.
+   Use `find.ancestor(of: find.text('<title>'), matching: find.byType(Dialog))`,
+   and measure the `Material` inside it: the `AlertDialog` render box spans the
+   whole route and always reports the viewport width.
+4. **Wide layouts only exist in the browser.** Anything gated on
+   `masterDetailBreakpoint` — the picker's dialog form, the 3-pane routines view
+   — never renders on a phone, and an Android emulator in landscape still takes
+   the narrow branch. `just e2e-web-dialogs` is the only place that is checked.
+   Plain layout constraints don't need a browser though: a widget test with
+   `tester.view.physicalSize` set wide is faster and just as conclusive.
+5. **`pumpAndSettle` never settles while a periodic ticker runs.** Any page with
    a rest/hold countdown (`watch_run_page`, `workout_run_page`) keeps a
    `Timer.periodic` alive, so settling times out. Drive those with explicit
    `pump(Duration(...))` calls, and unmount the tree at the end of the test
@@ -65,6 +82,14 @@ Every web build therefore passes `--dart-define=SYNC_BACKEND=firestore` (`just
 web`, `just deploy`, `just e2e-web`); a build without it falls through to the
 unsupported Drift web path in `database.dart` (`DriftWebOptions` → the
 committed `web/sqlite3.wasm` + `web/drift_worker.js`, both now vestigial).
+
+**Which bundle am I actually running?** The account screen ends with
+`Build <sha>[-dirty]-<yyyymmdd-hhmm>`, stamped by every Justfile build recipe
+(`BUILD_ID`). Compare it against the commit you deployed before believing a fix
+didn't work — that is usually the whole story, per the next paragraph. `dev`
+means the build didn't come from the Justfile at all. It identifies the *Dart*
+bundle only: a stale `index.html` or `flutter_bootstrap.js` loads before any
+Dart runs and won't be caught by it.
 
 **Service-worker stale cache while iterating.** The generated service worker
 serves the *previous* `main.dart.js` across reloads (it also serves its own
