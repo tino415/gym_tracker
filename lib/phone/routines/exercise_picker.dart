@@ -22,6 +22,11 @@ import '../exercises/muscle_selector.dart';
 /// as awkward, and the roll-up bottom sheet on narrow (phone) widths. Both host
 /// the same [_ExercisePickerBody], which offers a name search and muscle
 /// filters so a large exercise library stays navigable.
+/// Width of the picker's dialogs on wide viewports — the exercise list and the
+/// "New exercise" form both use it, so the second doesn't jump to a different
+/// size than the one it opened from.
+const double exercisePickerDialogWidth = 420;
+
 /// Tally exercise ids for [showExercisePicker]'s `markCounts`. Nulls are
 /// skipped — a workout exercise can have a null `exerciseId` when its exercise
 /// was deleted from the library after the workout was recorded.
@@ -61,7 +66,7 @@ Future<Exercise?> showExercisePicker(
         title: const Text('Add exercise'),
         contentPadding: const EdgeInsets.symmetric(vertical: 8),
         content: SizedBox(
-          width: 420,
+          width: exercisePickerDialogWidth,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
             child: _ExercisePickerBody(
@@ -430,8 +435,13 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('New exercise'),
+      // `double.maxFinite` here asked for every pixel available, which on a
+      // desktop browser meant a name field and two rows of chips spread across
+      // the whole window. A fixed width instead — SizedBox enforces the
+      // incoming constraints, so on a phone it still shrinks to the screen
+      // rather than overflowing.
       content: SizedBox(
-        width: double.maxFinite,
+        width: exercisePickerDialogWidth,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

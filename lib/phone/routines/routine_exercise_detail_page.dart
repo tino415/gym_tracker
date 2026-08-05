@@ -8,6 +8,18 @@ import 'exercise_picker.dart';
 import 'planned_set_row.dart';
 import 'set_editor_dialog.dart';
 
+/// How wide a dialog on this page is allowed to get.
+///
+/// An [AlertDialog] sizes itself to the *intrinsic* width of its content, and a
+/// one-line sentence wants to stay on one line — so on a desktop browser the
+/// remove-exercise confirmation stretched to 931px at a 1400px viewport.
+///
+/// Capping only helps where the content's own intrinsic width is what makes the
+/// dialog wide. Once the width is settled the dialog stretches its children
+/// with *tight* constraints, so wrapping an already-narrow child (a text field,
+/// say) in the same cap does nothing.
+const double routineDialogMaxWidth = 360;
+
 /// Detail page for a single routine slot. Owns the full per-exercise editor —
 /// planned sets, alternatives, rest, kind, superset toggle, remove. The list
 /// page only shows a compact summary; everything write-heavy lives here.
@@ -256,8 +268,11 @@ Future<void> _confirmRemove(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Remove exercise?'),
-      content: Text(
-        'Remove ${re.exercise.name} from this routine? Past workouts keep their copy.',
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: routineDialogMaxWidth),
+        child: Text(
+          'Remove ${re.exercise.name} from this routine? Past workouts keep their copy.',
+        ),
       ),
       actions: [
         TextButton(
