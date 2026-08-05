@@ -200,6 +200,13 @@ e2e-web:
 e2e-web-delete:
     @just _web-drive integration_test/account_deletion_web_test.dart
 
+# Dialog widths at desktop size. Only the browser reaches the master-detail
+# breakpoint — a phone, and an Android emulator even in landscape, render the
+# narrow branch instead — so this is the only place the wide layout is checked.
+[doc('Dialog-width e2e in headless Chrome (needs the emulator suite)')]
+e2e-web-dialogs:
+    @just _web-drive integration_test/dialog_width_web_test.dart
+
 # Shared driver invocation for the web e2e targets.
 [private]
 _web-drive target:
