@@ -224,7 +224,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
             exerciseId: re.exerciseSyncId,
             orderIndex: re.orderIndex,
             restSeconds: re.restSeconds,
-            supersetGroup: re.supersetGroup,
+            circuitGroup: re.circuitGroup,
           ),
           exercise: _synthExercise(
             re.exerciseSyncId,
@@ -420,7 +420,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
         'exerciseKind': kind,
         'orderIndex': order,
         'restSeconds': 90,
-        'supersetGroup': null,
+        'circuitGroup': null,
         'plannedSets': <Object?>[],
         'alternatives': <Object?>[],
         'muscleSyncIds': muscleSyncIds,
@@ -479,11 +479,13 @@ class FirestoreRoutineRepository implements RoutineRepository {
       });
 
   @override
-  Future<void> setSupersetGroup(String routineExerciseId, int? group) =>
+  Future<void> setCircuitGroup(String routineExerciseId, int? group) =>
       _editOwningRoutine((exs) {
         for (final e in exs) {
           if (e['syncId'] == routineExerciseId) {
-            e['supersetGroup'] = group;
+            e['circuitGroup'] = group;
+            // Drop the pre-v15 key so the document can't carry two answers.
+            e.remove('supersetGroup');
             return true;
           }
         }
@@ -779,7 +781,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
               exerciseName: we.exerciseName,
               orderIndex: we.orderIndex,
               restSeconds: we.restSeconds,
-              supersetGroup: we.supersetGroup,
+              circuitGroup: we.circuitGroup,
               kind: we.kind,
               routineExerciseId: we.routineExerciseSyncId,
             ),
@@ -1109,7 +1111,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
               'kind': re.exerciseKind,
               'orderIndex': re.orderIndex,
               'restSeconds': re.restSeconds,
-              'supersetGroup': re.supersetGroup,
+              'circuitGroup': re.circuitGroup,
               'routineExerciseSyncId': re.syncId,
               'sets': [
                 for (final ps in re.plannedSets)
@@ -1190,7 +1192,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         'kind': kind,
         'orderIndex': order,
         'restSeconds': 90,
-        'supersetGroup': null,
+        'circuitGroup': null,
         'sets': <Object?>[],
         'routineExerciseSyncId': null,
       });

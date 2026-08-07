@@ -34,6 +34,12 @@ PHONE_ABIS := "android-arm64"
 PHONE_DEVICE := env_var_or_default("GYM_PHONE_DEVICE", "")
 WEAR_DEVICE := env_var_or_default("GYM_WEAR_DEVICE", "")
 
+# Android package name (android/app/build.gradle.kts) and the prod Firebase
+# project (.firebaserc). Both are needed by the backup recipes, which address
+# app-private paths on the device.
+APP_ID := "com.otin.gym_tracker"
+FIREBASE_PROJECT := "gym-tracker-44a5f"
+
 # Stamped into every build and shown at the bottom of the account screen, so
 # "is the browser running the bundle I just deployed?" is answerable by looking
 # rather than by hashing main.dart.js. `-dirty` means the tree had uncommitted
@@ -265,7 +271,7 @@ web-emulator:
 # `release-all`, which sequences it for you.
 [doc('Build + deploy the web app to Firebase Hosting (prod)')]
 deploy: web
-    firebase deploy --only hosting --project gym-tracker-44a5f
+    firebase deploy --only hosting --project {{FIREBASE_PROJECT}}
 
 # Ship everything, in the only order that works: `deploy` runs `flutter clean`
 # and would destroy APKs built beforehand, so web goes first and the device
@@ -287,6 +293,63 @@ icons:
 fs-get path:
     curl -s -H 'Authorization: Bearer owner' \
       'http://127.0.0.1:4120/v1/projects/demo-gym-tracker/databases/(default)/documents/{{path}}'
+
+# Pull the app's databases off a device into backups/ (gitignored), timestamped.
+#
+# Take one before installing a build that carries a schema migration: a
+# migration runs once, in place, and no later release can undo it. `pm install
+# -r` keeps app data, so the upgrade path is exactly what this protects.
+#
+# Two files come back, both plain SQLite:
+#   *-drift.sqlite     the app's own database — what a migration rewrites
+#   *-fscache.sqlite   Firestore's offline cache, i.e. a mirror of the server's
+#                      users/{uid}/** as of the last sync. Not a restorable
+#                      Firestore export, but the documents are all in there.
+#
+# `run-as` is what makes this work without root, and it needs a *debuggable*
+# build — on an aarch64 host APK_MODE is --debug, so that holds. Against a
+# release APK it fails with "package not debuggable".
+[doc('Back up a device app database into backups/')]
+backup-device device=PHONE_DEVICE:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
+    dev=$(tool/adb-device.sh "{{device}}") || exit 1
+    model=$(adb -s "$dev" shell getprop ro.product.model | tr -d '\r')
+    echo "→ backing up {{APP_ID}} from $dev ($model)"
+    mkdir -p backups
+    stamp=$(date +%Y%m%d-%H%M%S)
+    base="backups/${model// /_}-$stamp"
+    adb -s "$dev" exec-out "run-as {{APP_ID}} cat app_flutter/gym_tracker.sqlite" > "$base-drift.sqlite" || exit 1
+    test -s "$base-drift.sqlite" || { echo "empty drift backup — is the build debuggable?" >&2; rm -f "$base-drift.sqlite"; exit 1; }
+    # The Firestore cache filename embeds the project id, percent-encoded.
+    adb -s "$dev" exec-out "run-as {{APP_ID}} cat 'databases/firestore.%5BDEFAULT%5D.{{FIREBASE_PROJECT}}.%28default%29'" > "$base-fscache.sqlite"
+    test -s "$base-fscache.sqlite" || rm -f "$base-fscache.sqlite"
+    # `user_version` is a big-endian u32 at offset 60 of the SQLite header, so
+    # the schema version is readable without sqlite3 — which is not in the env.
+    for f in "$base"-*.sqlite; do
+      echo "  $f ($(stat -c %s "$f") bytes, schema v$(od -An -tu4 -j60 -N4 --endian=big "$f" | tr -d ' '))"
+    done
+
+# Push a backup back onto a device, replacing the app's database.
+#
+# Stops the app first — SQLite in another process would otherwise keep the old
+# file open and write over what we just restored. The app recreates its
+# connection on next launch.
+[doc('Restore a backup onto a device, e.g. just restore-device backups/SM-S921B-…-drift.sqlite')]
+restore-device file device=PHONE_DEVICE:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    test -f "{{file}}" || { echo "no such backup: {{file}}" >&2; exit 1; }
+    test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
+    dev=$(tool/adb-device.sh "{{device}}") || exit 1
+    model=$(adb -s "$dev" shell getprop ro.product.model | tr -d '\r')
+    echo "→ restoring {{file}} to $dev ($model) — the app's current database will be replaced"
+    adb -s "$dev" shell am force-stop {{APP_ID}}
+    adb -s "$dev" push "{{file}}" /data/local/tmp/restore.sqlite || exit 1
+    adb -s "$dev" shell "run-as {{APP_ID}} cp /data/local/tmp/restore.sqlite app_flutter/gym_tracker.sqlite"; rc=$?
+    adb -s "$dev" shell rm -f /data/local/tmp/restore.sqlite
+    exit $rc
 
 # flutter clean
 clean:

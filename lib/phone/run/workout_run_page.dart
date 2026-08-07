@@ -13,7 +13,7 @@ import '../../sync/health_connect_publisher.dart';
 import '../../sync/workout_bridge.dart';
 import '../settings/health_connect_controller.dart';
 import '../../watch/set_target_format.dart';
-import '../../watch/superset_nav.dart';
+import '../../watch/circuit_nav.dart';
 
 /// Whether to offer the live-run entry points. The flow is phone-only: running
 /// a workout at a desktop browser is noise, and the native rest countdown has
@@ -188,16 +188,16 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     return snap.exercises[eIdx].sets.length;
   }
 
-  int? _supersetGroupAt(int eIdx) {
+  int? _circuitGroupAt(int eIdx) {
     final snap = _snapshot;
     if (snap == null || eIdx < 0 || eIdx >= snap.exercises.length) return null;
-    return snap.exercises[eIdx].workoutExercise.supersetGroup;
+    return snap.exercises[eIdx].workoutExercise.circuitGroup;
   }
 
-  SupersetSeq get _seq => SupersetSeq(
+  CircuitSeq get _seq => CircuitSeq(
         exerciseCount: _exerciseCount(),
         setCountAt: _setCount,
-        supersetGroupAt: _supersetGroupAt,
+        circuitGroupAt: _circuitGroupAt,
       );
 
   bool _isCompletedAt(int eIdx, int sIdx) {
@@ -247,29 +247,16 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   String _routineName() =>
       _snapshot?.workout.routineName ?? _snapshot?.routine?.name ?? 'Workout';
 
-  /// Rest comes from the first member of the superset group, so every member of
-  /// a round rests the same amount. Mirrors the watch.
+  /// Rest comes from the exercise whose set was just completed — the same rule
+  /// standalone and inside a circuit, where each member carries the pause to
+  /// the next member and the last member carries the round rest. Anchoring on
+  /// the completed exercise rather than the upcoming one also keeps the rest
+  /// right after a skip-ahead, where the next position isn't the planned one.
+  /// Mirrors the watch.
   int _currentRestSeconds() {
     final snap = _snapshot;
-    if (snap == null) return 0;
-    final group = _groupBounds(_exerciseIdx);
-    final eIdx = group?.first ?? _exerciseIdx;
-    if (eIdx >= snap.exercises.length) return 0;
-    return snap.exercises[eIdx].workoutExercise.restSeconds;
-  }
-
-  ({int first, int last})? _groupBounds(int eIdx) {
-    final group = _supersetGroupAt(eIdx);
-    if (group == null) return null;
-    var first = eIdx;
-    while (first > 0 && _supersetGroupAt(first - 1) == group) {
-      first--;
-    }
-    var last = eIdx;
-    while (last + 1 < _exerciseCount() && _supersetGroupAt(last + 1) == group) {
-      last++;
-    }
-    return (first: first, last: last);
+    if (snap == null || _exerciseIdx >= snap.exercises.length) return 0;
+    return snap.exercises[_exerciseIdx].workoutExercise.restSeconds;
   }
 
   // --- Targets & last-time reference --------------------------------------
@@ -368,16 +355,15 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final next = _nextForCompletion();
     if (next == null) return; // Everything logged — stay put so Finish is easy.
 
-    // Next member of the same superset round follows immediately; anything
-    // else — new round, new exercise, returning to skipped work — rests first.
-    final sameRoundInGroup = next.sIdx == _setIdx &&
-        next.eIdx > _exerciseIdx &&
-        _supersetGroupAt(next.eIdx) != null &&
-        _supersetGroupAt(next.eIdx) == _supersetGroupAt(_exerciseIdx);
-    if (sameRoundInGroup) {
+    // Every set is followed by its own exercise's rest, circuit member or not.
+    // Zero skips the rest screen entirely rather than showing it for a tick —
+    // that is how a classic superset (no pause between its members) is now
+    // expressed, and `_startRest(0)` would flash a 1s countdown.
+    final rest = _currentRestSeconds();
+    if (rest == 0) {
       _goTo(next.eIdx, next.sIdx);
     } else {
-      _startRest(_currentRestSeconds());
+      _startRest(rest);
     }
   }
 
@@ -694,7 +680,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         const SizedBox(height: 4),
         Text(
           'Set ${_setIdx + 1} of ${ex.sets.length}'
-          '${_supersetGroupAt(_exerciseIdx) != null ? ' • superset' : ''}',
+          '${_circuitGroupAt(_exerciseIdx) != null ? ' • circuit' : ''}',
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.colorScheme.outline),
         ),

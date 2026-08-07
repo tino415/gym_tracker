@@ -33,7 +33,7 @@ abstract class RoutineRepository {
     required List<String> orderedIds,
   });
   Future<void> setRestSeconds(String routineExerciseId, int seconds);
-  Future<void> setSupersetGroup(String routineExerciseId, int? group);
+  Future<void> setCircuitGroup(String routineExerciseId, int? group);
 
   // Planned-set mutations
   Future<PlannedSet> addPlannedSet({

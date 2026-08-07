@@ -15,7 +15,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
     required this.name,
     required this.kind,
     required this.restSeconds,
-    required this.supersetGroup,
+    required this.circuitGroup,
     required List<_PreviewSet> sets,
     required this.activeMode,
     this.restCountdown,
@@ -29,7 +29,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
       name: re.exercise.name,
       kind: re.kind,
       restSeconds: re.routineExercise.restSeconds,
-      supersetGroup: re.routineExercise.supersetGroup,
+      circuitGroup: re.routineExercise.circuitGroup,
       sets: [
         for (var i = 0; i < re.plannedSets.length; i++)
           _PreviewSet(
@@ -59,7 +59,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
       name: we.workoutExercise.exerciseName,
       kind: we.kind,
       restSeconds: we.workoutExercise.restSeconds,
-      supersetGroup: we.workoutExercise.supersetGroup,
+      circuitGroup: we.workoutExercise.circuitGroup,
       sets: [
         for (var i = 0; i < we.sets.length; i++)
           _PreviewSet(
@@ -79,7 +79,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
   final String name;
   final String kind;
   final int restSeconds;
-  final int? supersetGroup;
+  final int? circuitGroup;
   final List<_PreviewSet> _sets;
   final List<_PreviewAlt> _alternatives;
   final bool activeMode;
@@ -134,10 +134,10 @@ class WatchExercisePreviewPage extends StatelessWidget {
                         icon: Icons.hourglass_bottom,
                         label: 'rest ${restSeconds}s',
                       ),
-                      if (supersetGroup != null)
+                      if (circuitGroup != null)
                         _MetaChip(
                           icon: Icons.link,
-                          label: 'superset',
+                          label: 'circuit',
                           color: theme.colorScheme.primary,
                         ),
                     ],

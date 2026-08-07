@@ -21,7 +21,7 @@ form factor (`tool/adb-device.sh`) so a wireless serial's changing port stops
 mattering; `just devices-list` shows what is attached. Installs print the
 resolved serial and model first — a `pm install` into the wrong device still
 says `Success`, so the echo is the only thing that tells you where a build
-went. `just phone-apk-demo` seeds demo routines (reps, a superset pair, a
+went. `just phone-apk-demo` seeds demo routines (reps, a circuit pair, a
 time-kind hold) on a **first launch into an empty library**, which is what makes
 on-device checks cheap; `adb shell pm clear com.otin.gym_tracker` re-arms it.
 
@@ -34,6 +34,13 @@ handset you actually train with — so `e2e` / `e2e-run` / `e2e-watch` refuse a
 physical device (`ro.build.characteristics != emulator`) unless
 `ALLOW_REAL_DEVICE=1`. Ordinary `phone-install` / `watch-install` are unaffected:
 they `pm install -r`, which keeps app data.
+
+`just backup-device` pulls that database off a handset (and `restore-device`
+puts one back). Take one before installing a build that carries a schema
+migration — a migration runs once, in place, and no release undoes it. Note
+that restoring alone is not full recovery: the restored rows carry their
+*pre-migration* `version`, so a bad higher-versioned copy already pushed to
+Firestore would win the version-LWW arbitration and sync straight back.
 
 ## Testing
 
@@ -69,6 +76,35 @@ Two traps that cost real time, neither guessable from the failure:
    `pump(Duration(...))` calls, and unmount the tree at the end of the test
    (`pumpWidget(const SizedBox())`) or the run ends with a pending-timer
    failure.
+
+### Schema migrations
+
+`test/migration_test.dart` runs the real migration against a database actually
+created at the old version, using drift's schema tooling. The demo seed can't
+substitute: it writes through the *current* Drift classes, so it only ever
+produces rows already in the new shape.
+
+**After every schema change, re-dump and regenerate**, or the tests still
+validate against the previous schema:
+
+```
+dart run drift_dev schema dump lib/data/database.dart drift_schemas/
+dart run drift_dev schema generate --data-classes --companions \
+    drift_schemas/ test/drift_schemas/
+```
+
+Both directories are committed — `drift_schemas/` is the schema history, and
+losing it means losing the ability to test any past migration.
+
+Two things that bite:
+
+- **Column defaults must be literals.** `schema dump` copies the Dart
+  expression verbatim, and the code generated from it imports only drift — so
+  `withDefault(const Constant(exerciseKindReps))` compiles in the app and fails
+  in the generated schema. Hence `const Constant('reps')` in `Exercises.kind`.
+- **Dumping an *older* version needs that version's source.** Check the
+  pre-change `database.dart` + `database.g.dart` out of git into place, dump,
+  then restore — there's no way to re-derive a schema you never dumped.
 
 ## Web / PWA
 
@@ -119,7 +155,9 @@ Single Flutter app shipped to both phone and Wear OS — the same binary, with a
 
 4. **Drift stream invalidation needs `customUpdate`.** `customStatement` doesn't notify Drift's stream tracker; pass `updates: {table1, table2}` (or use `tableUpdates` for multi-table watches) so reactive UI sees the change.
 
-5. **Exercise kinds and supersets.** `Exercises.kind` is `'reps'` or `'time'` (constants `exerciseKindReps` / `exerciseKindTime`). Reps-kind sets use `targetReps` + `targetWeightKg`; time-kind sets use `targetSeconds`. The UI reads `kind` to decide which column to render — Drift enforces nothing. Supersets are encoded as `RoutineExercises.supersetGroup` / `WorkoutExercises.supersetGroup` (nullable int): consecutive exercises sharing a non-null group form a superset; rest is taken from the first member's `restSeconds`. The alternation walker is `lib/watch/superset_nav.dart` (`SupersetSeq`) — pure logic, unit-tested in isolation.
+5. **Exercise kinds and circuits.** `Exercises.kind` is `'reps'` or `'time'` (constants `exerciseKindReps` / `exerciseKindTime`). Reps-kind sets use `targetReps` + `targetWeightKg`; time-kind sets use `targetSeconds`. The UI reads `kind` to decide which column to render — Drift enforces nothing. Circuits are encoded as `RoutineExercises.circuitGroup` / `WorkoutExercises.circuitGroup` (nullable int): consecutive exercises sharing a non-null group alternate their sets (set 1 of every member, then set 2, …). The walker is `lib/watch/circuit_nav.dart` (`CircuitSeq`) — pure logic, unit-tested in isolation.
+
+   **Rest is per-exercise and follows every set** (`restSeconds` on the exercise just completed, in both run pages), which is the whole reason the concept was renamed from "superset" in v15: a two-member group with `restSeconds = 0` on the first *is* a classic superset, and anything longer with real rests is circuit training. `0` means advance immediately — the run pages branch on it rather than calling `_startRest(0)`, which would flash a 1s countdown. The v14→v15 migration translates old data (rule in `lib/data/circuit_rest_v15.dart`); `sync_codec.dart` still reads the pre-v15 `supersetGroup` JSON key, since frozen workout documents keep it forever.
 
 ### Watch run page lifecycle (`lib/watch/watch_run_page.dart`)
 Subscribes to `db.watchFullWorkout(workoutId)`. The listener has a `_initialLoadDone` gate: only the first emission seeds `_exerciseIdx`/`_setIdx` and calls `_loadCurrentSetTargets`. Subsequent emissions update the snapshot for badges but **must not** reload targets, otherwise concurrent DB writes (sync push, rename, completion toggle) would cancel any active rest/countdown timer. If you add new logic that reacts to snapshot changes, keep target reloads gated behind explicit user navigation, never the stream.

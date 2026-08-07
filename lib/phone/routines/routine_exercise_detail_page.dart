@@ -21,7 +21,7 @@ import 'set_editor_dialog.dart';
 const double routineDialogMaxWidth = 360;
 
 /// Detail page for a single routine slot. Owns the full per-exercise editor —
-/// planned sets, alternatives, rest, kind, superset toggle, remove. The list
+/// planned sets, alternatives, rest, kind, circuit toggle, remove. The list
 /// page only shows a compact summary; everything write-heavy lives here.
 class RoutineExerciseDetailPage extends ConsumerWidget {
   const RoutineExerciseDetailPage({
@@ -122,9 +122,9 @@ class _Body extends ConsumerWidget {
     );
     final isFirst = idx == 0;
     final groupedWithPrev = !isFirst &&
-        re.routineExercise.supersetGroup != null &&
-        re.routineExercise.supersetGroup ==
-            full.exercises[idx - 1].routineExercise.supersetGroup;
+        re.routineExercise.circuitGroup != null &&
+        re.routineExercise.circuitGroup ==
+            full.exercises[idx - 1].routineExercise.circuitGroup;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
@@ -147,7 +147,11 @@ class _Body extends ConsumerWidget {
             TextButton.icon(
               onPressed: () => _editRest(context, ref, re.routineExercise),
               icon: const Icon(Icons.timer_outlined, size: 18),
-              label: Text('${re.routineExercise.restSeconds}s rest'),
+              label: Text(
+                re.routineExercise.restSeconds == 0
+                    ? 'no rest'
+                    : '${re.routineExercise.restSeconds}s rest',
+              ),
             ),
           ],
         ),
@@ -158,8 +162,8 @@ class _Body extends ConsumerWidget {
             child: FilterChip(
               selected: groupedWithPrev,
               onSelected: (_) =>
-                  _toggleSuperset(ref, full, re, idx),
-              label: const Text('Superset with previous'),
+                  _toggleCircuit(ref, full, re, idx),
+              label: const Text('Circuit with previous'),
               avatar: Icon(
                 groupedWithPrev ? Icons.link : Icons.link_off,
                 size: 16,
@@ -305,7 +309,9 @@ Future<void> _editRest(
   final result = await showDialog<int>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Rest between sets'),
+      // Names the exercise, not "between sets": in a circuit this is the pause
+      // before the *next member*, and 0 makes the next set follow immediately.
+      title: const Text('Rest after this exercise'),
       content: TextField(
         controller: controller,
         autofocus: true,
@@ -329,12 +335,16 @@ Future<void> _editRest(
   );
   // Guard against the page unmounting during the dialog await (e.g. a
   // concurrent sync bundle-apply pops it): using ref/context afterwards throws.
-  if (result != null && result > 0 && context.mounted) {
+  //
+  // 0 is accepted, and means "no pause, go straight to the next set" — how a
+  // classic superset is expressed now that rest follows every set. Only a
+  // negative (or unparseable) entry is rejected.
+  if (result != null && result >= 0 && context.mounted) {
     await ref.read(routineRepositoryProvider).setRestSeconds(re.syncId, result);
   }
 }
 
-Future<void> _toggleSuperset(
+Future<void> _toggleCircuit(
   WidgetRef ref,
   FullRoutine full,
   FullRoutineExercise current,
@@ -343,25 +353,25 @@ Future<void> _toggleSuperset(
   if (idx == 0) return; // first slot has no previous to group with
   final db = ref.read(routineRepositoryProvider);
   final prev = full.exercises[idx - 1];
-  final currentGroup = current.routineExercise.supersetGroup;
+  final currentGroup = current.routineExercise.circuitGroup;
   if (currentGroup != null &&
-      currentGroup == prev.routineExercise.supersetGroup) {
-    await db.setSupersetGroup(current.routineExercise.syncId, null);
+      currentGroup == prev.routineExercise.circuitGroup) {
+    await db.setCircuitGroup(current.routineExercise.syncId, null);
     return;
   }
   int group;
-  if (prev.routineExercise.supersetGroup != null) {
-    group = prev.routineExercise.supersetGroup!;
+  if (prev.routineExercise.circuitGroup != null) {
+    group = prev.routineExercise.circuitGroup!;
   } else {
     var max = 0;
     for (final re in full.exercises) {
-      final g = re.routineExercise.supersetGroup;
+      final g = re.routineExercise.circuitGroup;
       if (g != null && g > max) max = g;
     }
     group = max + 1;
-    await db.setSupersetGroup(prev.routineExercise.syncId, group);
+    await db.setCircuitGroup(prev.routineExercise.syncId, group);
   }
-  await db.setSupersetGroup(current.routineExercise.syncId, group);
+  await db.setCircuitGroup(current.routineExercise.syncId, group);
 }
 
 Future<void> _addAlternative(

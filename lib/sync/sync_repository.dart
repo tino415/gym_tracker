@@ -70,7 +70,7 @@ class SyncRepository {
             exerciseKind: base.exerciseKind,
             orderIndex: base.orderIndex,
             restSeconds: base.restSeconds,
-            supersetGroup: base.supersetGroup,
+            circuitGroup: base.circuitGroup,
             plannedSets: base.plannedSets,
             alternatives: altDtos,
             muscleSyncIds: base.muscleSyncIds,
@@ -336,7 +336,7 @@ class SyncRepository {
                 exerciseId: exerciseId,
                 orderIndex: e.orderIndex,
                 restSeconds: Value(e.restSeconds),
-                supersetGroup: Value(e.supersetGroup),
+                circuitGroup: Value(e.circuitGroup),
               ),
             );
       } else {
@@ -348,7 +348,7 @@ class SyncRepository {
             exerciseId: Value(exerciseId),
             orderIndex: Value(e.orderIndex),
             restSeconds: Value(e.restSeconds),
-            supersetGroup: Value(e.supersetGroup),
+            circuitGroup: Value(e.circuitGroup),
           ),
         );
       }
@@ -676,7 +676,7 @@ class SyncRepository {
           kind: we.kind,
           orderIndex: we.orderIndex,
           restSeconds: we.restSeconds,
-          supersetGroup: we.supersetGroup,
+          circuitGroup: we.circuitGroup,
           routineExerciseSyncId: routineExerciseSyncId,
           sets: [
             for (final s in sets)
@@ -859,7 +859,7 @@ class SyncRepository {
                 exerciseName: e.exerciseName,
                 orderIndex: e.orderIndex,
                 restSeconds: Value(e.restSeconds),
-                supersetGroup: Value(e.supersetGroup),
+                circuitGroup: Value(e.circuitGroup),
                 kind: Value(e.kind),
                 routineExerciseId: Value(routineExerciseLocalId),
               ),

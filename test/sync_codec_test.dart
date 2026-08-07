@@ -19,7 +19,7 @@ void main() {
               exerciseKind: 'reps',
               orderIndex: 0,
               restSeconds: 90,
-              supersetGroup: null,
+              circuitGroup: null,
               plannedSets: [
                 PlannedSetDto(
                   syncId: 'ps-1',
@@ -44,7 +44,7 @@ void main() {
               exerciseKind: 'time',
               orderIndex: 1,
               restSeconds: 120,
-              supersetGroup: 1,
+              circuitGroup: 1,
               plannedSets: [
                 PlannedSetDto(
                   syncId: 'ps-3',
@@ -68,13 +68,13 @@ void main() {
 
       final e1 = r.exercises[0];
       expect(e1.exerciseKind, 'reps');
-      expect(e1.supersetGroup, isNull);
+      expect(e1.circuitGroup, isNull);
       expect(e1.plannedSets[0].targetReps, 10);
       expect(e1.plannedSets[0].targetSeconds, isNull);
 
       final e2 = r.exercises[1];
       expect(e2.exerciseKind, 'time');
-      expect(e2.supersetGroup, 1);
+      expect(e2.circuitGroup, 1);
       expect(e2.plannedSets.single.targetSeconds, 30);
       expect(e2.plannedSets.single.targetReps, isNull);
     });
@@ -103,7 +103,7 @@ void main() {
               kind: 'reps',
               orderIndex: 0,
               restSeconds: 90,
-              supersetGroup: null,
+              circuitGroup: null,
               sets: [
                 WorkoutSetDto(
                   syncId: 'ws-1',
@@ -121,7 +121,7 @@ void main() {
               kind: 'time',
               orderIndex: 1,
               restSeconds: 60,
-              supersetGroup: 1,
+              circuitGroup: 1,
               sets: [
                 WorkoutSetDto(
                   syncId: 'ws-2',
@@ -161,7 +161,7 @@ void main() {
       expect(decoded.workout.routineName, 'Push Day');
       expect(decoded.workout.exercises, hasLength(2));
       expect(decoded.workout.exercises[1].kind, 'time');
-      expect(decoded.workout.exercises[1].supersetGroup, 1);
+      expect(decoded.workout.exercises[1].circuitGroup, 1);
       expect(decoded.workout.exercises[1].sets.single.targetSeconds, 30);
 
       expect(decoded.workout.completions, hasLength(2));
@@ -296,6 +296,60 @@ void main() {
       expect(tomb.completions, isEmpty);
       expect(tomb.routineSyncId, isNull);
       expect(WorkoutDto.fromJson(tomb.toJson()).deletedAtMs, 5000);
+    });
+  });
+
+  group('pre-v15 supersetGroup key', () {
+    // Documents written before the rename keep the old key until something
+    // rewrites them, and past workout docs never will — their version is
+    // frozen. Reading must still see the grouping.
+    Map<String, Object?> routineExerciseJson(Map<String, Object?> groupKeys) => {
+      'syncId': 're-1',
+      'exerciseSyncId': 'ex-1',
+      'exerciseName': 'Bench',
+      'exerciseKind': exerciseKindReps,
+      'orderIndex': 0,
+      'restSeconds': 90,
+      ...groupKeys,
+      'plannedSets': <Object?>[],
+    };
+
+    test('the old key is read when the new one is absent', () {
+      final dto = RoutineExerciseDto.fromJson(
+        routineExerciseJson({'supersetGroup': 2}),
+      );
+      expect(dto.circuitGroup, 2);
+    });
+
+    test('the new key wins when both are present', () {
+      final dto = RoutineExerciseDto.fromJson(
+        routineExerciseJson({'supersetGroup': 2, 'circuitGroup': 5}),
+      );
+      expect(dto.circuitGroup, 5);
+    });
+
+    test('an explicit null on the new key is not overridden by the old one', () {
+      // The web edits documents in place, so ungrouping writes
+      // `circuitGroup: null` while a stale `supersetGroup` is still there. A
+      // `??` fallback would revive the group that was just removed.
+      final dto = RoutineExerciseDto.fromJson(
+        routineExerciseJson({'supersetGroup': 2, 'circuitGroup': null}),
+      );
+      expect(dto.circuitGroup, isNull);
+    });
+
+    test('workout snapshots read the old key too', () {
+      final dto = WorkoutExerciseDto.fromJson({
+        'syncId': 'we-1',
+        'exerciseSyncId': 'ex-1',
+        'exerciseName': 'Bench',
+        'kind': exerciseKindReps,
+        'orderIndex': 0,
+        'restSeconds': 90,
+        'supersetGroup': 3,
+        'sets': <Object?>[],
+      });
+      expect(dto.circuitGroup, 3);
     });
   });
 }

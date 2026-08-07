@@ -14,7 +14,7 @@ const int kHeartRateSampleGapMs = 5000;
 /// last one that was ([lastPersistedMs], null when none has been yet).
 ///
 /// Pure so it can be unit-tested without standing up the run page, the same
-/// treatment the superset walker gets.
+/// treatment the circuit walker gets.
 ///
 /// Out-of-order or repeated timestamps say no: sensors occasionally deliver
 /// them, and the table is keyed on `{workoutId, measuredAtMs}`, so letting one

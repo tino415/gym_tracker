@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'circuit_rest_v15.dart';
 import 'muscle_seeds.dart';
 
 part 'database.g.dart';
@@ -23,8 +24,11 @@ class Exercises extends Table {
   TextColumn get syncId => text()();
   TextColumn get name => text().unique()();
   DateTimeColumn get createdAt => dateTime()();
-  TextColumn get kind =>
-      text().withDefault(const Constant(exerciseKindReps))();
+  // Literal rather than [exerciseKindReps]: `drift_dev schema dump` copies this
+  // expression verbatim into the schema JSON, and the code it generates from
+  // that imports only drift — a named constant there fails to compile in the
+  // migration tests. The default is frozen into the schema anyway.
+  TextColumn get kind => text().withDefault(const Constant('reps'))();
   IntColumn get version => integer().withDefault(const Constant(1))();
   // Non-null marks a versioned tombstone: the exercise was deleted at this
   // instant, but the row survives (with a bumped [version]) so the deletion
@@ -59,10 +63,15 @@ class RoutineExercises extends Table {
   TextColumn get exerciseId =>
       text().references(Exercises, #syncId, onDelete: KeyAction.restrict)();
   IntColumn get orderIndex => integer()();
+  // Rest taken *after* this exercise's set. For a circuit member that is the
+  // transition to the next member; for the last member of a round it is the
+  // round rest. 0 = advance immediately.
   IntColumn get restSeconds => integer().withDefault(const Constant(90))();
-  // Exercises sharing a non-null group on the same routine form a superset
-  // (alternating sets at run time). Null = standalone.
-  IntColumn get supersetGroup => integer().nullable()();
+  // Exercises sharing a non-null group on the same routine form a circuit:
+  // their sets alternate at run time (set 1 of every member, then set 2, …).
+  // Null = standalone. Two members with 0 rest on the first is the classic
+  // superset; more members with real rests is circuit training.
+  IntColumn get circuitGroup => integer().nullable()();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -183,9 +192,9 @@ class WorkoutExercises extends Table {
   TextColumn get exerciseName => text()();
   IntColumn get orderIndex => integer()();
   IntColumn get restSeconds => integer().withDefault(const Constant(90))();
-  IntColumn get supersetGroup => integer().nullable()();
-  TextColumn get kind =>
-      text().withDefault(const Constant(exerciseKindReps))();
+  IntColumn get circuitGroup => integer().nullable()();
+  // Literal, for the schema-dump reason on `Exercises.kind`.
+  TextColumn get kind => text().withDefault(const Constant('reps'))();
   // Back-pointer to the routine slot this workout exercise was created from.
   // SET NULL on delete so a routine edit that removes the slot mid-workout
   // gracefully disables mid-workout swap without breaking the workout itself.
@@ -403,7 +412,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -453,8 +462,71 @@ class AppDatabase extends _$AppDatabase {
       if (from < 14) {
         await m.createTable(heartRateSamples);
       }
+      // v14 → v15: "superset" became "circuit", and rest stopped being a single
+      // per-group interval. Rest now follows *every* set, taken from the
+      // exercise just completed — see `RoutineExercises.restSeconds`.
+      //
+      // Renaming the column is `ALTER TABLE … RENAME COLUMN`, which — unlike
+      // the RENAME TABLE steps above — re-points nothing and needs no FK dance.
+      if (from < 15) {
+        await m.renameColumn(
+          routineExercises,
+          'superset_group',
+          routineExercises.circuitGroup,
+        );
+        await m.renameColumn(
+          workoutExercises,
+          'superset_group',
+          workoutExercises.circuitGroup,
+        );
+        await _translateGroupRestV15();
+      }
     },
   );
+
+  /// v14 → v15 data step. The rule itself lives in `circuit_rest_v15.dart`,
+  /// pure and unit-tested; this only reads the rows and writes the result back.
+  ///
+  /// Affected routines get a `version` bump so the translated values win the
+  /// version-LWW arbitration against server and watch copies still holding the
+  /// old layout. Workout snapshots are translated too (a resumed session reads
+  /// its own snapshot) but not bumped: their rest values are never replayed
+  /// into history, so re-pushing every past workout would be noise.
+  Future<void> _translateGroupRestV15() async {
+    const specs = [
+      (table: 'routine_exercises', parent: 'routine_id'),
+      (table: 'workout_exercises', parent: 'workout_id'),
+    ];
+    for (final spec in specs) {
+      final raw = await customSelect(
+        'SELECT sync_id, ${spec.parent} AS parent, circuit_group, rest_seconds '
+        'FROM ${spec.table} ORDER BY ${spec.parent}, order_index',
+      ).get();
+      final plan = translateCircuitRestV15([
+        for (final row in raw)
+          (
+            syncId: row.read<String>('sync_id'),
+            parent: row.read<String>('parent'),
+            group: row.read<int?>('circuit_group'),
+            restSeconds: row.read<int>('rest_seconds'),
+          ),
+      ]);
+      for (final entry in plan.restBySyncId.entries) {
+        await customStatement(
+          'UPDATE ${spec.table} SET rest_seconds = ? WHERE sync_id = ?',
+          [entry.value, entry.key],
+        );
+      }
+      if (spec.table == 'routine_exercises' && plan.parents.isNotEmpty) {
+        final placeholders = List.filled(plan.parents.length, '?').join(', ');
+        await customStatement(
+          'UPDATE routines SET version = version + 1 '
+          'WHERE sync_id IN ($placeholders)',
+          plan.parents.toList(),
+        );
+      }
+    }
+  }
 
   // Standard muscle list (shared constant in muscle_seeds.dart). Seeded
   // idempotently on every open so a fresh DB and an upgraded one both end up
@@ -873,7 +945,7 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> setSupersetGroup(String routineExerciseId, int? group) async {
+  Future<void> setCircuitGroup(String routineExerciseId, int? group) async {
     await transaction(() async {
       final re = await (select(
         routineExercises,
@@ -881,7 +953,7 @@ class AppDatabase extends _$AppDatabase {
       if (re == null) return;
       await (update(routineExercises)
             ..where((t) => t.syncId.equals(routineExerciseId)))
-          .write(RoutineExercisesCompanion(supersetGroup: Value(group)));
+          .write(RoutineExercisesCompanion(circuitGroup: Value(group)));
       await _bumpRoutineVersion(re.routineId);
     });
   }
@@ -1237,7 +1309,7 @@ class AppDatabase extends _$AppDatabase {
           exerciseName: re.exercise.name,
           orderIndex: re.routineExercise.orderIndex,
           restSeconds: Value(re.routineExercise.restSeconds),
-          supersetGroup: Value(re.routineExercise.supersetGroup),
+          circuitGroup: Value(re.routineExercise.circuitGroup),
           kind: Value(re.exercise.kind),
           routineExerciseId: Value(re.routineExercise.syncId),
         ),

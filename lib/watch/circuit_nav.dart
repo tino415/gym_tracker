@@ -2,21 +2,21 @@
 // algorithm can be unit-tested without standing up a widget tree.
 //
 // Position is `(eIdx, sIdx)` — exercise index and set index within that
-// exercise. The walker honours `supersetGroupAt`: a non-null group ID on
+// exercise. The walker honours `circuitGroupAt`: a non-null group ID on
 // consecutive exercises means alternating sets across the group (set i of
 // every group member, then set i+1, …) before moving on to the next
 // standalone exercise or group.
 
-class SupersetSeq {
-  SupersetSeq({
+class CircuitSeq {
+  CircuitSeq({
     required this.exerciseCount,
     required this.setCountAt,
-    required this.supersetGroupAt,
+    required this.circuitGroupAt,
   });
 
   final int exerciseCount;
   final int Function(int eIdx) setCountAt;
-  final int? Function(int eIdx) supersetGroupAt;
+  final int? Function(int eIdx) circuitGroupAt;
 
   /// Returns the position immediately after `(eIdx, sIdx)` in the alternating
   /// sequence, or null if the workout has no more sets.
@@ -49,14 +49,14 @@ class SupersetSeq {
   }
 
   ({int first, int last})? _groupBounds(int eIdx) {
-    final group = supersetGroupAt(eIdx);
+    final group = circuitGroupAt(eIdx);
     if (group == null) return null;
     var first = eIdx;
-    while (first > 0 && supersetGroupAt(first - 1) == group) {
+    while (first > 0 && circuitGroupAt(first - 1) == group) {
       first--;
     }
     var last = eIdx;
-    while (last + 1 < exerciseCount && supersetGroupAt(last + 1) == group) {
+    while (last + 1 < exerciseCount && circuitGroupAt(last + 1) == group) {
       last++;
     }
     return (first: first, last: last);

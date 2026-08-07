@@ -7,7 +7,7 @@ import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../watch/set_target_format.dart' show formatWeight;
 import '../routines/exercise_picker.dart';
-import '../superset_units.dart';
+import '../circuit_units.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({
@@ -106,12 +106,12 @@ class _BodyState extends ConsumerState<_Body> {
   @override
   Widget build(BuildContext context) {
     final db = ref.watch(workoutRepositoryProvider);
-    // Supersets are positional: consecutive exercises sharing a group are one.
+    // Circuits are positional: consecutive exercises sharing a group are one.
     // Reordering therefore moves whole units, so a drag can never interleave
     // two groups and silently change what the workout means.
-    final units = buildSupersetUnits<FullWorkoutExercise>(
+    final units = buildCircuitUnits<FullWorkoutExercise>(
       snap.exercises,
-      (e) => e.workoutExercise.supersetGroup,
+      (e) => e.workoutExercise.circuitGroup,
     );
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
@@ -200,11 +200,11 @@ class _BodyState extends ConsumerState<_Body> {
           )
         else
           for (final unit in units) ...[
-            if (unit.isGroup) const _SupersetHeader(),
+            if (unit.isGroup) const _CircuitHeader(),
             for (final ex in unit.members) ...[
               _ExerciseSection(
                 ex: ex,
-                inSuperset: unit.isGroup,
+                inCircuit: unit.isGroup,
                 onAddSet: () => _addSet(context, ref, ex),
                 onSwapExercise: () => _swapExercise(context, ref, ex),
                 onRemoveExercise: () => _removeExercise(context, ref, ex),
@@ -229,7 +229,7 @@ class _BodyState extends ConsumerState<_Body> {
   }
 
   Future<void> _reorderUnits(
-    List<SupersetUnit<FullWorkoutExercise>> units,
+    List<CircuitUnit<FullWorkoutExercise>> units,
     int oldIndex,
     int newIndex,
   ) => ref.read(workoutRepositoryProvider).reorderWorkoutExercises(
@@ -243,7 +243,7 @@ class _BodyState extends ConsumerState<_Body> {
   );
 
   Future<void> _reorderInside(
-    List<SupersetUnit<FullWorkoutExercise>> units,
+    List<CircuitUnit<FullWorkoutExercise>> units,
     int unitIndex,
     int oldIndex,
     int newIndex,
@@ -476,10 +476,10 @@ class _BodyState extends ConsumerState<_Body> {
   }
 }
 
-/// Labels a run of exercises that form a superset, so reordering them as one
+/// Labels a run of exercises that form a circuit, so reordering them as one
 /// block reads as deliberate rather than as the list refusing to move.
-class _SupersetHeader extends StatelessWidget {
-  const _SupersetHeader();
+class _CircuitHeader extends StatelessWidget {
+  const _CircuitHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -491,7 +491,7 @@ class _SupersetHeader extends StatelessWidget {
           Icon(Icons.link, size: 14, color: theme.colorScheme.primary),
           const SizedBox(width: 4),
           Text(
-            'Superset',
+            'Circuit',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.primary,
             ),
@@ -502,7 +502,7 @@ class _SupersetHeader extends StatelessWidget {
   }
 }
 
-/// One draggable row in reorder mode: a lone exercise, or a superset block
+/// One draggable row in reorder mode: a lone exercise, or a circuit block
 /// whose members can be dragged among themselves but never out of the block.
 class _ReorderUnitTile extends StatelessWidget {
   const _ReorderUnitTile({
@@ -512,7 +512,7 @@ class _ReorderUnitTile extends StatelessWidget {
     required this.onInnerReorder,
   });
 
-  final SupersetUnit<FullWorkoutExercise> unit;
+  final CircuitUnit<FullWorkoutExercise> unit;
   final int index;
   final void Function(int oldIndex, int newIndex) onInnerReorder;
 
@@ -550,7 +550,7 @@ class _ReorderUnitTile extends StatelessWidget {
                     child: const Icon(Icons.drag_handle),
                   ),
                   const SizedBox(width: 12),
-                  const _SupersetHeader(),
+                  const _CircuitHeader(),
                 ],
               ),
             ),
@@ -579,7 +579,7 @@ class _ReorderUnitTile extends StatelessWidget {
 class _ExerciseSection extends ConsumerWidget {
   const _ExerciseSection({
     required this.ex,
-    this.inSuperset = false,
+    this.inCircuit = false,
     required this.onAddSet,
     required this.onSwapExercise,
     required this.onRemoveExercise,
@@ -590,8 +590,8 @@ class _ExerciseSection extends ConsumerWidget {
 
   final FullWorkoutExercise ex;
 
-  /// Indents the card so a superset's members read as one block.
-  final bool inSuperset;
+  /// Indents the card so a circuit's members read as one block.
+  final bool inCircuit;
   final VoidCallback onAddSet;
   final VoidCallback onSwapExercise;
   final VoidCallback onRemoveExercise;
@@ -604,7 +604,7 @@ class _ExerciseSection extends ConsumerWidget {
     final theme = Theme.of(context);
     final exerciseId = ex.workoutExercise.exerciseId;
     return Card(
-      margin: inSuperset
+      margin: inCircuit
           ? const EdgeInsets.only(left: 12)
           : EdgeInsets.zero,
       child: Padding(

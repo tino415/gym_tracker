@@ -20,6 +20,24 @@ const routineDeletedType = 'routine_deleted';
 /// "delete absent" variant is needed.
 const exerciseBundleType = 'exercise_bundle';
 
+/// Reads the circuit group, falling back to the pre-v15 `supersetGroup` key.
+///
+/// Compatibility shim, not a permanent alias: Firestore documents written
+/// before the rename keep the old key until something bumps their version and
+/// rewrites them, and past workout docs never will (their version is frozen).
+/// Without this a synced history entry would come back ungrouped. Safe to drop
+/// once no old documents remain.
+///
+/// Keys on *presence*, not on null: the web edits a document in place, so an
+/// ungrouped exercise can carry `circuitGroup: null` next to a stale
+/// `supersetGroup: 1`, and `??` would revive the group it just removed.
+int? _readCircuitGroup(Map<String, Object?> json) {
+  final raw = json.containsKey('circuitGroup')
+      ? json['circuitGroup']
+      : json['supersetGroup'];
+  return (raw as num?)?.toInt();
+}
+
 /// Structural equality for JSON-shaped values (the DTO payloads are maps of
 /// primitives, lists, and nested maps — no Firestore Timestamps, since all
 /// times are stored as epoch-millisecond ints). Dart's `Map ==` is identity, so
@@ -172,7 +190,7 @@ class RoutineExerciseDto {
     required this.exerciseKind,
     required this.orderIndex,
     required this.restSeconds,
-    required this.supersetGroup,
+    required this.circuitGroup,
     required this.plannedSets,
     this.alternatives = const [],
     this.muscleSyncIds = const [],
@@ -184,7 +202,7 @@ class RoutineExerciseDto {
   final String exerciseKind;
   final int orderIndex;
   final int restSeconds;
-  final int? supersetGroup;
+  final int? circuitGroup;
   final List<PlannedSetDto> plannedSets;
   final List<AlternativeRefDto> alternatives;
   // Sync ids of muscles tagged on the canonical exercise. Receiver applies
@@ -198,7 +216,7 @@ class RoutineExerciseDto {
     'exerciseKind': exerciseKind,
     'orderIndex': orderIndex,
     'restSeconds': restSeconds,
-    'supersetGroup': supersetGroup,
+    'circuitGroup': circuitGroup,
     'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
     'alternatives': alternatives.map((a) => a.toJson()).toList(),
     'muscleSyncIds': muscleSyncIds,
@@ -216,7 +234,7 @@ class RoutineExerciseDto {
           (json['exerciseKind'] as String?) ?? exerciseKindReps,
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
-      supersetGroup: (json['supersetGroup'] as num?)?.toInt(),
+      circuitGroup: _readCircuitGroup(json),
       plannedSets: raw
           .map(
             (m) => PlannedSetDto.fromJson((m as Map).cast<String, Object?>()),
@@ -239,7 +257,7 @@ class RoutineExerciseDto {
       exerciseKind: re.exercise.kind,
       orderIndex: re.routineExercise.orderIndex,
       restSeconds: re.routineExercise.restSeconds,
-      supersetGroup: re.routineExercise.supersetGroup,
+      circuitGroup: re.routineExercise.circuitGroup,
       plannedSets: [
         for (final s in re.plannedSets) PlannedSetDto.fromPlannedSet(s),
       ],
@@ -583,7 +601,7 @@ class WorkoutExerciseDto {
     required this.kind,
     required this.orderIndex,
     required this.restSeconds,
-    required this.supersetGroup,
+    required this.circuitGroup,
     required this.sets,
     this.routineExerciseSyncId,
   });
@@ -594,7 +612,7 @@ class WorkoutExerciseDto {
   final String kind;
   final int orderIndex;
   final int restSeconds;
-  final int? supersetGroup;
+  final int? circuitGroup;
   final List<WorkoutSetDto> sets;
   // Sync id of the routine slot the workout exercise was created from. The
   // receiver resolves this to a local routine_exercise row to enable
@@ -608,7 +626,7 @@ class WorkoutExerciseDto {
     'kind': kind,
     'orderIndex': orderIndex,
     'restSeconds': restSeconds,
-    'supersetGroup': supersetGroup,
+    'circuitGroup': circuitGroup,
     'sets': sets.map((s) => s.toJson()).toList(),
     'routineExerciseSyncId': routineExerciseSyncId,
   };
@@ -622,7 +640,7 @@ class WorkoutExerciseDto {
       kind: (json['kind'] as String?) ?? exerciseKindReps,
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
-      supersetGroup: (json['supersetGroup'] as num?)?.toInt(),
+      circuitGroup: _readCircuitGroup(json),
       sets: raw
           .map(
             (m) => WorkoutSetDto.fromJson((m as Map).cast<String, Object?>()),

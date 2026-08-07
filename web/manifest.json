@@ -6,7 +6,7 @@
     "display": "standalone",
     "background_color": "#673AB7",
     "theme_color": "#673AB7",
-    "description": "Offline-first gym workout tracker — routines, supersets, timed sets and workout history.",
+    "description": "Offline-first gym workout tracker — routines, circuits, timed sets and workout history.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

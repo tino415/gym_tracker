@@ -117,7 +117,7 @@ void main() {
     expect(slot.plannedSets, isEmpty);
   });
 
-  test('rest, superset, and reorder operate by child syncId', () async {
+  test('rest, circuit, and reorder operate by child syncId', () async {
     final ex = await exercises.createExercise('Bench');
     final r = await routines.createRoutine('Push');
     final a = await routines.addExerciseToRoutine(
@@ -130,7 +130,7 @@ void main() {
     );
 
     await routines.setRestSeconds(a.syncId, 120);
-    await routines.setSupersetGroup(b.syncId, 1);
+    await routines.setCircuitGroup(b.syncId, 1);
     await routines.reorderRoutineExercises(
       routineId: r.syncId,
       orderedIds: [b.syncId, a.syncId],
@@ -142,7 +142,7 @@ void main() {
     final aSlot = full.exercises.firstWhere((e) => e.routineExercise.syncId == a.syncId);
     final bSlot = full.exercises.firstWhere((e) => e.routineExercise.syncId == b.syncId);
     expect(aSlot.routineExercise.restSeconds, 120);
-    expect(bSlot.routineExercise.supersetGroup, 1);
+    expect(bSlot.routineExercise.circuitGroup, 1);
   });
 
   test('alternatives: add alternative + its planned set, then remove', () async {

@@ -13,7 +13,7 @@ import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'heart_rate_thinning.dart';
 import 'set_target_format.dart';
-import 'superset_nav.dart';
+import 'circuit_nav.dart';
 import 'watch_alternative_picker_page.dart';
 import 'watch_exercise_preview_page.dart';
 import 'watch_workout_done_page.dart';
@@ -350,17 +350,17 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     return widget.routine!.exercises[eIdx].plannedSets.length;
   }
 
-  int? _supersetGroupAt(int eIdx) {
+  int? _circuitGroupAt(int eIdx) {
     if (_snapshot != null) {
-      return _snapshot!.exercises[eIdx].workoutExercise.supersetGroup;
+      return _snapshot!.exercises[eIdx].workoutExercise.circuitGroup;
     }
-    return widget.routine!.exercises[eIdx].routineExercise.supersetGroup;
+    return widget.routine!.exercises[eIdx].routineExercise.circuitGroup;
   }
 
-  SupersetSeq get _seq => SupersetSeq(
+  CircuitSeq get _seq => CircuitSeq(
     exerciseCount: _exerciseCount(),
     setCountAt: _setCount,
-    supersetGroupAt: _supersetGroupAt,
+    circuitGroupAt: _circuitGroupAt,
   );
 
   ({int eIdx, int sIdx})? _nextAfter(int eIdx, int sIdx) =>
@@ -399,21 +399,6 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   ({int eIdx, int sIdx})? _prevBefore(int eIdx, int sIdx) =>
       _seq.prevBefore(eIdx, sIdx);
 
-  ({int first, int last})? _groupBounds(int eIdx) {
-    final group = _supersetGroupAt(eIdx);
-    if (group == null) return null;
-    var first = eIdx;
-    while (first > 0 && _supersetGroupAt(first - 1) == group) {
-      first--;
-    }
-    var last = eIdx;
-    while (last + 1 < _exerciseCount() &&
-        _supersetGroupAt(last + 1) == group) {
-      last++;
-    }
-    return (first: first, last: last);
-  }
-
   String _currentKind() {
     if (_snapshot != null) return _snapshot!.exercises[_exerciseIdx].kind;
     return widget.routine!.exercises[_exerciseIdx].kind;
@@ -427,14 +412,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   }
 
   int _currentRestSeconds() {
-    // In a superset, rest is one shared interval after the round — use the
-    // first exercise of the contiguous group as the canonical rest source.
-    final group = _groupBounds(_exerciseIdx);
-    final useEIdx = group?.first ?? _exerciseIdx;
+    // Rest belongs to the exercise whose set was just completed: inside a
+    // circuit that is the pause to the next member, and on the last member of
+    // a round it is the round rest. Mirrors the phone.
     if (_snapshot != null) {
-      return _snapshot!.exercises[useEIdx].workoutExercise.restSeconds;
+      return _snapshot!.exercises[_exerciseIdx].workoutExercise.restSeconds;
     }
-    return widget.routine!.exercises[useEIdx].routineExercise.restSeconds;
+    return widget.routine!.exercises[_exerciseIdx].routineExercise.restSeconds;
   }
 
   String _routineName() =>
@@ -587,16 +571,14 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     HapticFeedback.heavyImpact();
     final next = _nextForCompletion();
     if (next != null) {
-      final sameRoundInGroup = next.sIdx == _setIdx &&
-          next.eIdx > _exerciseIdx &&
-          _supersetGroupAt(next.eIdx) != null &&
-          _supersetGroupAt(next.eIdx) == _supersetGroupAt(_exerciseIdx);
-      if (sameRoundInGroup) {
-        // Same round, next superset member — immediate advance.
+      // Every set is followed by its own exercise's rest. Zero means advance
+      // straight away (a classic superset between two circuit members);
+      // `_startRest(0)` would show a 1s countdown instead. Mirrors the phone.
+      final rest = _currentRestSeconds();
+      if (rest == 0) {
         _goTo(next.eIdx, next.sIdx);
       } else {
-        // New round, new exercise, or a return to skipped work — rest first.
-        _startRest(_currentRestSeconds());
+        _startRest(rest);
       }
       return;
     }
@@ -615,7 +597,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     _advanceAfterSkip();
   }
 
-  /// Skip every remaining set of the current exercise slot. In a superset only
+  /// Skip every remaining set of the current exercise slot. In a circuit only
   /// this slot's sets are skipped — the other group members keep their turns
   /// via the alternation walker. Confirmed first, since it can drop several
   /// sets at once.
@@ -1213,7 +1195,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
             totalSets: e.sets.length,
             doneSets:
                 e.sets.where((s) => s.completion != null).length,
-            supersetGroup: e.workoutExercise.supersetGroup,
+            circuitGroup: e.workoutExercise.circuitGroup,
             kind: e.kind,
           ),
       ];
@@ -1224,7 +1206,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
           name: e.exercise.name,
           totalSets: e.plannedSets.length,
           doneSets: 0,
-          supersetGroup: e.routineExercise.supersetGroup,
+          circuitGroup: e.routineExercise.circuitGroup,
           kind: e.kind,
         ),
     ];
@@ -1248,14 +1230,14 @@ class _ExerciseListItem {
     required this.name,
     required this.totalSets,
     required this.doneSets,
-    required this.supersetGroup,
+    required this.circuitGroup,
     required this.kind,
   });
 
   final String name;
   final int totalSets;
   final int doneSets;
-  final int? supersetGroup;
+  final int? circuitGroup;
   final String kind;
 }
 
@@ -2071,7 +2053,7 @@ class _ExerciseListView extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        if (ex.supersetGroup != null)
+                        if (ex.circuitGroup != null)
                           Padding(
                             padding: const EdgeInsets.only(right: 4),
                             child: Icon(

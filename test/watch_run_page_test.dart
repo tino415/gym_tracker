@@ -21,8 +21,9 @@ Future<FullRoutine> _seedRoutine(
       routineId: routine.syncId,
       exerciseId: ex.syncId,
     );
-    if (restSeconds != null) await db.setRestSeconds(re.syncId, restSeconds);
-    if (fx.group != null) await db.setSupersetGroup(re.syncId, fx.group);
+    final rest = fx.rest ?? restSeconds;
+    if (rest != null) await db.setRestSeconds(re.syncId, rest);
+    if (fx.group != null) await db.setCircuitGroup(re.syncId, fx.group);
     for (final s in fx.sets) {
       await db.addPlannedSet(
         routineExerciseId: re.syncId,
@@ -42,11 +43,15 @@ class _ExerciseFixture {
     this.kind = exerciseKindReps,
     required this.sets,
     this.group,
+    this.rest,
   });
   final String name;
   final String kind;
   final List<_SetFixture> sets;
   final int? group;
+  /// Rest after this exercise's set, overriding `_seedRoutine`'s shared value.
+  /// Rest is per-exercise, so circuit members need to differ.
+  final int? rest;
 }
 
 class _SetFixture {
@@ -175,19 +180,21 @@ void main() {
     });
   });
 
-  group('Watch run page — superset alternation', () {
-    testWidgets('A.set0 → B.set0 has no rest; round end starts rest then A.set1',
+  group('Watch run page — circuit alternation', () {
+    testWidgets('zero rest on A: A.set0 → B.set0 straight through, then rest',
         (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
       final routine = await _seedRoutine(
         db,
         name: 'Super',
-        restSeconds: 2,
         exercises: const [
+          // The classic superset: nothing between the members, one rest at the
+          // end of the round, carried by the member that ends it.
           _ExerciseFixture(
             name: 'A',
             group: 1,
+            rest: 0,
             sets: [
               _SetFixture(reps: 5, weight: 50),
               _SetFixture(reps: 5, weight: 50),
@@ -196,6 +203,7 @@ void main() {
           _ExerciseFixture(
             name: 'B',
             group: 1,
+            rest: 2,
             sets: [
               _SetFixture(reps: 8, weight: 20),
               _SetFixture(reps: 8, weight: 20),
@@ -211,7 +219,7 @@ void main() {
       expect(find.text('A'), findsWidgets);
       expect(find.text('1/2'), findsOneWidget);
 
-      // Mark A.set0 — should jump straight to B.set0 (no rest in superset).
+      // Mark A.set0 — should jump straight to B.set0 (no rest in circuit).
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pumpAndSettle();
       expect(find.text('B'), findsWidgets);
@@ -231,6 +239,60 @@ void main() {
       // Should now be at A.set1.
       expect(find.text('A'), findsWidgets);
       expect(find.text('2/2'), findsOneWidget);
+    });
+
+    testWidgets('a member with its own rest pauses before the next member',
+        (tester) async {
+      // The left/right case: a short pause between sides, the full rest after
+      // the round. Each member carries the rest that follows its own set.
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Arms',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'L',
+            group: 1,
+            rest: 1,
+            sets: [
+              _SetFixture(reps: 8, weight: 12),
+              _SetFixture(reps: 8, weight: 12),
+            ],
+          ),
+          _ExerciseFixture(
+            name: 'R',
+            group: 1,
+            rest: 3,
+            sets: [
+              _SetFixture(reps: 8, weight: 12),
+              _SetFixture(reps: 8, weight: 12),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      expect(find.text('L'), findsWidgets);
+
+      // Left side done: L's 1 s rest runs before the right side.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+      expect(find.text('Up next: R'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('R'), findsWidgets);
+      // Still round one — the pause did not advance the set index.
+      expect(find.text('1/2'), findsOneWidget);
+
+      // Right side done: the round rest, R's own longer value.
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('Rest'), findsOneWidget);
+      expect(find.text('Up next: L'), findsOneWidget);
     });
   });
 
@@ -555,7 +617,7 @@ void main() {
       );
     });
 
-    testWidgets('"Skip exercise" in a superset keeps the other member',
+    testWidgets('"Skip exercise" in a circuit keeps the other member',
         (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);

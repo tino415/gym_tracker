@@ -7,7 +7,7 @@ import 'repositories.dart';
 const bool seedDemoEnabled = bool.fromEnvironment('SEED_DEMO');
 
 /// Fills an empty install with routines that exercise the cases worth checking
-/// by hand: reps sets, a superset pair (alternation + shared rest), and a
+/// by hand: reps sets, a circuit pair (alternation + per-member rest), and a
 /// time-kind hold. Building these through the UI takes a couple of dozen taps
 /// and is easy to get subtly wrong, which makes on-device verification far more
 /// tedious than the thing being verified.
@@ -36,15 +36,15 @@ Future<void> seedDemoData({
     double? weightKg,
     int? seconds,
     int restSeconds = 90,
-    int? supersetGroup,
+    int? circuitGroup,
   }) async {
     final re = await routines.addExerciseToRoutine(
       routineId: routineId,
       exerciseId: exerciseId,
     );
     await routines.setRestSeconds(re.syncId, restSeconds);
-    if (supersetGroup != null) {
-      await routines.setSupersetGroup(re.syncId, supersetGroup);
+    if (circuitGroup != null) {
+      await routines.setCircuitGroup(re.syncId, circuitGroup);
     }
     for (var i = 0; i < sets; i++) {
       await routines.addPlannedSet(
@@ -62,13 +62,16 @@ Future<void> seedDemoData({
   final plank = await exercise('Plank', kind: exerciseKindTime);
   final legRaise = await exercise('Hanging Leg Raise');
 
-  // A standalone exercise followed by a superset pair — enough to see the
-  // walker alternate between members and rest only at the end of a round.
+  // A standalone exercise followed by a circuit pair — enough to see the
+  // walker alternate between members. Rest 0 on the first member is what makes
+  // it a classic superset: straight into the second, then a rest at the end of
+  // the round, carried by the member that closes it.
   final push = await routines.createRoutine('Demo Push');
   await slot(push.syncId, bench, sets: 3, reps: 8, weightKg: 60);
-  await slot(push.syncId, fly, sets: 3, reps: 12, weightKg: 15, supersetGroup: 1);
+  await slot(push.syncId, fly,
+      sets: 3, reps: 12, weightKg: 15, circuitGroup: 1, restSeconds: 0);
   await slot(push.syncId, pushdown,
-      sets: 3, reps: 12, weightKg: 25, supersetGroup: 1);
+      sets: 3, reps: 12, weightKg: 25, circuitGroup: 1);
 
   // Short rests so the rest countdown can actually be watched to completion.
   final core = await routines.createRoutine('Demo Core');

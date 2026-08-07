@@ -1,19 +1,19 @@
 /// Grouping and reordering for lists where consecutive items sharing a
-/// non-null superset group form one block.
+/// non-null circuit group form one block.
 ///
-/// Supersets are encoded positionally: `RoutineExercises.supersetGroup` /
-/// `WorkoutExercises.supersetGroup` mean "a superset" only while the members
-/// stay *adjacent* (see `lib/watch/superset_nav.dart`, which walks them in that
+/// Circuits are encoded positionally: `RoutineExercises.circuitGroup` /
+/// `WorkoutExercises.circuitGroup` mean "a circuit" only while the members
+/// stay *adjacent* (see `lib/watch/circuit_nav.dart`, which walks them in that
 /// order). A flat drag-and-drop can interleave two groups and silently change
-/// what the list means, so reordering works on units — a superset moves as one
+/// what the list means, so reordering works on units — a circuit moves as one
 /// block, and members reorder only within their own block.
 ///
 /// Deliberately generic and free of Flutter and Drift, so both the routine and
 /// workout editors can share it and it can be tested in isolation.
 library;
 
-class SupersetUnit<T> {
-  SupersetUnit(this.members);
+class CircuitUnit<T> {
+  CircuitUnit(this.members);
 
   final List<T> members;
 
@@ -24,18 +24,18 @@ class SupersetUnit<T> {
 /// Collapse [items] into units: runs of consecutive items sharing the same
 /// non-null group become one unit, everything else stands alone.
 ///
-/// A run of length one is a single, not a group — a "superset" with one member
-/// is not a superset, and rendering it as a block would be misleading.
-List<SupersetUnit<T>> buildSupersetUnits<T>(
+/// A run of length one is a single, not a group — a "circuit" with one member
+/// is not a circuit, and rendering it as a block would be misleading.
+List<CircuitUnit<T>> buildCircuitUnits<T>(
   List<T> items,
   int? Function(T) groupOf,
 ) {
-  final units = <SupersetUnit<T>>[];
+  final units = <CircuitUnit<T>>[];
   var i = 0;
   while (i < items.length) {
     final g = groupOf(items[i]);
     if (g == null) {
-      units.add(SupersetUnit([items[i]]));
+      units.add(CircuitUnit([items[i]]));
       i++;
       continue;
     }
@@ -43,7 +43,7 @@ List<SupersetUnit<T>> buildSupersetUnits<T>(
     while (j < items.length && groupOf(items[j]) == g) {
       j++;
     }
-    units.add(SupersetUnit(items.sublist(i, j)));
+    units.add(CircuitUnit(items.sublist(i, j)));
     i = j;
   }
   return units;
@@ -55,12 +55,12 @@ List<SupersetUnit<T>> buildSupersetUnits<T>(
 /// [newIndex] follows Flutter's [ReorderableListView] convention, where an
 /// index past the original position counts the item still being in place.
 List<String> reorderUnits<T>(
-  List<SupersetUnit<T>> units,
+  List<CircuitUnit<T>> units,
   int oldIndex,
   int newIndex,
   String Function(T) idOf,
 ) {
-  final list = List<SupersetUnit<T>>.from(units);
+  final list = List<CircuitUnit<T>>.from(units);
   var insertAt = newIndex;
   if (newIndex > oldIndex) insertAt -= 1;
   final moved = list.removeAt(oldIndex);
@@ -74,7 +74,7 @@ List<String> reorderUnits<T>(
 /// Move a member within the unit at [unitIndex], leaving every other unit and
 /// the units' order untouched. Keeps the group contiguous by construction.
 List<String> reorderWithinUnit<T>(
-  List<SupersetUnit<T>> units,
+  List<CircuitUnit<T>> units,
   int unitIndex,
   int oldIndex,
   int newIndex,

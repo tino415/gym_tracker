@@ -56,8 +56,8 @@ class DriftRoutineRepository implements RoutineRepository {
       _db.setRestSeconds(routineExerciseId, seconds);
 
   @override
-  Future<void> setSupersetGroup(String routineExerciseId, int? group) =>
-      _db.setSupersetGroup(routineExerciseId, group);
+  Future<void> setCircuitGroup(String routineExerciseId, int? group) =>
+      _db.setCircuitGroup(routineExerciseId, group);
 
   @override
   Future<PlannedSet> addPlannedSet({

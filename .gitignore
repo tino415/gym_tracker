@@ -51,3 +51,6 @@ app.*.map.json
 /.firebase/
 
 /.dir-locals.el
+
+# Local database backups (see `just backup-phone` / `backup-firestore`)
+/backups/

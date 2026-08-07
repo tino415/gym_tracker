@@ -44,7 +44,7 @@ void main() {
     'kind': 'reps',
     'orderIndex': 0,
     'restSeconds': 90,
-    'supersetGroup': null,
+    'circuitGroup': null,
     'sets': sets,
     'routineExerciseSyncId': null,
   };
@@ -101,7 +101,7 @@ void main() {
     'exerciseKind': kind,
     'orderIndex': 0,
     'restSeconds': 90,
-    'supersetGroup': null,
+    'circuitGroup': null,
     'plannedSets': plannedSets,
     'alternatives': alternatives,
     'muscleSyncIds': <String>[],
@@ -134,7 +134,7 @@ void main() {
     'kind': kind,
     'orderIndex': 0,
     'restSeconds': 90,
-    'supersetGroup': null,
+    'circuitGroup': null,
     'sets': sets,
     'routineExerciseSyncId': reId,
   };

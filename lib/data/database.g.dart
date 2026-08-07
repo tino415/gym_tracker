@@ -47,7 +47,7 @@ class $ExercisesTable extends Exercises
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant(exerciseKindReps),
+    defaultValue: const Constant('reps'),
   );
   static const VerificationMeta _versionMeta = const VerificationMeta(
     'version',
@@ -837,12 +837,12 @@ class $RoutineExercisesTable extends RoutineExercises
     requiredDuringInsert: false,
     defaultValue: const Constant(90),
   );
-  static const VerificationMeta _supersetGroupMeta = const VerificationMeta(
-    'supersetGroup',
+  static const VerificationMeta _circuitGroupMeta = const VerificationMeta(
+    'circuitGroup',
   );
   @override
-  late final GeneratedColumn<int> supersetGroup = GeneratedColumn<int>(
-    'superset_group',
+  late final GeneratedColumn<int> circuitGroup = GeneratedColumn<int>(
+    'circuit_group',
     aliasedName,
     true,
     type: DriftSqlType.int,
@@ -855,7 +855,7 @@ class $RoutineExercisesTable extends RoutineExercises
     exerciseId,
     orderIndex,
     restSeconds,
-    supersetGroup,
+    circuitGroup,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -910,12 +910,12 @@ class $RoutineExercisesTable extends RoutineExercises
         ),
       );
     }
-    if (data.containsKey('superset_group')) {
+    if (data.containsKey('circuit_group')) {
       context.handle(
-        _supersetGroupMeta,
-        supersetGroup.isAcceptableOrUnknown(
-          data['superset_group']!,
-          _supersetGroupMeta,
+        _circuitGroupMeta,
+        circuitGroup.isAcceptableOrUnknown(
+          data['circuit_group']!,
+          _circuitGroupMeta,
         ),
       );
     }
@@ -948,9 +948,9 @@ class $RoutineExercisesTable extends RoutineExercises
         DriftSqlType.int,
         data['${effectivePrefix}rest_seconds'],
       )!,
-      supersetGroup: attachedDatabase.typeMapping.read(
+      circuitGroup: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}superset_group'],
+        data['${effectivePrefix}circuit_group'],
       ),
     );
   }
@@ -967,14 +967,14 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
   final String exerciseId;
   final int orderIndex;
   final int restSeconds;
-  final int? supersetGroup;
+  final int? circuitGroup;
   const RoutineExercise({
     required this.syncId,
     required this.routineId,
     required this.exerciseId,
     required this.orderIndex,
     required this.restSeconds,
-    this.supersetGroup,
+    this.circuitGroup,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -984,8 +984,8 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
     map['exercise_id'] = Variable<String>(exerciseId);
     map['order_index'] = Variable<int>(orderIndex);
     map['rest_seconds'] = Variable<int>(restSeconds);
-    if (!nullToAbsent || supersetGroup != null) {
-      map['superset_group'] = Variable<int>(supersetGroup);
+    if (!nullToAbsent || circuitGroup != null) {
+      map['circuit_group'] = Variable<int>(circuitGroup);
     }
     return map;
   }
@@ -997,9 +997,9 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
       exerciseId: Value(exerciseId),
       orderIndex: Value(orderIndex),
       restSeconds: Value(restSeconds),
-      supersetGroup: supersetGroup == null && nullToAbsent
+      circuitGroup: circuitGroup == null && nullToAbsent
           ? const Value.absent()
-          : Value(supersetGroup),
+          : Value(circuitGroup),
     );
   }
 
@@ -1014,7 +1014,7 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
       exerciseId: serializer.fromJson<String>(json['exerciseId']),
       orderIndex: serializer.fromJson<int>(json['orderIndex']),
       restSeconds: serializer.fromJson<int>(json['restSeconds']),
-      supersetGroup: serializer.fromJson<int?>(json['supersetGroup']),
+      circuitGroup: serializer.fromJson<int?>(json['circuitGroup']),
     );
   }
   @override
@@ -1026,7 +1026,7 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
       'exerciseId': serializer.toJson<String>(exerciseId),
       'orderIndex': serializer.toJson<int>(orderIndex),
       'restSeconds': serializer.toJson<int>(restSeconds),
-      'supersetGroup': serializer.toJson<int?>(supersetGroup),
+      'circuitGroup': serializer.toJson<int?>(circuitGroup),
     };
   }
 
@@ -1036,16 +1036,14 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
     String? exerciseId,
     int? orderIndex,
     int? restSeconds,
-    Value<int?> supersetGroup = const Value.absent(),
+    Value<int?> circuitGroup = const Value.absent(),
   }) => RoutineExercise(
     syncId: syncId ?? this.syncId,
     routineId: routineId ?? this.routineId,
     exerciseId: exerciseId ?? this.exerciseId,
     orderIndex: orderIndex ?? this.orderIndex,
     restSeconds: restSeconds ?? this.restSeconds,
-    supersetGroup: supersetGroup.present
-        ? supersetGroup.value
-        : this.supersetGroup,
+    circuitGroup: circuitGroup.present ? circuitGroup.value : this.circuitGroup,
   );
   RoutineExercise copyWithCompanion(RoutineExercisesCompanion data) {
     return RoutineExercise(
@@ -1060,9 +1058,9 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
       restSeconds: data.restSeconds.present
           ? data.restSeconds.value
           : this.restSeconds,
-      supersetGroup: data.supersetGroup.present
-          ? data.supersetGroup.value
-          : this.supersetGroup,
+      circuitGroup: data.circuitGroup.present
+          ? data.circuitGroup.value
+          : this.circuitGroup,
     );
   }
 
@@ -1074,7 +1072,7 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
           ..write('exerciseId: $exerciseId, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('restSeconds: $restSeconds, ')
-          ..write('supersetGroup: $supersetGroup')
+          ..write('circuitGroup: $circuitGroup')
           ..write(')'))
         .toString();
   }
@@ -1086,7 +1084,7 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
     exerciseId,
     orderIndex,
     restSeconds,
-    supersetGroup,
+    circuitGroup,
   );
   @override
   bool operator ==(Object other) =>
@@ -1097,7 +1095,7 @@ class RoutineExercise extends DataClass implements Insertable<RoutineExercise> {
           other.exerciseId == this.exerciseId &&
           other.orderIndex == this.orderIndex &&
           other.restSeconds == this.restSeconds &&
-          other.supersetGroup == this.supersetGroup);
+          other.circuitGroup == this.circuitGroup);
 }
 
 class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
@@ -1106,7 +1104,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
   final Value<String> exerciseId;
   final Value<int> orderIndex;
   final Value<int> restSeconds;
-  final Value<int?> supersetGroup;
+  final Value<int?> circuitGroup;
   final Value<int> rowid;
   const RoutineExercisesCompanion({
     this.syncId = const Value.absent(),
@@ -1114,7 +1112,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
     this.exerciseId = const Value.absent(),
     this.orderIndex = const Value.absent(),
     this.restSeconds = const Value.absent(),
-    this.supersetGroup = const Value.absent(),
+    this.circuitGroup = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   RoutineExercisesCompanion.insert({
@@ -1123,7 +1121,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
     required String exerciseId,
     required int orderIndex,
     this.restSeconds = const Value.absent(),
-    this.supersetGroup = const Value.absent(),
+    this.circuitGroup = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        routineId = Value(routineId),
@@ -1135,7 +1133,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
     Expression<String>? exerciseId,
     Expression<int>? orderIndex,
     Expression<int>? restSeconds,
-    Expression<int>? supersetGroup,
+    Expression<int>? circuitGroup,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1144,7 +1142,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
       if (exerciseId != null) 'exercise_id': exerciseId,
       if (orderIndex != null) 'order_index': orderIndex,
       if (restSeconds != null) 'rest_seconds': restSeconds,
-      if (supersetGroup != null) 'superset_group': supersetGroup,
+      if (circuitGroup != null) 'circuit_group': circuitGroup,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1155,7 +1153,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
     Value<String>? exerciseId,
     Value<int>? orderIndex,
     Value<int>? restSeconds,
-    Value<int?>? supersetGroup,
+    Value<int?>? circuitGroup,
     Value<int>? rowid,
   }) {
     return RoutineExercisesCompanion(
@@ -1164,7 +1162,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
       exerciseId: exerciseId ?? this.exerciseId,
       orderIndex: orderIndex ?? this.orderIndex,
       restSeconds: restSeconds ?? this.restSeconds,
-      supersetGroup: supersetGroup ?? this.supersetGroup,
+      circuitGroup: circuitGroup ?? this.circuitGroup,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1187,8 +1185,8 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
     if (restSeconds.present) {
       map['rest_seconds'] = Variable<int>(restSeconds.value);
     }
-    if (supersetGroup.present) {
-      map['superset_group'] = Variable<int>(supersetGroup.value);
+    if (circuitGroup.present) {
+      map['circuit_group'] = Variable<int>(circuitGroup.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -1204,7 +1202,7 @@ class RoutineExercisesCompanion extends UpdateCompanion<RoutineExercise> {
           ..write('exerciseId: $exerciseId, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('restSeconds: $restSeconds, ')
-          ..write('supersetGroup: $supersetGroup, ')
+          ..write('circuitGroup: $circuitGroup, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3549,12 +3547,12 @@ class $WorkoutExercisesTable extends WorkoutExercises
     requiredDuringInsert: false,
     defaultValue: const Constant(90),
   );
-  static const VerificationMeta _supersetGroupMeta = const VerificationMeta(
-    'supersetGroup',
+  static const VerificationMeta _circuitGroupMeta = const VerificationMeta(
+    'circuitGroup',
   );
   @override
-  late final GeneratedColumn<int> supersetGroup = GeneratedColumn<int>(
-    'superset_group',
+  late final GeneratedColumn<int> circuitGroup = GeneratedColumn<int>(
+    'circuit_group',
     aliasedName,
     true,
     type: DriftSqlType.int,
@@ -3568,7 +3566,7 @@ class $WorkoutExercisesTable extends WorkoutExercises
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant(exerciseKindReps),
+    defaultValue: const Constant('reps'),
   );
   static const VerificationMeta _routineExerciseIdMeta = const VerificationMeta(
     'routineExerciseId',
@@ -3593,7 +3591,7 @@ class $WorkoutExercisesTable extends WorkoutExercises
     exerciseName,
     orderIndex,
     restSeconds,
-    supersetGroup,
+    circuitGroup,
     kind,
     routineExerciseId,
   ];
@@ -3659,12 +3657,12 @@ class $WorkoutExercisesTable extends WorkoutExercises
         ),
       );
     }
-    if (data.containsKey('superset_group')) {
+    if (data.containsKey('circuit_group')) {
       context.handle(
-        _supersetGroupMeta,
-        supersetGroup.isAcceptableOrUnknown(
-          data['superset_group']!,
-          _supersetGroupMeta,
+        _circuitGroupMeta,
+        circuitGroup.isAcceptableOrUnknown(
+          data['circuit_group']!,
+          _circuitGroupMeta,
         ),
       );
     }
@@ -3716,9 +3714,9 @@ class $WorkoutExercisesTable extends WorkoutExercises
         DriftSqlType.int,
         data['${effectivePrefix}rest_seconds'],
       )!,
-      supersetGroup: attachedDatabase.typeMapping.read(
+      circuitGroup: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}superset_group'],
+        data['${effectivePrefix}circuit_group'],
       ),
       kind: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -3744,7 +3742,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
   final String exerciseName;
   final int orderIndex;
   final int restSeconds;
-  final int? supersetGroup;
+  final int? circuitGroup;
   final String kind;
   final String? routineExerciseId;
   const WorkoutExercise({
@@ -3754,7 +3752,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     required this.exerciseName,
     required this.orderIndex,
     required this.restSeconds,
-    this.supersetGroup,
+    this.circuitGroup,
     required this.kind,
     this.routineExerciseId,
   });
@@ -3769,8 +3767,8 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     map['exercise_name'] = Variable<String>(exerciseName);
     map['order_index'] = Variable<int>(orderIndex);
     map['rest_seconds'] = Variable<int>(restSeconds);
-    if (!nullToAbsent || supersetGroup != null) {
-      map['superset_group'] = Variable<int>(supersetGroup);
+    if (!nullToAbsent || circuitGroup != null) {
+      map['circuit_group'] = Variable<int>(circuitGroup);
     }
     map['kind'] = Variable<String>(kind);
     if (!nullToAbsent || routineExerciseId != null) {
@@ -3789,9 +3787,9 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       exerciseName: Value(exerciseName),
       orderIndex: Value(orderIndex),
       restSeconds: Value(restSeconds),
-      supersetGroup: supersetGroup == null && nullToAbsent
+      circuitGroup: circuitGroup == null && nullToAbsent
           ? const Value.absent()
-          : Value(supersetGroup),
+          : Value(circuitGroup),
       kind: Value(kind),
       routineExerciseId: routineExerciseId == null && nullToAbsent
           ? const Value.absent()
@@ -3811,7 +3809,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       exerciseName: serializer.fromJson<String>(json['exerciseName']),
       orderIndex: serializer.fromJson<int>(json['orderIndex']),
       restSeconds: serializer.fromJson<int>(json['restSeconds']),
-      supersetGroup: serializer.fromJson<int?>(json['supersetGroup']),
+      circuitGroup: serializer.fromJson<int?>(json['circuitGroup']),
       kind: serializer.fromJson<String>(json['kind']),
       routineExerciseId: serializer.fromJson<String?>(
         json['routineExerciseId'],
@@ -3828,7 +3826,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       'exerciseName': serializer.toJson<String>(exerciseName),
       'orderIndex': serializer.toJson<int>(orderIndex),
       'restSeconds': serializer.toJson<int>(restSeconds),
-      'supersetGroup': serializer.toJson<int?>(supersetGroup),
+      'circuitGroup': serializer.toJson<int?>(circuitGroup),
       'kind': serializer.toJson<String>(kind),
       'routineExerciseId': serializer.toJson<String?>(routineExerciseId),
     };
@@ -3841,7 +3839,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     String? exerciseName,
     int? orderIndex,
     int? restSeconds,
-    Value<int?> supersetGroup = const Value.absent(),
+    Value<int?> circuitGroup = const Value.absent(),
     String? kind,
     Value<String?> routineExerciseId = const Value.absent(),
   }) => WorkoutExercise(
@@ -3851,9 +3849,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     exerciseName: exerciseName ?? this.exerciseName,
     orderIndex: orderIndex ?? this.orderIndex,
     restSeconds: restSeconds ?? this.restSeconds,
-    supersetGroup: supersetGroup.present
-        ? supersetGroup.value
-        : this.supersetGroup,
+    circuitGroup: circuitGroup.present ? circuitGroup.value : this.circuitGroup,
     kind: kind ?? this.kind,
     routineExerciseId: routineExerciseId.present
         ? routineExerciseId.value
@@ -3875,9 +3871,9 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       restSeconds: data.restSeconds.present
           ? data.restSeconds.value
           : this.restSeconds,
-      supersetGroup: data.supersetGroup.present
-          ? data.supersetGroup.value
-          : this.supersetGroup,
+      circuitGroup: data.circuitGroup.present
+          ? data.circuitGroup.value
+          : this.circuitGroup,
       kind: data.kind.present ? data.kind.value : this.kind,
       routineExerciseId: data.routineExerciseId.present
           ? data.routineExerciseId.value
@@ -3894,7 +3890,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           ..write('exerciseName: $exerciseName, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('restSeconds: $restSeconds, ')
-          ..write('supersetGroup: $supersetGroup, ')
+          ..write('circuitGroup: $circuitGroup, ')
           ..write('kind: $kind, ')
           ..write('routineExerciseId: $routineExerciseId')
           ..write(')'))
@@ -3909,7 +3905,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     exerciseName,
     orderIndex,
     restSeconds,
-    supersetGroup,
+    circuitGroup,
     kind,
     routineExerciseId,
   );
@@ -3923,7 +3919,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           other.exerciseName == this.exerciseName &&
           other.orderIndex == this.orderIndex &&
           other.restSeconds == this.restSeconds &&
-          other.supersetGroup == this.supersetGroup &&
+          other.circuitGroup == this.circuitGroup &&
           other.kind == this.kind &&
           other.routineExerciseId == this.routineExerciseId);
 }
@@ -3935,7 +3931,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
   final Value<String> exerciseName;
   final Value<int> orderIndex;
   final Value<int> restSeconds;
-  final Value<int?> supersetGroup;
+  final Value<int?> circuitGroup;
   final Value<String> kind;
   final Value<String?> routineExerciseId;
   final Value<int> rowid;
@@ -3946,7 +3942,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     this.exerciseName = const Value.absent(),
     this.orderIndex = const Value.absent(),
     this.restSeconds = const Value.absent(),
-    this.supersetGroup = const Value.absent(),
+    this.circuitGroup = const Value.absent(),
     this.kind = const Value.absent(),
     this.routineExerciseId = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -3958,7 +3954,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     required String exerciseName,
     required int orderIndex,
     this.restSeconds = const Value.absent(),
-    this.supersetGroup = const Value.absent(),
+    this.circuitGroup = const Value.absent(),
     this.kind = const Value.absent(),
     this.routineExerciseId = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -3973,7 +3969,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     Expression<String>? exerciseName,
     Expression<int>? orderIndex,
     Expression<int>? restSeconds,
-    Expression<int>? supersetGroup,
+    Expression<int>? circuitGroup,
     Expression<String>? kind,
     Expression<String>? routineExerciseId,
     Expression<int>? rowid,
@@ -3985,7 +3981,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
       if (exerciseName != null) 'exercise_name': exerciseName,
       if (orderIndex != null) 'order_index': orderIndex,
       if (restSeconds != null) 'rest_seconds': restSeconds,
-      if (supersetGroup != null) 'superset_group': supersetGroup,
+      if (circuitGroup != null) 'circuit_group': circuitGroup,
       if (kind != null) 'kind': kind,
       if (routineExerciseId != null) 'routine_exercise_id': routineExerciseId,
       if (rowid != null) 'rowid': rowid,
@@ -3999,7 +3995,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     Value<String>? exerciseName,
     Value<int>? orderIndex,
     Value<int>? restSeconds,
-    Value<int?>? supersetGroup,
+    Value<int?>? circuitGroup,
     Value<String>? kind,
     Value<String?>? routineExerciseId,
     Value<int>? rowid,
@@ -4011,7 +4007,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
       exerciseName: exerciseName ?? this.exerciseName,
       orderIndex: orderIndex ?? this.orderIndex,
       restSeconds: restSeconds ?? this.restSeconds,
-      supersetGroup: supersetGroup ?? this.supersetGroup,
+      circuitGroup: circuitGroup ?? this.circuitGroup,
       kind: kind ?? this.kind,
       routineExerciseId: routineExerciseId ?? this.routineExerciseId,
       rowid: rowid ?? this.rowid,
@@ -4039,8 +4035,8 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     if (restSeconds.present) {
       map['rest_seconds'] = Variable<int>(restSeconds.value);
     }
-    if (supersetGroup.present) {
-      map['superset_group'] = Variable<int>(supersetGroup.value);
+    if (circuitGroup.present) {
+      map['circuit_group'] = Variable<int>(circuitGroup.value);
     }
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
@@ -4063,7 +4059,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
           ..write('exerciseName: $exerciseName, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('restSeconds: $restSeconds, ')
-          ..write('supersetGroup: $supersetGroup, ')
+          ..write('circuitGroup: $circuitGroup, ')
           ..write('kind: $kind, ')
           ..write('routineExerciseId: $routineExerciseId, ')
           ..write('rowid: $rowid')
@@ -6823,7 +6819,7 @@ typedef $$RoutineExercisesTableCreateCompanionBuilder =
       required String exerciseId,
       required int orderIndex,
       Value<int> restSeconds,
-      Value<int?> supersetGroup,
+      Value<int?> circuitGroup,
       Value<int> rowid,
     });
 typedef $$RoutineExercisesTableUpdateCompanionBuilder =
@@ -6833,7 +6829,7 @@ typedef $$RoutineExercisesTableUpdateCompanionBuilder =
       Value<String> exerciseId,
       Value<int> orderIndex,
       Value<int> restSeconds,
-      Value<int?> supersetGroup,
+      Value<int?> circuitGroup,
       Value<int> rowid,
     });
 
@@ -6993,8 +6989,8 @@ class $$RoutineExercisesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  ColumnFilters<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7148,8 +7144,8 @@ class $$RoutineExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  ColumnOrderings<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -7222,8 +7218,8 @@ class $$RoutineExercisesTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  GeneratedColumn<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => column,
   );
 
@@ -7394,7 +7390,7 @@ class $$RoutineExercisesTableTableManager
                 Value<String> exerciseId = const Value.absent(),
                 Value<int> orderIndex = const Value.absent(),
                 Value<int> restSeconds = const Value.absent(),
-                Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> circuitGroup = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => RoutineExercisesCompanion(
                 syncId: syncId,
@@ -7402,7 +7398,7 @@ class $$RoutineExercisesTableTableManager
                 exerciseId: exerciseId,
                 orderIndex: orderIndex,
                 restSeconds: restSeconds,
-                supersetGroup: supersetGroup,
+                circuitGroup: circuitGroup,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7412,7 +7408,7 @@ class $$RoutineExercisesTableTableManager
                 required String exerciseId,
                 required int orderIndex,
                 Value<int> restSeconds = const Value.absent(),
-                Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> circuitGroup = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => RoutineExercisesCompanion.insert(
                 syncId: syncId,
@@ -7420,7 +7416,7 @@ class $$RoutineExercisesTableTableManager
                 exerciseId: exerciseId,
                 orderIndex: orderIndex,
                 restSeconds: restSeconds,
-                supersetGroup: supersetGroup,
+                circuitGroup: circuitGroup,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10180,7 +10176,7 @@ typedef $$WorkoutExercisesTableCreateCompanionBuilder =
       required String exerciseName,
       required int orderIndex,
       Value<int> restSeconds,
-      Value<int?> supersetGroup,
+      Value<int?> circuitGroup,
       Value<String> kind,
       Value<String?> routineExerciseId,
       Value<int> rowid,
@@ -10193,7 +10189,7 @@ typedef $$WorkoutExercisesTableUpdateCompanionBuilder =
       Value<String> exerciseName,
       Value<int> orderIndex,
       Value<int> restSeconds,
-      Value<int?> supersetGroup,
+      Value<int?> circuitGroup,
       Value<String> kind,
       Value<String?> routineExerciseId,
       Value<int> rowid,
@@ -10324,8 +10320,8 @@ class $$WorkoutExercisesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  ColumnFilters<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10458,8 +10454,8 @@ class $$WorkoutExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  ColumnOrderings<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10565,8 +10561,8 @@ class $$WorkoutExercisesTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<int> get supersetGroup => $composableBuilder(
-    column: $table.supersetGroup,
+  GeneratedColumn<int> get circuitGroup => $composableBuilder(
+    column: $table.circuitGroup,
     builder: (column) => column,
   );
 
@@ -10709,7 +10705,7 @@ class $$WorkoutExercisesTableTableManager
                 Value<String> exerciseName = const Value.absent(),
                 Value<int> orderIndex = const Value.absent(),
                 Value<int> restSeconds = const Value.absent(),
-                Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> circuitGroup = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<String?> routineExerciseId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10720,7 +10716,7 @@ class $$WorkoutExercisesTableTableManager
                 exerciseName: exerciseName,
                 orderIndex: orderIndex,
                 restSeconds: restSeconds,
-                supersetGroup: supersetGroup,
+                circuitGroup: circuitGroup,
                 kind: kind,
                 routineExerciseId: routineExerciseId,
                 rowid: rowid,
@@ -10733,7 +10729,7 @@ class $$WorkoutExercisesTableTableManager
                 required String exerciseName,
                 required int orderIndex,
                 Value<int> restSeconds = const Value.absent(),
-                Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> circuitGroup = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<String?> routineExerciseId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10744,7 +10740,7 @@ class $$WorkoutExercisesTableTableManager
                 exerciseName: exerciseName,
                 orderIndex: orderIndex,
                 restSeconds: restSeconds,
-                supersetGroup: supersetGroup,
+                circuitGroup: circuitGroup,
                 kind: kind,
                 routineExerciseId: routineExerciseId,
                 rowid: rowid,

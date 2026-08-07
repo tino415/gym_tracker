@@ -24,7 +24,7 @@ RoutineBundleMessage _bundle({
           exerciseKind: exerciseKindReps,
           orderIndex: 0,
           restSeconds: 60,
-          supersetGroup: null,
+          circuitGroup: null,
           plannedSets: [
             PlannedSetDto(
               syncId: 'ps-1',
@@ -357,7 +357,7 @@ void main() {
             kind: exerciseKindReps,
             orderIndex: 0,
             restSeconds: 90,
-            supersetGroup: null,
+            circuitGroup: null,
             routineExerciseSyncId: null,
             sets: [
               for (var i = 0; i < setIds.length; i++)

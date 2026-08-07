@@ -2,7 +2,7 @@
 //   just e2e-run phone      (or: flutter test integration_test/run_flow_test.dart -d <device>)
 //
 // Covers what was previously only checked by hand: opening a routine, starting
-// a workout from it, logging sets, the superset alternation rule (a mate in the
+// a workout from it, logging sets, the circuit alternation rule (a mate in the
 // same round follows immediately, anything else rests first), finishing, and
 // the workout landing in the database. The DB is an in-memory override, so the
 // run is deterministic and touches no real data.
@@ -58,7 +58,7 @@ void main() {
     fail('timed out waiting for the run page to show "$name"');
   }
 
-  /// Bench (2 sets), then a superset pair of Fly + Pushdown (1 set each).
+  /// Bench (2 sets), then a circuit pair of Fly + Pushdown (1 set each).
   Future<void> seed(AppDatabase db) async {
     final routine = await db.createRoutine('E2E Push');
     Future<void> slot(String name, {required int sets, int? group}) async {
@@ -68,7 +68,7 @@ void main() {
         exerciseId: ex.syncId,
       );
       await db.setRestSeconds(re.syncId, 90);
-      if (group != null) await db.setSupersetGroup(re.syncId, group);
+      if (group != null) await db.setCircuitGroup(re.syncId, group);
       for (var i = 0; i < sets; i++) {
         await db.addPlannedSet(
           routineExerciseId: re.syncId,
@@ -83,7 +83,7 @@ void main() {
     await slot('Triceps Pushdown', sets: 1, group: 1);
   }
 
-  testWidgets('run a workout from a routine, supersets and all',
+  testWidgets('run a workout from a routine, circuits and all',
       (tester) async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
@@ -120,7 +120,7 @@ void main() {
     await tester.tap(find.text('Skip rest'));
     await pumpUntilExercise(tester, 'Cable Fly');
 
-    // The superset rule: the mate in the same round follows immediately, with
+    // The circuit rule: the mate in the same round follows immediately, with
     // no rest in between.
     await tester.tap(find.text('Done'));
     await pumpUntilExercise(tester, 'Triceps Pushdown');

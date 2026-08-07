@@ -1,16 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gym_tracker/watch/superset_nav.dart';
+import 'package:gym_tracker/watch/circuit_nav.dart';
 
-SupersetSeq seq(List<({int sets, int? group})> exercises) {
-  return SupersetSeq(
+CircuitSeq seq(List<({int sets, int? group})> exercises) {
+  return CircuitSeq(
     exerciseCount: exercises.length,
     setCountAt: (i) => exercises[i].sets,
-    supersetGroupAt: (i) => exercises[i].group,
+    circuitGroupAt: (i) => exercises[i].group,
   );
 }
 
 void main() {
-  group('standalone (no supersets)', () {
+  group('standalone (no circuits)', () {
     test('linear progression across exercises', () {
       final s = seq([
         (sets: 2, group: null),
@@ -43,7 +43,7 @@ void main() {
     });
   });
 
-  group('superset of equal-sized exercises', () {
+  group('circuit of equal-sized exercises', () {
     test('alternates A,B,C across each set index', () {
       final s = seq([
         (sets: 2, group: 1),
@@ -71,7 +71,7 @@ void main() {
     });
   });
 
-  group('superset of uneven exercises', () {
+  group('circuit of uneven exercises', () {
     test('round 2: A has set 2, B does not — visit only A', () {
       // A: 3 sets, B: 2 sets, both in group 1.
       final s = seq([
@@ -87,7 +87,7 @@ void main() {
     });
   });
 
-  group('mixed: superset followed by standalone', () {
+  group('mixed: circuit followed by standalone', () {
     test('flows from group to the next exercise', () {
       final s = seq([
         (sets: 1, group: 1),
@@ -103,7 +103,7 @@ void main() {
 
     test('two separate groups with the same group ID stay isolated', () {
       // A,B share group 1 (contiguous). C is standalone. D,E share group 1
-      // again — should be treated as a separate superset because the run is
+      // again — should be treated as a separate circuit because the run is
       // not contiguous.
       final s = seq([
         (sets: 1, group: 1),
@@ -140,7 +140,7 @@ void main() {
       );
     });
 
-    test('no skips: superset alternation is preserved', () {
+    test('no skips: circuit alternation is preserved', () {
       final s = seq([
         (sets: 2, group: 1),
         (sets: 2, group: 1),
@@ -154,7 +154,7 @@ void main() {
       );
     });
 
-    test('skipped superset mate: stay in current exercise until done', () {
+    test('skipped circuit mate: stay in current exercise until done', () {
       final s = seq([
         (sets: 3, group: 1),
         (sets: 3, group: 1),

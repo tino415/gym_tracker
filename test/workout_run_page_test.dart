@@ -19,23 +19,27 @@ void main() {
   });
   tearDown(() => db.close());
 
-  /// A routine of `name -> list of (reps, kg)` sets, optionally in a superset
+  /// A routine of `name -> list of (reps, kg)` sets, optionally in a circuit
   /// group, with a known rest so the rest phase is observable.
   Future<Routine> seedRoutine({
     required String name,
     required List<({String exercise, List<(int, double)> sets, int? group})>
         exercises,
     int restSeconds = 90,
+    // Per-exercise rest, positional; falls back to [restSeconds]. Rest is a
+    // per-exercise value now, so a circuit needs to set its members apart.
+    List<int>? restPerExercise,
   }) async {
     final routine = await db.createRoutine(name);
-    for (final fx in exercises) {
+    for (var i = 0; i < exercises.length; i++) {
+      final fx = exercises[i];
       final ex = await db.createExercise(fx.exercise);
       final re = await db.addExerciseToRoutine(
         routineId: routine.syncId,
         exerciseId: ex.syncId,
       );
-      await db.setRestSeconds(re.syncId, restSeconds);
-      if (fx.group != null) await db.setSupersetGroup(re.syncId, fx.group);
+      await db.setRestSeconds(re.syncId, restPerExercise?[i] ?? restSeconds);
+      if (fx.group != null) await db.setCircuitGroup(re.syncId, fx.group);
       for (final s in fx.sets) {
         await db.addPlannedSet(
           routineExerciseId: re.syncId,
@@ -184,14 +188,17 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('a superset advances to the next member without resting',
+  testWidgets('a zero rest on a circuit member advances straight to the next',
       (tester) async {
+    // The classic superset: no pause between the two members, one rest at the
+    // end of the round. Expressed now as rest 0 on the first member.
     final r = await seedRoutine(
       name: 'Upper',
       exercises: [
         (exercise: 'Bench', sets: [(8, 60.0), (8, 60.0)], group: 1),
         (exercise: 'Row', sets: [(8, 50.0), (8, 50.0)], group: 1),
       ],
+      restPerExercise: [0, 90],
     );
     await pumpRun(tester, routineId: r.syncId);
     expect(currentExercise(tester), 'Bench');
@@ -202,12 +209,49 @@ void main() {
     expect(find.text('Rest'), findsNothing);
     expect(currentExercise(tester), 'Row');
     // Still round one — the alternation moved sideways, not on to the next set.
-    expect(find.text('Set 1 of 2 • superset'), findsOneWidget);
+    expect(find.text('Set 1 of 2 • circuit'), findsOneWidget);
 
-    // End of the round: now it rests before starting round two.
+    // End of the round: Row's own rest runs before round two.
     await tester.tap(find.text('Done'));
     await settle(tester);
     expect(find.text('Rest'), findsOneWidget);
+
+    await disposeTree(tester);
+  });
+
+  testWidgets('a circuit member with a rest pauses before the next member',
+      (tester) async {
+    // What a left/right pair needs: a short pause between the sides, the full
+    // rest after the round. Before rest became per-exercise this was
+    // unexpressible — the value was read off the first member and applied only
+    // between rounds.
+    final r = await seedRoutine(
+      name: 'Arms',
+      exercises: [
+        (exercise: 'Curl L', sets: [(8, 12.0), (8, 12.0)], group: 1),
+        (exercise: 'Curl R', sets: [(8, 12.0), (8, 12.0)], group: 1),
+      ],
+      restPerExercise: [30, 90],
+    );
+    await pumpRun(tester, routineId: r.syncId);
+    expect(currentExercise(tester), 'Curl L');
+
+    // Left side done: rest before the right side, still inside round one.
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(find.text('Rest'), findsOneWidget);
+    expect(find.text('0:30'), findsOneWidget);
+
+    await tester.tap(find.text('Skip rest'));
+    await settle(tester);
+    expect(currentExercise(tester), 'Curl R');
+    expect(find.text('Set 1 of 2 • circuit'), findsOneWidget);
+
+    // Right side done: the round rest, which is the right side's own value.
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(find.text('Rest'), findsOneWidget);
+    expect(find.text('1:30'), findsOneWidget);
 
     await disposeTree(tester);
   });

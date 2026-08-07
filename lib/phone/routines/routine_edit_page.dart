@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../run/workout_run_page.dart';
-import '../superset_units.dart';
+import '../circuit_units.dart';
 import 'exercise_picker.dart';
 
 class RoutineEditPage extends ConsumerStatefulWidget {
@@ -344,15 +344,15 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     );
   }
 
-  List<SupersetUnit<FullRoutineExercise>> _buildUnits(
+  List<CircuitUnit<FullRoutineExercise>> _buildUnits(
     List<FullRoutineExercise> exercises,
-  ) => buildSupersetUnits<FullRoutineExercise>(
+  ) => buildCircuitUnits<FullRoutineExercise>(
     exercises,
-    (e) => e.routineExercise.supersetGroup,
+    (e) => e.routineExercise.circuitGroup,
   );
 
   Future<void> _reorderUnits(
-    List<SupersetUnit<FullRoutineExercise>> units,
+    List<CircuitUnit<FullRoutineExercise>> units,
     int oldIndex,
     int newIndex,
   ) async {
@@ -370,7 +370,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
   }
 
   Future<void> _reorderWithinGroup(
-    List<SupersetUnit<FullRoutineExercise>> units,
+    List<CircuitUnit<FullRoutineExercise>> units,
     int unitIdx,
     int oldIndex,
     int newIndex,
@@ -402,7 +402,7 @@ class _UnitTile extends StatelessWidget {
   });
 
   final int outerIndex;
-  final SupersetUnit<FullRoutineExercise> unit;
+  final CircuitUnit<FullRoutineExercise> unit;
   final String routineId;
   final bool reorderMode;
   final void Function(int oldIdx, int newIdx) onInnerReorder;
@@ -460,7 +460,7 @@ class _UnitTile extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                'Superset',
+                'Circuit',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.primary,
                 ),
@@ -540,7 +540,8 @@ class _ExerciseRow extends StatelessWidget {
     final core = fullExercise.kind == exerciseKindTime
         ? _fmtTime(last)
         : _fmtReps(last);
-    return '${ps.length} ${ps.length == 1 ? 'set' : 'sets'} · last $core · ${rest}s rest';
+    final restLabel = rest == 0 ? 'no rest' : '${rest}s rest';
+    return '${ps.length} ${ps.length == 1 ? 'set' : 'sets'} · last $core · $restLabel';
   }
 
   String _fmtTime(PlannedSet s) {

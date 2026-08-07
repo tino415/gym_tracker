@@ -64,7 +64,7 @@ void main() {
 
     // Seed one reps routine with a single planned set — a single set means
     // completing it makes the workout "genuinely complete" with no rest phase
-    // or superset advance to drive through.
+    // or circuit advance to drive through.
     final exercise = await db.createExercise('Bench Press');
     final routine = await db.createRoutine('Push Day');
     final re = await db.addExerciseToRoutine(

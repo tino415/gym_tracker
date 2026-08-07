@@ -1,16 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gym_tracker/phone/superset_units.dart';
+import 'package:gym_tracker/phone/circuit_units.dart';
 
-/// A stand-in for a routine/workout exercise: an id plus its superset group.
+/// A stand-in for a routine/workout exercise: an id plus its circuit group.
 typedef Ex = (String id, int? group);
 
-List<SupersetUnit<Ex>> units(List<Ex> items) =>
-    buildSupersetUnits<Ex>(items, (e) => e.$2);
+List<CircuitUnit<Ex>> units(List<Ex> items) =>
+    buildCircuitUnits<Ex>(items, (e) => e.$2);
 
 String _id(Ex e) => e.$1;
 
 void main() {
-  group('buildSupersetUnits', () {
+  group('buildCircuitUnits', () {
     test('ungrouped exercises are all singles', () {
       final u = units([('a', null), ('b', null)]);
       expect(u.length, 2);
@@ -28,14 +28,14 @@ void main() {
     });
 
     test('a lone member of a group is a single, not a one-member block', () {
-      // A "superset" of one is not a superset; rendering it as a block would
+      // A "circuit" of one is not a circuit; rendering it as a block would
       // be misleading.
       final u = units([('a', 7)]);
       expect(u.single.isGroup, isFalse);
     });
 
     test('two runs of the same group number stay separate blocks', () {
-      // Grouping is positional: only *adjacent* members form a superset, so a
+      // Grouping is positional: only *adjacent* members form a circuit, so a
       // reused group id on either side of another exercise is two blocks.
       final u = units([('a', 1), ('b', 1), ('c', null), ('d', 1), ('e', 1)]);
       expect(u.map((x) => x.members.map(_id).toList()), [
@@ -47,7 +47,7 @@ void main() {
   });
 
   group('reorderUnits', () {
-    test('moves a superset as one block, keeping members adjacent', () {
+    test('moves a circuit as one block, keeping members adjacent', () {
       final u = units([('a', null), ('b', 1), ('c', 1), ('d', null)]);
       // Drag the block (index 1) to the front.
       expect(reorderUnits(u, 1, 0, _id), ['b', 'c', 'a', 'd']);
@@ -62,7 +62,7 @@ void main() {
       final u = units([('a', 1), ('b', 1), ('c', 2), ('d', 2)]);
       final out = reorderUnits(u, 1, 0, _id);
       expect(out, ['c', 'd', 'a', 'b']);
-      // Both groups remain contiguous — the invariant SupersetSeq relies on.
+      // Both groups remain contiguous — the invariant CircuitSeq relies on.
       expect(out.indexOf('d') - out.indexOf('c'), 1);
       expect(out.indexOf('b') - out.indexOf('a'), 1);
     });

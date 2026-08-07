@@ -93,7 +93,7 @@ void main() {
       expect(snap.workout.routineName, 'Pull Day');
     });
 
-    test('captures superset_group and exercise kind', () async {
+    test('captures circuit_group and exercise kind', () async {
       final bench = await db.createExercise('Bench');
       final fly = await db.createExercise('Fly');
       final routine = await db.createRoutine('Push');
@@ -115,14 +115,14 @@ void main() {
         targetReps: 12,
         targetWeightKg: 12,
       );
-      await db.setSupersetGroup(reBench.syncId, 1);
-      await db.setSupersetGroup(reFly.syncId, 1);
+      await db.setCircuitGroup(reBench.syncId, 1);
+      await db.setCircuitGroup(reFly.syncId, 1);
 
       final workout = await db.startWorkout(routine.syncId);
       final snap = await db.loadFullWorkout(workout.syncId);
 
       expect(
-        snap!.exercises.map((e) => e.workoutExercise.supersetGroup).toList(),
+        snap!.exercises.map((e) => e.workoutExercise.circuitGroup).toList(),
         [1, 1],
       );
     });
@@ -1689,7 +1689,7 @@ void main() {
       expect(after.version, greaterThan(before.version));
     });
 
-    test('preserves superset_group on members kept consecutive', () async {
+    test('preserves circuit_group on members kept consecutive', () async {
       final exA = await db.createExercise('A');
       final exB = await db.createExercise('B');
       final exC = await db.createExercise('C');
@@ -1706,9 +1706,9 @@ void main() {
         routineId: routine.syncId,
         exerciseId: exC.syncId,
       );
-      // A is standalone; B and C form a superset.
-      await db.setSupersetGroup(reB.syncId, 7);
-      await db.setSupersetGroup(reC.syncId, 7);
+      // A is standalone; B and C form a circuit.
+      await db.setCircuitGroup(reB.syncId, 7);
+      await db.setCircuitGroup(reC.syncId, 7);
 
       // Move the {B, C} group ahead of A — they remain consecutive.
       await db.reorderRoutineExercises(
@@ -1721,10 +1721,10 @@ void main() {
             ..orderBy([(t) => OrderingTerm.asc(t.orderIndex)]))
           .get();
       expect(rows[0].syncId, reB.syncId);
-      expect(rows[0].supersetGroup, 7);
+      expect(rows[0].circuitGroup, 7);
       expect(rows[1].syncId, reC.syncId);
-      expect(rows[1].supersetGroup, 7);
-      expect(rows[2].supersetGroup, isNull);
+      expect(rows[1].circuitGroup, 7);
+      expect(rows[2].circuitGroup, isNull);
     });
 
     test('routineId guard rejects ids from a different routine', () async {
