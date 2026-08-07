@@ -69,11 +69,23 @@
              android:host="*" is mandatory alongside pathPrefix: the host is the
              sending node id, and omitting it makes the filter match nothing.
              exported=true is required because Play Services binds from its own
-             process; BIND_WEARABLE_LISTENER is what stops anything else. -->
+             process.
+             Do NOT add android:permission="…BIND_WEARABLE_LISTENER" here. That
+             attribute constrains the *caller*, and Play Services does not hold
+             that permission — on a Galaxy S24 it is not even defined on the
+             device, so every bind was refused with
+
+               Permission Denial: Accessing service …/.SyncListenerService
+               requires com.google.android.gms.permission.BIND_WEARABLE_LISTENER
+
+             and the service was never constructed. Messages arrived, nothing
+             ran, no queue file appeared: identical at the UI to the dropped
+             message this class exists to prevent. Verified on hardware
+             2026-08-07. Google's own WearableListenerService sample sets no
+             permission either; the action is what Play Services delivers. -->
         <service
             android:name=".SyncListenerService"
-            android:exported="true"
-            android:permission="com.google.android.gms.permission.BIND_WEARABLE_LISTENER">
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data
