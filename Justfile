@@ -66,7 +66,7 @@ test:
 test-file file:
     flutter test --no-pub {{file}}
 
-# A single test by name, e.g. `just test-name 'superset alternation'`
+# A single test by name, e.g. `just test-name 'circuit alternation'`
 test-name name:
     flutter test --no-pub --plain-name '{{name}}'
 
@@ -96,7 +96,7 @@ phone-apk:
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
 
 # As phone-apk, but the app seeds demo routines on first launch (reps sets, a
-# superset pair, a time-kind hold) — the fixtures worth having when verifying a
+# circuit pair, a time-kind hold) — the fixtures worth having when verifying a
 # change by hand, without a couple of dozen taps to build them. The seed refuses
 # to run unless the routine library is completely empty, so it can't overwrite
 # real data; `adb shell pm clear com.otin.gym_tracker` gives you a clean slate.
@@ -184,7 +184,7 @@ e2e device=PHONE_DEVICE:
     flutter test integration_test/routine_flow_test.dart -d "$dev"
 
 # The phone run flow end to end: start from a routine, log sets through a
-# superset, finish, and find it in History. Same device argument as `e2e`.
+# circuit, finish, and find it in History. Same device argument as `e2e`.
 [doc('Phone run-flow integration test on a device/emulator')]
 e2e-run device=PHONE_DEVICE:
     #!/usr/bin/env bash
