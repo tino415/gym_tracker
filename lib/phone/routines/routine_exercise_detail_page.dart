@@ -250,7 +250,8 @@ class _Body extends ConsumerWidget {
             ),
         const Divider(height: 32),
         OutlinedButton.icon(
-          onPressed: () => _confirmRemove(context, ref, re, onRemoved: onRemoved),
+          onPressed: () =>
+              confirmRemoveRoutineExercise(context, ref, re, onRemoved: onRemoved),
           icon: const Icon(Icons.delete_outline),
           label: const Text('Remove from routine'),
           style: OutlinedButton.styleFrom(
@@ -262,7 +263,13 @@ class _Body extends ConsumerWidget {
   }
 }
 
-Future<void> _confirmRemove(
+/// Confirms and removes [re] from its routine. Shared with the routine
+/// editor's list rows so both entry points ask the same question and warn
+/// about the same thing (past workouts keep their snapshot).
+///
+/// [onRemoved] runs instead of popping when the caller owns the navigation —
+/// the wide master-detail panes have no route to pop.
+Future<void> confirmRemoveRoutineExercise(
   BuildContext context,
   WidgetRef ref,
   FullRoutineExercise re, {

@@ -164,13 +164,16 @@ void main() {
 
   // Seed one routine ('Push Day') containing one exercise ('Bench') so there's
   // an exercise row to select for the set editor.
-  Future<void> seedRoutineWithExercise() async {
+  /// Returns the routine's syncId so a test can read it back with a plain
+  /// future — awaiting a drift *stream* under the widget tester hangs.
+  Future<String> seedRoutineWithExercise() async {
     final routine = await db.createRoutine('Push Day');
     final ex = await db.createExercise('Bench', kind: exerciseKindReps);
     await db.addExerciseToRoutine(
       routineId: routine.syncId,
       exerciseId: ex.syncId,
     );
+    return routine.syncId;
   }
 
   testWidgets(
@@ -220,5 +223,87 @@ void main() {
     expect(find.widgetWithText(ListTile, 'Push Day'),
         findsOneWidget); // list still present
     await disposeTree(tester);
+  });
+
+  group('removing an exercise from the list row', () {
+    /// Rows carry their own delete button only in the wide panes, where the
+    /// set editor is a sibling rather than a pushed route.
+    Finder rowDelete() => find.descendant(
+          of: find.widgetWithText(ListTile, 'Bench'),
+          matching: find.widgetWithIcon(IconButton, Icons.delete_outline),
+        );
+
+    testWidgets('wide: the row delete button removes it after confirming',
+        (tester) async {
+      final routineId = await seedRoutineWithExercise();
+      await pump(tester, const Size(1300, 900));
+      await tester.tap(find.text('Push Day'));
+      await tester.pumpAndSettle();
+      expect(rowDelete(), findsOneWidget);
+
+      await tester.tap(rowDelete());
+      await tester.pumpAndSettle();
+      // Same confirmation the detail page's button raises.
+      expect(find.text('Remove exercise?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ListTile, 'Bench'), findsNothing);
+      // loadFullRoutine is a plain future, so it is safe to await directly.
+      final full = await db.loadFullRoutine(routineId);
+      expect(full!.exercises, isEmpty);
+      await disposeTree(tester);
+    });
+
+    testWidgets('wide: cancelling the confirmation keeps the exercise',
+        (tester) async {
+      await seedRoutineWithExercise();
+      await pump(tester, const Size(1300, 900));
+      await tester.tap(find.text('Push Day'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(rowDelete());
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ListTile, 'Bench'), findsOneWidget);
+      await disposeTree(tester);
+    });
+
+    testWidgets('3-pane: removing the selected row clears the set editor',
+        (tester) async {
+      // Without the onExerciseRemoved hop the third pane would keep rendering
+      // a row that no longer exists.
+      await seedRoutineWithExercise();
+      await pump(tester, const Size(1300, 900));
+      await tester.tap(find.text('Push Day'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bench'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add set'), findsOneWidget); // set editor filled
+
+      await tester.tap(rowDelete());
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add set'), findsNothing);
+      expect(find.text('Select an exercise to edit its sets.'), findsOneWidget);
+      await disposeTree(tester);
+    });
+
+    testWidgets('narrow: rows carry no delete button', (tester) async {
+      // On a thumb a trailing delete sits inside the row's own tap target;
+      // narrow keeps the single button on the pushed detail page.
+      await seedRoutineWithExercise();
+      await pump(tester, const Size(400, 800));
+      await tester.tap(find.text('Push Day'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ListTile, 'Bench'), findsOneWidget);
+      expect(rowDelete(), findsNothing);
+      await disposeTree(tester);
+    });
   });
 }

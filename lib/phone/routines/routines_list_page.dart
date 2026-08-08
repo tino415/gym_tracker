@@ -128,6 +128,7 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
             onCreated: _onRoutineCreated,
             onSelectExercise: _selectExercise,
             selectedExerciseId: _reId,
+            onExerciseRemoved: _clearExercise,
           )
         : const MasterDetailPlaceholder(
             icon: Icons.fitness_center,

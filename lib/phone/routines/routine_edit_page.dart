@@ -7,6 +7,7 @@ import '../../data/providers.dart';
 import '../run/workout_run_page.dart';
 import '../circuit_units.dart';
 import 'exercise_picker.dart';
+import 'routine_exercise_detail_page.dart';
 
 class RoutineEditPage extends ConsumerStatefulWidget {
   const RoutineEditPage({
@@ -17,6 +18,7 @@ class RoutineEditPage extends ConsumerStatefulWidget {
     this.onCreated,
     this.onSelectExercise,
     this.selectedExerciseId,
+    this.onExerciseRemoved,
   });
 
   final String? routineId;
@@ -41,6 +43,10 @@ class RoutineEditPage extends ConsumerStatefulWidget {
 
   /// The currently selected exercise row (highlighted). Wide master-detail only.
   final String? selectedExerciseId;
+
+  /// Called when the row currently in [selectedExerciseId] is removed from the
+  /// list, so the host can clear the set-editor pane. Wide master-detail only.
+  final VoidCallback? onExerciseRemoved;
 
   @override
   ConsumerState<RoutineEditPage> createState() => _RoutineEditPageState();
@@ -329,6 +335,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                         reorderMode: _reorderMode,
                         onSelectExercise: widget.onSelectExercise,
                         selectedExerciseId: widget.selectedExerciseId,
+                        onExerciseRemoved: widget.onExerciseRemoved,
                         onInnerReorder: (oldIdx, newIdx) =>
                             _reorderWithinGroup(units, idx, oldIdx, newIdx),
                       ),
@@ -399,6 +406,7 @@ class _UnitTile extends StatelessWidget {
     required this.onInnerReorder,
     this.onSelectExercise,
     this.selectedExerciseId,
+    this.onExerciseRemoved,
   });
 
   final int outerIndex;
@@ -408,6 +416,7 @@ class _UnitTile extends StatelessWidget {
   final void Function(int oldIdx, int newIdx) onInnerReorder;
   final void Function(String routineExerciseId)? onSelectExercise;
   final String? selectedExerciseId;
+  final VoidCallback? onExerciseRemoved;
 
   @override
   Widget build(BuildContext context) {
@@ -435,6 +444,7 @@ class _UnitTile extends StatelessWidget {
               reorderMode: reorderMode,
               onSelectExercise: onSelectExercise,
               selectedExerciseId: selectedExerciseId,
+              onExerciseRemoved: onExerciseRemoved,
             ),
           ),
         ],
@@ -500,6 +510,7 @@ class _UnitTile extends StatelessWidget {
                         reorderMode: reorderMode,
                         onSelectExercise: onSelectExercise,
                         selectedExerciseId: selectedExerciseId,
+                        onExerciseRemoved: onExerciseRemoved,
                       ),
                     ),
                   ],
@@ -517,13 +528,14 @@ class _UnitTile extends StatelessWidget {
 /// Compact one-row rendering of a routine exercise. In normal mode the whole
 /// row is tappable and pushes the detail page. In reorder mode the tap is a
 /// no-op (the drag handles supplied by `_UnitTile` handle gestures).
-class _ExerciseRow extends StatelessWidget {
+class _ExerciseRow extends ConsumerWidget {
   const _ExerciseRow({
     required this.fullExercise,
     required this.routineId,
     required this.reorderMode,
     this.onSelectExercise,
     this.selectedExerciseId,
+    this.onExerciseRemoved,
   });
 
   final FullRoutineExercise fullExercise;
@@ -531,6 +543,10 @@ class _ExerciseRow extends StatelessWidget {
   final bool reorderMode;
   final void Function(String routineExerciseId)? onSelectExercise;
   final String? selectedExerciseId;
+
+  /// Called after removing the row that was currently selected, so the
+  /// detail pane stops pointing at a row that no longer exists.
+  final VoidCallback? onExerciseRemoved;
 
   String _summary() {
     final ps = fullExercise.plannedSets;
@@ -565,12 +581,25 @@ class _ExerciseRow extends StatelessWidget {
       w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final altsCount = fullExercise.alternatives.length;
     final ex = fullExercise.exercise;
     final reId = fullExercise.routineExercise.syncId;
     final selected = reId == selectedExerciseId;
+    // Removing from the row itself is the wide/web affordance: there the
+    // detail pane is a sibling, so "select it, scroll to the bottom, press
+    // Remove" is three moves for what a pointer can do in one. Narrow keeps
+    // the single button on the pushed detail page — a trailing delete next
+    // to a full-width tap target is a mis-tap waiting to happen on a thumb.
+    // `onSelectExercise != null` is exactly "rendered in the wide panes".
+    final showDelete = onSelectExercise != null && !reorderMode;
+    final altsBadge = altsCount > 0
+        ? Badge.count(
+            count: altsCount,
+            child: Icon(Icons.swap_horiz, color: theme.colorScheme.outline),
+          )
+        : null;
     final tile = ListTile(
       selected: selected,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -579,15 +608,32 @@ class _ExerciseRow extends StatelessWidget {
       ),
       title: Text(ex.name, overflow: TextOverflow.ellipsis),
       subtitle: Text(_summary()),
-      trailing: altsCount > 0
-          ? Badge.count(
-              count: altsCount,
-              child: Icon(
-                Icons.swap_horiz,
-                color: theme.colorScheme.outline,
-              ),
+      trailing: showDelete
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (altsBadge != null) ...[
+                  altsBadge,
+                  const SizedBox(width: 8),
+                ],
+                IconButton(
+                  tooltip: 'Remove from routine',
+                  icon: const Icon(Icons.delete_outline),
+                  color: theme.colorScheme.error,
+                  // Always non-null: a null onRemoved makes the helper pop,
+                  // and in an embedded pane the nearest route is the shell.
+                  onPressed: () => confirmRemoveRoutineExercise(
+                    context,
+                    ref,
+                    fullExercise,
+                    onRemoved: () {
+                      if (selected) onExerciseRemoved?.call();
+                    },
+                  ),
+                ),
+              ],
             )
-          : null,
+          : altsBadge,
       // Wide master-detail selects the row for the set-editor pane; narrow
       // pushes the detail route.
       onTap: reorderMode
