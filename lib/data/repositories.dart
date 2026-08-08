@@ -79,6 +79,14 @@ abstract class ExerciseRepository {
   Stream<List<Muscle>> watchMuscles();
   Future<List<Muscle>> musclesForExercise(String exerciseId);
 
+  /// Whether the library holds any exercise at all, **tombstones included**.
+  ///
+  /// Deliberately not "any visible exercise": the starter seed uses this, and
+  /// a tombstone means the user already curated this library. Ignoring them
+  /// would let the seed revive deletions through `createExercise`'s
+  /// reconcile-by-name.
+  Future<bool> hasAnyExercise();
+
   // Mutations
   Future<Exercise> createExercise(String name, {String kind = exerciseKindReps});
   Future<void> renameExercise(String id, String name);

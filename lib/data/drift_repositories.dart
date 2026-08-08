@@ -146,6 +146,9 @@ class DriftExerciseRepository implements ExerciseRepository {
   Stream<List<Exercise>> watchExercises() => _db.watchExercises();
 
   @override
+  Future<bool> hasAnyExercise() => _db.hasAnyExercise();
+
+  @override
   Stream<List<ExerciseWithMuscles>> watchExercisesWithMuscles() =>
       _db.watchExercisesWithMuscles();
 

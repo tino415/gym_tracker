@@ -6,6 +6,7 @@ import '../sync/firestore_backend.dart' show syncBackendEnabled;
 import 'database.dart';
 import 'demo_seed.dart';
 import 'drift_repositories.dart';
+import 'exercise_seeds.dart';
 import 'firestore_repositories.dart';
 import 'repositories.dart';
 
@@ -63,6 +64,23 @@ final demoSeedProvider = FutureProvider<void>((ref) async {
   if (!seedDemoEnabled) return;
   await seedDemoData(
     routines: ref.read(routineRepositoryProvider),
+    exercises: ref.read(exerciseRepositoryProvider),
+  );
+});
+
+/// Fills a pristine library with the starter exercises. Unlike the demo seed
+/// this ships in real builds, so it is guarded by [seedStarterExercises]'s
+/// tombstone-aware check rather than a dart-define.
+///
+/// Self-gates on the uid: reading a repository while signed out throws on the
+/// Firestore-direct web build. Because the provider watches the uid it re-runs
+/// on sign-in, which is when a brand-new account's empty library appears.
+final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
+  if (ref.watch(firestoreDirectProvider) &&
+      ref.watch(currentUidProvider) == null) {
+    return;
+  }
+  await seedStarterExercises(
     exercises: ref.read(exerciseRepositoryProvider),
   );
 });

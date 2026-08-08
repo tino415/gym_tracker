@@ -59,6 +59,14 @@ class FirestoreExerciseRepository implements ExerciseRepository {
   // -- Reads ------------------------------------------------------------
 
   @override
+  Future<bool> hasAnyExercise() async {
+    // Tombstones are ordinary documents here, so an unfiltered limit(1) is
+    // exactly "has this library ever held anything".
+    final snap = await _col.limit(1).get();
+    return snap.docs.isNotEmpty;
+  }
+
+  @override
   Stream<List<Exercise>> watchExercises() {
     return _col.snapshots().map((snap) {
       final rows = snap.docs

@@ -595,6 +595,13 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  /// Whether any exercise row exists, tombstones **included** — see
+  /// `ExerciseRepository.hasAnyExercise` for why deleted rows count.
+  Future<bool> hasAnyExercise() async {
+    final row = await (select(exercises)..limit(1)).getSingleOrNull();
+    return row != null;
+  }
+
   /// One-shot fetch of every exercise with its muscle tags, in name order.
   /// Used by the exercise registry list — the call is cheap (small N) and
   /// avoids one query per row on rebuild.

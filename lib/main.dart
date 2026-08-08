@@ -93,6 +93,10 @@ class GymTrackerRoot extends ConsumerWidget {
     // Never on the watch, which isn't the routine authority and would only
     // hand the phone data it didn't ask for.
     if (!isWatch && seedDemoEnabled) ref.watch(demoSeedProvider);
+    // Starter exercise library, once, into a pristine install. Never on the
+    // watch: the phone owns the library and hands it over by sync, and seeding
+    // both sides would mean two devices creating the same names independently.
+    if (!isWatch) ref.watch(starterExerciseSeedProvider);
     if (isWatch) return const _WearShell();
     return const PhoneApp();
   }
