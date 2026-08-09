@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Shown by PermissionsRationaleActivity, which Health Connect links to
-         from its permission screen. Must be replaced by (or point at) the
-         published privacy policy before release — see the Play tasks. -->
+         from its permission screen. The summary is kept alongside the link so
+         the screen still says something useful with no network; the published
+         policy at privacy_policy_url is the authoritative version, and is what
+         Health Connect and Play require to be reachable from here. -->
     <string name="health_connect_rationale">GymTracker writes your finished
         workouts to Health Connect so they appear alongside the rest of your
         health data.\n\nIt writes only: the start and end time of each workout,
@@ -11,4 +13,14 @@
         reads anything from Health Connect, and nothing is shared with anyone
         else. You can turn this off at any time on the Account screen, and
         revoke the permission in Health Connect itself.</string>
+
+    <!-- Must stay the same policy that is published in Play Console: Health
+         Connect review checks that this screen leads to it. Served as a static
+         file from the app's Firebase Hosting site (web/privacy.html in the
+         Flutter project), so it is reachable without signing in. -->
+    <string name="privacy_policy_url">https://gym-tracker-44a5f.web.app/privacy.html</string>
+    <string name="privacy_policy_link">Read the full privacy policy</string>
+    <string name="privacy_policy_unavailable">No app available to open the
+        privacy policy. It is published at
+        https://gym-tracker-44a5f.web.app/privacy.html</string>
 </resources>
