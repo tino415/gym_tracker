@@ -63,7 +63,7 @@ void main() {
       final plankMuscles = await repo.musclesForExercise(plank.syncId);
       expect(plankMuscles.map((m) => m.name), ['Abs']);
 
-      final squat = byName['Barbell back squat']!;
+      final squat = byName['Back squat']!;
       expect(squat.kind, exerciseKindReps);
       final squatMuscles = await repo.musclesForExercise(squat.syncId);
       expect(squatMuscles.map((m) => m.name).toSet(), {'Quads', 'Glutes'});

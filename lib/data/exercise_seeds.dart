@@ -32,10 +32,10 @@ class ExerciseSeed {
 /// tag nothing.
 const exerciseSeeds = <ExerciseSeed>[
   // -- Chest ---------------------------------------------------------------
-  ExerciseSeed('Barbell bench press', ['Chest', 'Triceps', 'Shoulders']),
-  ExerciseSeed('Incline barbell bench press', ['Chest', 'Shoulders']),
-  ExerciseSeed('Bench press dumbbell', ['Chest']),
-  ExerciseSeed('Chest fly dumbbell', ['Chest']),
+  ExerciseSeed('Bench press', ['Chest', 'Triceps', 'Shoulders']),
+  ExerciseSeed('Incline bench press', ['Chest', 'Shoulders']),
+  ExerciseSeed('Dumbbell bench press', ['Chest']),
+  ExerciseSeed('Dumbbell chest fly', ['Chest']),
   ExerciseSeed('Push up', ['Chest', 'Triceps']),
   ExerciseSeed('Decline wide push up', ['Chest']),
   ExerciseSeed('Parallel bars dips', ['Chest', 'Triceps']),
@@ -65,20 +65,20 @@ const exerciseSeeds = <ExerciseSeed>[
   ExerciseSeed('Cable biceps curl', ['Biceps']),
   ExerciseSeed('Dumbbell hammer curl', ['Biceps']),
   ExerciseSeed('Barbell curl', ['Biceps', 'Forearms']),
-  ExerciseSeed('Skull crusher dumbbell', ['Triceps']),
+  ExerciseSeed('Dumbbell skull crusher', ['Triceps']),
   ExerciseSeed('Overhead cable triceps extension', ['Triceps']),
   ExerciseSeed('Seated overhead dumbbell extension', ['Triceps']),
   ExerciseSeed('Triceps push down', ['Triceps']),
 
   // -- Legs ----------------------------------------------------------------
-  ExerciseSeed('Barbell back squat', ['Quads', 'Glutes']),
+  ExerciseSeed('Back squat', ['Quads', 'Glutes']),
   ExerciseSeed('Front squat', ['Quads']),
   ExerciseSeed('Leg press', ['Quads', 'Glutes']),
   ExerciseSeed('Leg extension machine', ['Quads']),
   ExerciseSeed('Lying leg curl machine', ['Hamstrings']),
   ExerciseSeed('Deadlift', ['Hamstrings', 'Glutes', 'Back']),
   ExerciseSeed('Romanian deadlift', ['Hamstrings', 'Glutes']),
-  ExerciseSeed('Romanian deadlift with dumbbell', ['Hamstrings', 'Glutes']),
+  ExerciseSeed('Dumbbell Romanian deadlift', ['Hamstrings', 'Glutes']),
   ExerciseSeed('Hip thrust', ['Glutes']),
   ExerciseSeed('Walking lunge', ['Quads', 'Glutes']),
   ExerciseSeed('Bulgarian split squat', ['Quads', 'Hamstrings']),
