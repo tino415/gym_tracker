@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../build_info.dart';
 import '../../data/firestore_repositories.dart';
 import '../../data/providers.dart';
+import '../../privacy_policy.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/health_connect_bridge.dart';
@@ -498,6 +499,9 @@ class _HealthUploadConsentSection extends StatelessWidget {
             'it off again deletes the readings already stored.',
           ),
         ),
+        // Consent to health data has to be informed, so the policy is
+        // reachable from where the decision is made.
+        const PrivacyPolicyLink(),
       ],
     );
   }

@@ -20,7 +20,9 @@
     <!-- Must stay the same policy that is published in Play Console: Health
          Connect review checks that this screen leads to it. Served as a static
          file from the app's Firebase Hosting site (web/privacy.html in the
-         Flutter project), so it is reachable without signing in. -->
+         Flutter project), so it is reachable without signing in.
+         Mirrored in lib/privacy_policy.dart as privacyPolicyUrl, which is what
+         the in-app consent controls open — change both. -->
     <string name="privacy_policy_url">https://gym-tracker-44a5f.web.app/privacy.html</string>
     <string name="privacy_policy_link">Read the full privacy policy</string>
     <string name="privacy_policy_unavailable">No app available to open the

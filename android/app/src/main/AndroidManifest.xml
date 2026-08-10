@@ -33,6 +33,17 @@
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
 
+    <!-- Package visibility for url_launcher: from Android 11 an app cannot see
+         which activities handle a URL unless it declares the intent it wants to
+         resolve. Without this, opening the privacy policy from the consent
+         controls silently fails rather than erroring. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:label="GymTracker"
         android:name="${applicationName}"

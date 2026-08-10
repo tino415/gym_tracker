@@ -47,6 +47,10 @@ dependencies:
   firebase_auth: ^6.5.6
   google_sign_in: ^7.2.0
   shared_preferences: ^2.3.2
+  # Opens the published privacy policy from the consent surfaces. Consent to
+  # store health data has to be informed, which means the policy is reachable
+  # from the place the decision is made.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

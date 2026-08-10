@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../privacy_policy.dart';
 import '../sync/auth_service.dart';
 import '../sync/health_upload_consent.dart';
 
@@ -170,6 +171,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   style: TextStyle(color: theme.colorScheme.outline),
                 ),
               ),
+              // Consent to health data has to be informed, so the policy is
+              // reachable from where the decision is made.
+              const PrivacyPolicyLink(),
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: _busy
