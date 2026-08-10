@@ -101,7 +101,14 @@ class WorkoutBridge(
                     result.error("no_activity", "No bound activity", null)
                     return
                 }
-                val perms = mutableListOf(Manifest.permission.BODY_SENSORS)
+                val perms = mutableListOf(
+                    Manifest.permission.BODY_SENSORS,
+                    // Health Services' ExerciseClient — the session-long heart
+                    // rate path — needs this on top of BODY_SENSORS. Without it
+                    // registration fails and we fall back to spot measurement,
+                    // which is what made heart rate read near-resting.
+                    Manifest.permission.ACTIVITY_RECOGNITION,
+                )
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     perms += Manifest.permission.POST_NOTIFICATIONS
                 }
@@ -142,21 +149,11 @@ class WorkoutBridge(
         sink = events
         collectJob?.cancel()
         collectJob = scope.launch {
-            WorkoutService.heartRate.collect { sample ->
-                if (sample == null) return@collect
-                val payload = mapOf(
-                    "bpm" to sample.bpm,
-                    "timestampMs" to sample.timestampMs,
-                )
-                mainHandler.post {
-                    sink?.success(
-                        mapOf(
-                            "type" to "heartRate",
-                            "payload" to payload,
-                        ),
-                    )
-                }
-            }
+            // Hand over whatever was captured while the engine was asleep
+            // *before* waiting on new samples — on a watch that backlog is most
+            // of the workout, since the screen is off through every set.
+            emitHeartRateBatch()
+            WorkoutService.heartRateAvailable.collect { emitHeartRateBatch() }
         }
         timerJob?.cancel()
         timerJob = scope.launch {
@@ -170,6 +167,34 @@ class WorkoutBridge(
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Drains the service's sample buffer onto the event sink as one batch.
+     *
+     * If no sink is attached the batch goes back where it came from, so a
+     * teardown racing a delivery costs nothing. Dart persists samples by
+     * timestamp with an upsert, so a batch delivered twice is harmless.
+     */
+    private fun emitHeartRateBatch() {
+        val batch = WorkoutService.drainHeartRate()
+        if (batch.isEmpty()) return
+        val samples = batch.map {
+            mapOf("bpm" to it.bpm, "timestampMs" to it.timestampMs)
+        }
+        mainHandler.post {
+            val events = sink
+            if (events == null) {
+                WorkoutService.returnHeartRate(batch)
+                return@post
+            }
+            events.success(
+                mapOf(
+                    "type" to "heartRate",
+                    "payload" to mapOf("samples" to samples),
+                ),
+            )
         }
     }
 

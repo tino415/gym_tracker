@@ -13,12 +13,15 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.health.services.client.ExerciseClient
+import androidx.health.services.client.ExerciseUpdateCallback
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.MeasureClient
@@ -27,13 +30,20 @@ import androidx.health.services.client.data.DataPointAccuracy
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.data.ExerciseConfig
+import androidx.health.services.client.data.ExerciseLapSummary
+import androidx.health.services.client.data.ExerciseType
+import androidx.health.services.client.data.ExerciseUpdate
 import androidx.health.services.client.data.HeartRateAccuracy
+import androidx.health.services.client.data.SampleDataPoint
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
+import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -57,6 +67,8 @@ class WorkoutService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var measureClient: MeasureClient? = null
     private var measureSubscribed = false
+    private var exerciseClient: ExerciseClient? = null
+    private var exerciseActive = false
 
     // Screen-off-safe countdown. The Flutter run page owns the wall clock and
     // hands us an absolute end time; we hold a short partial wake lock so the
@@ -64,6 +76,37 @@ class WorkoutService : Service() {
     private val countdownHandler = Handler(Looper.getMainLooper())
     private var countdownRunnable: Runnable? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Primary capture path. [ExerciseClient] is the Health Services API meant
+     * for a whole training session: it keeps sampling with the screen off and
+     * the app backgrounded, and it puts the sensor into exercise mode, which
+     * samples faster and tracks effort. [MeasureClient] — what this used to
+     * use — is documented as an on-demand spot measurement for a *visible*
+     * app, and in practice it delivered a reading only when the watch woke.
+     */
+    private val exerciseCallback = object : ExerciseUpdateCallback {
+        override fun onExerciseUpdateReceived(update: ExerciseUpdate) {
+            ingest(update.latestMetrics.getData(DataType.HEART_RATE_BPM))
+        }
+
+        override fun onLapSummaryReceived(lapSummary: ExerciseLapSummary) = Unit
+
+        override fun onAvailabilityChanged(
+            dataType: DataType<*, *>,
+            availability: Availability,
+        ) = Unit
+
+        override fun onRegistered() = Unit
+
+        override fun onRegistrationFailed(throwable: Throwable) {
+            // Another app already owns the active exercise, or the type isn't
+            // supported after all. A spot-measured HR beats none.
+            Log.w(TAG, "exercise registration failed: ${throwable.message}")
+            exerciseActive = false
+            startMeasureFallback()
+        }
+    }
 
     private val measureCallback = object : MeasureCallback {
         override fun onAvailabilityChanged(
@@ -74,31 +117,47 @@ class WorkoutService : Service() {
         }
 
         override fun onDataReceived(data: DataPointContainer) {
-            val samples = data.getData(DataType.HEART_RATE_BPM)
-            // Drop phantom 0s (warm-up / off-body) and low-confidence reads.
-            // Optical PPG under load (weight training) produces motion-artifact
-            // samples that read low; gating on accuracy keeps the average from
-            // being dragged down the way it was vs. Samsung Health / Hevy.
-            val latest = samples.lastOrNull {
-                it.value > 0.0 && isAcceptableAccuracy(it.accuracy)
-            } ?: return
-            _heartRate.value = HeartRateSample(
-                bpm = latest.value.toInt(),
-                timestampMs = System.currentTimeMillis(),
-            )
+            ingest(data.getData(DataType.HEART_RATE_BPM))
         }
+    }
 
-        // Reject NO_CONTACT / UNRELIABLE / ACCURACY_LOW. Accept UNKNOWN/missing
-        // accuracy so hardware that doesn't report it still surfaces HR.
-        private fun isAcceptableAccuracy(accuracy: DataPointAccuracy?): Boolean {
-            val hr = accuracy as? HeartRateAccuracy ?: return true
-            return when (hr.sensorStatus) {
-                HeartRateAccuracy.SensorStatus.NO_CONTACT,
-                HeartRateAccuracy.SensorStatus.UNRELIABLE,
-                HeartRateAccuracy.SensorStatus.ACCURACY_LOW -> false
-                else -> true
-            }
+    /**
+     * Buffers every acceptable reading in a batch — not just the newest. A
+     * batched delivery carries several points, and keeping only the last one
+     * threw the rest away.
+     *
+     * Each point is stamped with *its own* instant rather than arrival time, so
+     * a batch that lands late (or a backlog replayed after the screen wakes)
+     * still records when the beat actually happened.
+     */
+    private fun ingest(points: List<SampleDataPoint<Double>>) {
+        if (points.isEmpty()) return
+        // Boot instant: Health Services timestamps are relative to boot.
+        val boot = Instant.now().minusNanos(SystemClock.elapsedRealtimeNanos())
+        for (p in points) {
+            val bpm = p.value.toInt()
+            // 0 bpm is the sensor saying "nothing here" (warm-up / off wrist),
+            // never a real reading.
+            if (bpm <= 0) continue
+            if (!hasContact(p.accuracy)) continue
+            val tMs = runCatching { p.getTimeInstant(boot).toEpochMilli() }
+                .getOrDefault(System.currentTimeMillis())
+            recordHeartRate(HeartRateSample(bpm = bpm, timestampMs = tMs))
         }
+    }
+
+    /**
+     * Only rejects readings the sensor says are not of a wrist at all.
+     *
+     * This deliberately keeps ACCURACY_LOW / UNRELIABLE. Optical PPG loses
+     * confidence when the wrist is moving — which is precisely during a set —
+     * so discarding those samples cut out the work intervals and left a series
+     * made of rest, dragging the average down to near-resting. That is the
+     * opposite of what the old gate here was trying to achieve.
+     */
+    private fun hasContact(accuracy: DataPointAccuracy?): Boolean {
+        val hr = accuracy as? HeartRateAccuracy ?: return true
+        return hr.sensorStatus != HeartRateAccuracy.SensorStatus.NO_CONTACT
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -160,7 +219,10 @@ class WorkoutService : Service() {
         cancelCountdown()
         stopHeartRate()
         _running.value = false
-        _heartRate.value = null
+        // Deliberately *not* clearing the sample buffer: the run page finishes
+        // the workout and then stops the service, and anything still undelivered
+        // is a reading we'd rather hand over late than drop. The next workout
+        // clears it in startHeartRateIfAllowed().
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -277,7 +339,7 @@ class WorkoutService : Service() {
     }
 
     private fun startHeartRateIfAllowed() {
-        if (measureSubscribed) return
+        if (exerciseActive || measureSubscribed) return
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.BODY_SENSORS,
@@ -285,17 +347,102 @@ class WorkoutService : Service() {
         ) {
             return
         }
+        resetHeartRate()
+        startExerciseOrFallback()
+    }
+
+    /**
+     * Probe first: asking a watch that can't do a strength-training exercise
+     * session to start one fails asynchronously and would lose us the whole
+     * workout's heart rate, so check before committing and keep the
+     * [MeasureClient] path as the fallback.
+     */
+    private fun startExerciseOrFallback() {
+        val client = try {
+            HealthServices.getClient(this).exerciseClient
+        } catch (t: Throwable) {
+            Log.w(TAG, "no exercise client: ${t.message}")
+            startMeasureFallback()
+            return
+        }
+        val caps = try {
+            client.getCapabilitiesAsync()
+        } catch (t: Throwable) {
+            Log.w(TAG, "getCapabilities failed: ${t.message}")
+            startMeasureFallback()
+            return
+        }
+        caps.addListener({
+            val supported = runCatching {
+                val c = caps.get()
+                ExerciseType.STRENGTH_TRAINING in c.supportedExerciseTypes &&
+                    DataType.HEART_RATE_BPM in c
+                        .getExerciseTypeCapabilities(ExerciseType.STRENGTH_TRAINING)
+                        .supportedDataTypes
+            }.getOrDefault(false)
+            if (supported) startExercise(client) else startMeasureFallback()
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun startExercise(client: ExerciseClient) {
+        if (exerciseActive || measureSubscribed) return
+        val config = ExerciseConfig.builder(ExerciseType.STRENGTH_TRAINING)
+            .setDataTypes(setOf(DataType.HEART_RATE_BPM))
+            // Auto-pause would stop sampling between sets — the rest periods
+            // are part of the session and we want their heart rate too.
+            .setIsAutoPauseAndResumeEnabled(false)
+            .setIsGpsEnabled(false)
+            .build()
+        try {
+            client.setUpdateCallback(exerciseCallback)
+            exerciseClient = client
+            exerciseActive = true
+            val started = client.startExerciseAsync(config)
+            started.addListener({
+                runCatching { started.get() }.onSuccess {
+                    // Which path engaged decides whether heart rate is sampled
+                    // through the sets or only when the watch wakes, so say so
+                    // out loud — it is the first thing to check after a run
+                    // that came out reading low.
+                    Log.i(TAG, "heart rate: exercise session active")
+                }.onFailure {
+                    Log.w(TAG, "startExercise failed: ${it.message}")
+                    exerciseActive = false
+                    startMeasureFallback()
+                }
+            }, ContextCompat.getMainExecutor(this))
+        } catch (t: Throwable) {
+            Log.w(TAG, "setUpdateCallback failed: ${t.message}")
+            exerciseActive = false
+            startMeasureFallback()
+        }
+    }
+
+    private fun startMeasureFallback() {
+        if (exerciseActive || measureSubscribed) return
         try {
             val client = HealthServices.getClient(this).measureClient
             client.registerMeasureCallback(DataType.HEART_RATE_BPM, measureCallback)
             measureClient = client
             measureSubscribed = true
+            Log.w(TAG, "heart rate: spot-measurement fallback (screen-off gaps expected)")
         } catch (t: Throwable) {
             Log.w(TAG, "registerMeasureCallback failed: ${t.message}")
         }
     }
 
     private fun stopHeartRate() {
+        if (exerciseActive) {
+            val client = exerciseClient
+            try {
+                client?.endExerciseAsync()
+                client?.clearUpdateCallbackAsync(exerciseCallback)
+            } catch (t: Throwable) {
+                Log.w(TAG, "endExercise failed: ${t.message}")
+            }
+            exerciseActive = false
+        }
+        exerciseClient = null
         val client = measureClient ?: return
         if (measureSubscribed) {
             try {
@@ -327,8 +474,76 @@ class WorkoutService : Service() {
         const val KIND_REST = "rest"
         const val KIND_TIME = "time"
 
-        private val _heartRate = MutableStateFlow<HeartRateSample?>(null)
-        val heartRate: StateFlow<HeartRateSample?> = _heartRate.asStateFlow()
+        /**
+         * How often a reading is kept, in ms. Mirrors
+         * `kHeartRateSampleGapMs` in `lib/watch/heart_rate_thinning.dart` —
+         * keep the two in sync. Thinning happens *here*, at the producer, so a
+         * reading captured while the Flutter engine was asleep is already
+         * spaced correctly by the time Dart sees it.
+         */
+        private const val HR_MIN_GAP_MS = 5_000L
+
+        /** ~3 h of thinned samples. A bound, not an expected depth. */
+        private const val HR_BUFFER_MAX = 2048
+
+        private val hrLock = Any()
+        private val hrBuffer = ArrayDeque<HeartRateSample>()
+        private var lastBufferedMs = 0L
+
+        /**
+         * Signals that [drainHeartRate] has something. Deliberately carries no
+         * payload: the buffer is the payload, and it must outlive the Flutter
+         * engine. The old design published samples into a *conflating*
+         * StateFlow, so everything captured while the watch screen was off —
+         * i.e. every set — collapsed into a single value that the run page read
+         * once it woke. A 57-minute session stored 50 readings instead of ~680,
+         * one per set, all taken while the user was standing still looking at
+         * the watch. That is why heart rate synced to Health Connect read
+         * near-resting.
+         */
+        private val _heartRateAvailable = MutableSharedFlow<Unit>(
+            extraBufferCapacity = 8,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+        val heartRateAvailable: SharedFlow<Unit> = _heartRateAvailable.asSharedFlow()
+
+        /** Buffers [sample] if it is far enough past the last one kept. */
+        fun recordHeartRate(sample: HeartRateSample) {
+            val buffered = synchronized(hrLock) {
+                // A negative delta is an out-of-order reading; the samples table
+                // is keyed on the timestamp and upserts, so letting one through
+                // would overwrite a good reading with a stale one.
+                if (sample.timestampMs - lastBufferedMs < HR_MIN_GAP_MS) {
+                    return@synchronized false
+                }
+                lastBufferedMs = sample.timestampMs
+                hrBuffer.addLast(sample)
+                while (hrBuffer.size > HR_BUFFER_MAX) hrBuffer.removeFirst()
+                true
+            }
+            if (buffered) _heartRateAvailable.tryEmit(Unit)
+        }
+
+        /** Removes and returns everything buffered, oldest first. */
+        fun drainHeartRate(): List<HeartRateSample> = synchronized(hrLock) {
+            if (hrBuffer.isEmpty()) {
+                emptyList()
+            } else {
+                ArrayList(hrBuffer).also { hrBuffer.clear() }
+            }
+        }
+
+        /** Puts a batch back after a failed delivery (no event sink attached). */
+        fun returnHeartRate(samples: List<HeartRateSample>) = synchronized(hrLock) {
+            for (s in samples.asReversed()) hrBuffer.addFirst(s)
+            while (hrBuffer.size > HR_BUFFER_MAX) hrBuffer.removeFirst()
+        }
+
+        private fun resetHeartRate() = synchronized(hrLock) {
+            hrBuffer.clear()
+            lastBufferedMs = 0L
+        }
+
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running.asStateFlow()
         // Each fire is a distinct event (no replay/dedup), so a SharedFlow, not

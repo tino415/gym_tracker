@@ -37,8 +37,11 @@ class WorkoutBridge {
   static const _method = MethodChannel('gym_tracker/workout/method');
   static const _events = EventChannel('gym_tracker/workout/events');
 
-  final StreamController<HeartRateSample> _heartRate =
-      StreamController<HeartRateSample>.broadcast();
+  // Batched, because the native side buffers samples while the Flutter engine
+  // is asleep (the watch screen is off through every set) and hands the whole
+  // backlog over when it wakes.
+  final StreamController<List<HeartRateSample>> _heartRate =
+      StreamController<List<HeartRateSample>>.broadcast();
   // Emits the kind ('rest' | 'time') of a countdown that the native service
   // fired (and vibrated for), so the watch run page advances even if its own
   // periodic ticker was frozen by the screen sleeping.
@@ -49,7 +52,9 @@ class WorkoutBridge {
   StreamSubscription<Object?>? _eventsSub;
   bool _bound = false;
 
-  Stream<HeartRateSample> get heartRateStream => _heartRate.stream;
+  /// Batches of readings, oldest first within a batch. A batch may be a single
+  /// live sample or a whole screen-off backlog.
+  Stream<List<HeartRateSample>> get heartRateStream => _heartRate.stream;
   Stream<String> get timerDoneStream => _timerDone.stream;
   HeartRateSample? get lastSample => _lastSample;
 
@@ -71,12 +76,22 @@ class WorkoutBridge {
     final payload = raw['payload'];
     if (payload is! Map) return;
     if (type == 'heartRate') {
-      final bpm = payload['bpm'];
-      final ts = payload['timestampMs'];
-      if (bpm is! int || ts is! int) return;
-      final sample = HeartRateSample(bpm: bpm, timestampMs: ts);
-      _lastSample = sample;
-      _heartRate.add(sample);
+      final raw = payload['samples'];
+      if (raw is! List) return;
+      final batch = <HeartRateSample>[];
+      for (final entry in raw) {
+        if (entry is! Map) continue;
+        final bpm = entry['bpm'];
+        final ts = entry['timestampMs'];
+        if (bpm is! int || ts is! int) continue;
+        batch.add(HeartRateSample(bpm: bpm, timestampMs: ts));
+      }
+      if (batch.isEmpty) return;
+      // The native buffer is append-ordered, but a replayed batch can still
+      // interleave with a live one; sorting keeps "newest" honest for the badge.
+      batch.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+      _lastSample = batch.last;
+      _heartRate.add(batch);
     } else if (type == 'timerDone') {
       final kind = payload['kind'];
       if (kind is String) _timerDone.add(kind);

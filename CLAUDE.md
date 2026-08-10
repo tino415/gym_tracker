@@ -162,6 +162,36 @@ Single Flutter app shipped to both phone and Wear OS — the same binary, with a
 ### Watch run page lifecycle (`lib/watch/watch_run_page.dart`)
 Subscribes to `db.watchFullWorkout(workoutId)`. The listener has a `_initialLoadDone` gate: only the first emission seeds `_exerciseIdx`/`_setIdx` and calls `_loadCurrentSetTargets`. Subsequent emissions update the snapshot for badges but **must not** reload targets, otherwise concurrent DB writes (sync push, rename, completion toggle) would cancel any active rest/countdown timer. If you add new logic that reacts to snapshot changes, keep target reloads gated behind explicit user navigation, never the stream.
 
+### Heart rate on the watch
+
+Capture is native and **must stay that way**. The screen is off through every
+set, which pauses the Flutter engine, so anything that samples or thins in Dart
+only ever sees the moments the user looks at the watch — i.e. rest. A session
+recorded that way stored 50 readings instead of ~680, one per set, and synced to
+Health Connect reading near-resting. Three rules came out of it:
+
+- **`ExerciseClient`, not `MeasureClient`** (`WorkoutService.startExerciseOrFallback`).
+  The latter is Health Services' on-demand spot measurement for a *visible* app.
+  `MeasureClient` survives only as the fallback when the watch can't do a
+  strength-training session; `startMeasureFallback` logs when it engages, and
+  that log is the first thing to check if heart rate reads low again.
+  `ExerciseClient` needs `ACTIVITY_RECOGNITION` on top of `BODY_SENSORS`.
+- **Thinning happens at the producer** (`HR_MIN_GAP_MS`, mirroring
+  `kHeartRateSampleGapMs` in `lib/watch/heart_rate_thinning.dart` — keep the two
+  in sync), and samples are buffered in the service across engine pauses, drained
+  on `onListen`. Delivery is idempotent: the table is keyed on
+  `{workoutId, measuredAtMs}` and upserts, so a replayed batch is harmless.
+- **Aggregates are derived from the stored series, never accumulated live**
+  (`heartRateSeriesAverage` / `heartRateSeriesMax`, applied in `_toggleDone` and
+  `_finishWorkout`). Live accumulation had the same blind spot as live sampling,
+  and it also lost everything when the page was rebuilt or the workout resumed.
+  The session average is time-weighted and spans rest by design, so it sits well
+  below working HR — that is the statistic, not a bug.
+
+Only `NO_CONTACT` readings are dropped. `ACCURACY_LOW` / `UNRELIABLE` correlate
+with a moving wrist, so filtering them cut out the work intervals — a gate that
+was added to stop heart rate reading low and did the opposite.
+
 ### Sync — `lib/sync/`
 Phone ↔ watch over the Wear Data Layer (`MessageClient`). The native bridge `GymWearBridge.kt` (with `lib/sync/wear_bridge.dart` on the Dart side, path `/gym_tracker/sync`) is hand-rolled — the `voo_watch` plugin leaks JSONObject into the Flutter codec and crashes, so don't reintroduce it.
 

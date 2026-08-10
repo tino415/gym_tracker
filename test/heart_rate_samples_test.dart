@@ -11,38 +11,65 @@ import 'package:gym_tracker/watch/heart_rate_thinning.dart';
 /// `HeartRateRecord` can be written from real samples rather than reconstructed
 /// from the avg/max aggregates, which it can't honestly be.
 void main() {
-  group('thinning gate', () {
-    test('the first reading is always kept', () {
-      expect(
-        shouldPersistHeartRate(lastPersistedMs: null, nowMs: 1000),
-        isTrue,
-      );
+  group('series aggregates', () {
+    List<HeartRateReadingView> series(List<(int, int)> pairs) =>
+        [for (final (t, bpm) in pairs) (tMs: t, bpm: bpm)];
+
+    test('an empty series has no average and no peak', () {
+      expect(heartRateSeriesAverage(const []), isNull);
+      expect(heartRateSeriesMax(const []), isNull);
     });
 
-    test('readings inside the gap are dropped', () {
-      expect(
-        shouldPersistHeartRate(lastPersistedMs: 10000, nowMs: 12000),
-        isFalse,
-      );
+    test('a single reading averages to itself', () {
+      expect(heartRateSeriesAverage(series([(1000, 130)])), 130);
     });
 
-    test('a reading a full gap later is kept', () {
+    test('readings are integrated over time, not counted', () {
+      // 60 bpm held for 20 s, then a ramp to 120 over the last 5 s. Counting
+      // the four readings equally says 75; integrating over the 25 s says 66.
+      final s = series([
+        (0, 60),
+        (10000, 60),
+        (20000, 60),
+        (25000, 120),
+      ]);
+      expect(heartRateSeriesAverage(s, maxGapMs: 20000), 66);
+    });
+
+    test('the last reading still carries weight', () {
+      // Holding each reading until the next one would score this session at
+      // 60 — the closing effort would vanish entirely.
+      final s = series([(0, 60), (5000, 180)]);
+      expect(heartRateSeriesAverage(s), 120);
+    });
+
+    test('a dropout longer than the cap is not counted as steady', () {
+      // Ten minutes of silence between two readings must not be scored as
+      // "60 bpm for ten minutes" — it is missing data, not a measurement.
+      final s = series([(0, 60), (600000, 160), (605000, 160)]);
+      expect(heartRateSeriesAverage(s), 160);
+    });
+
+    test('unordered input is sorted before weighting', () {
+      final s = series([(20000, 60), (0, 60), (25000, 120)]);
       expect(
-        shouldPersistHeartRate(
-          lastPersistedMs: 10000,
-          nowMs: 10000 + kHeartRateSampleGapMs,
+        heartRateSeriesAverage(s, maxGapMs: 20000),
+        heartRateSeriesAverage(
+          series([(0, 60), (20000, 60), (25000, 120)]),
+          maxGapMs: 20000,
         ),
-        isTrue,
       );
     });
 
-    test('out-of-order timestamps are dropped', () {
-      // The table is keyed on {workoutId, measuredAtMs} and inserts upsert, so
-      // letting a stale reading through would overwrite a good one.
-      expect(
-        shouldPersistHeartRate(lastPersistedMs: 10000, nowMs: 9000),
-        isFalse,
-      );
+    test('the peak survives even when it is a lone spike', () {
+      expect(heartRateSeriesMax(series([(0, 60), (5000, 171), (10000, 62)])),
+          171);
+    });
+
+    test('a window keeps only readings inside it, bounds included', () {
+      final s = series([(0, 60), (5000, 100), (10000, 140), (15000, 90)]);
+      final windowed = heartRateSeriesBetween(s, fromMs: 5000, toMs: 10000);
+      expect(windowed.map((r) => r.bpm), [100, 140]);
     });
   });
 

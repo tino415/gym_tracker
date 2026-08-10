@@ -114,29 +114,20 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   bool _initialLoadDone = false;
 
   HeartRateSample? _hrSample;
-  StreamSubscription<HeartRateSample>? _hrSub;
+  StreamSubscription<List<HeartRateSample>>? _hrSub;
   // Drops the badge if no fresh sample arrives within the window. Re-armed
   // on every received sample.
   Timer? _hrStaleTimer;
-  // BPMs captured since the user landed on the current set. Cleared whenever
-  // the active set changes; consumed on Done to compute per-set avg + max.
-  final List<int> _setHrBpms = [];
 
-  // Session-wide, time-weighted HR aggregate (spans every phase, never cleared
-  // on set nav). Each sample contributes `prevBpm * dt` where dt is the gap
-  // since the previous sample, capped so a dropout can't dominate. Yields a
-  // session average that tracks effort like Samsung Health / Hevy rather than
-  // the old mean-of-per-set-means. `_sessionMaxHr` is the session peak.
-  double _hrWeightedSum = 0;
-  int _hrWeightedMs = 0;
-  int? _lastHrTsMs;
-
-  /// Timestamp of the last reading written to [HeartRateSamples], for the
-  /// thinning gate. Separate from [_lastHrTsMs], which tracks every reading for
-  /// the weighted session average.
-  int? _lastPersistedHrMs;
-  int? _lastHrBpm;
-  int? _sessionMaxHr;
+  /// When the current set's work interval started, for scoring it against the
+  /// stored series on Done.
+  ///
+  /// Per-set and session heart rate are both derived from
+  /// [HeartRateSamples] rather than accumulated live. Live accumulation only
+  /// ever saw the samples that arrived while this page was awake, which on a
+  /// watch means the moments between sets — the stored series now carries the
+  /// sets too, and it survives the page being rebuilt or the workout resumed.
+  int? _setWindowStartMs;
 
   final _pageController = PageController();
 
@@ -164,52 +155,51 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         WorkoutBridge.instance.timerDoneStream.listen(_onNativeTimerDone);
   }
 
-  void _onHeartRate(HeartRateSample sample) {
-    if (!mounted) return;
+  void _onHeartRate(List<HeartRateSample> batch) {
+    if (!mounted || batch.isEmpty) return;
     _hrStaleTimer?.cancel();
     final workoutId = _workoutId;
     if (workoutId != null) {
-      // Persist the reading itself, thinned — the aggregates below are what the
-      // history UI shows, but Health Connect needs the series. Fire and forget:
-      // a database write must never stall the HR badge or the run UI.
-      if (shouldPersistHeartRate(
-        lastPersistedMs: _lastPersistedHrMs,
-        nowMs: sample.timestampMs,
-      )) {
-        _lastPersistedHrMs = sample.timestampMs;
+      // Write the whole batch: it is already thinned natively, and a batch is
+      // usually a backlog captured with the screen off. Fire and forget — a
+      // database write must never stall the HR badge or the run UI.
+      final db = ref.read(databaseProvider);
+      for (final sample in batch) {
         unawaited(
-          ref.read(databaseProvider).addHeartRateSample(
-                workoutId: workoutId,
-                measuredAtMs: sample.timestampMs,
-                bpm: sample.bpm,
-              ),
+          db.addHeartRateSample(
+            workoutId: workoutId,
+            measuredAtMs: sample.timestampMs,
+            bpm: sample.bpm,
+          ),
         );
       }
-      // Per-set aggregate stays the work-interval mean: only the logSet phase
-      // (not rest, not pre-start) so it reflects effort, not recovery.
-      if (_phase == _Phase.logSet) _setHrBpms.add(sample.bpm);
-      // Session aggregate spans every phase, weighted by the gap each reading
-      // held. Cap the gap so a long sensor dropout isn't counted as steady HR.
-      final now = sample.timestampMs;
-      final lastTs = _lastHrTsMs;
-      final lastBpm = _lastHrBpm;
-      if (lastTs != null && lastBpm != null) {
-        final dt = now - lastTs;
-        if (dt > 0 && dt <= 10000) {
-          _hrWeightedSum += lastBpm * dt;
-          _hrWeightedMs += dt;
-        }
-      }
-      _lastHrTsMs = now;
-      _lastHrBpm = sample.bpm;
-      _sessionMaxHr =
-          _sessionMaxHr == null ? sample.bpm : max(_sessionMaxHr!, sample.bpm);
     }
-    setState(() => _hrSample = sample);
+    final newest = batch.last;
+    setState(() => _hrSample = newest);
     _hrStaleTimer = Timer(const Duration(seconds: 12), () {
       if (!mounted) return;
       setState(() => _hrSample = null);
     });
+  }
+
+  /// Reads the stored series for [workoutId], optionally narrowed to
+  /// `[fromMs, toMs]`, and returns its time-weighted average and peak.
+  Future<({int? avg, int? max})> _heartRateFor(
+    String workoutId, {
+    int? fromMs,
+    int? toMs,
+  }) async {
+    final rows = await ref.read(databaseProvider).heartRateSamplesFor(workoutId);
+    var series = [
+      for (final r in rows) (tMs: r.measuredAtMs, bpm: r.bpm),
+    ];
+    if (fromMs != null && toMs != null) {
+      series = heartRateSeriesBetween(series, fromMs: fromMs, toMs: toMs);
+    }
+    return (
+      avg: heartRateSeriesAverage(series),
+      max: heartRateSeriesMax(series),
+    );
   }
 
   Future<void> _startWorkout() async {
@@ -249,6 +239,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         }
       });
     });
+    // The first set's work interval opens here; every later one opens in
+    // _goTo / _advanceAfterRest.
+    _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
     setState(() => _workoutId = workoutId);
     _pageController.animateToPage(
       1,
@@ -514,7 +507,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   void _goTo(int eIdx, int sIdx) {
     _timer?.cancel();
     _restSecondsLeftVN.value = 0;
-    _setHrBpms.clear();
+    _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
     setState(() {
       _exerciseIdx = eIdx;
       _setIdx = sIdx;
@@ -534,14 +527,23 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       await db.deleteSetCompletionFor(workoutId: workoutId, workoutSetId: wsId);
       return;
     }
-    // Per-set HR aggregates. Absent semantics so re-Done with no new samples
-    // preserves a previously-saved value.
+    // Per-set HR, scored from the stored series over this set's work interval
+    // (not rest, not pre-start) so it reflects effort rather than recovery.
+    // Absent semantics so re-Done with no new samples preserves a
+    // previously-saved value.
     Value<int?> avgHr = const Value.absent();
     Value<int?> maxHr = const Value.absent();
-    if (_setHrBpms.isNotEmpty) {
-      final sum = _setHrBpms.reduce((a, b) => a + b);
-      avgHr = Value((sum / _setHrBpms.length).round());
-      maxHr = Value(_setHrBpms.reduce(max));
+    final windowStart = _setWindowStartMs;
+    if (windowStart != null) {
+      final hr = await _heartRateFor(
+        workoutId,
+        fromMs: windowStart,
+        toMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      if (hr.avg != null) {
+        avgHr = Value(hr.avg);
+        maxHr = Value(hr.max);
+      }
     }
     final kind = _currentKind();
     if (kind == exerciseKindTime) {
@@ -765,7 +767,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       setState(() => _phase = _Phase.logSet);
       return;
     }
-    _setHrBpms.clear();
+    _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
     setState(() {
       _exerciseIdx = next.eIdx;
       _setIdx = next.sIdx;
@@ -829,17 +831,17 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     if (workoutId == null) return;
     _timer?.cancel();
     final db = ref.read(databaseProvider);
-    // Prefer the live time-weighted session aggregate — it spans the whole
-    // session and tracks effort like Samsung Health / Hevy. Fall back to
-    // rolling up stored per-set completions (mean of per-set means, max of
-    // maxes) when the in-memory accumulator is empty, e.g. a resumed workout
-    // whose earlier samples this page never observed.
-    int? workoutAvg;
-    int? workoutMax;
-    if (_hrWeightedMs > 0) {
-      workoutAvg = (_hrWeightedSum / _hrWeightedMs).round();
-      workoutMax = _sessionMaxHr;
-    } else {
+    // Session heart rate, time-weighted over the whole stored series — the same
+    // rows Health Connect is handed, so the app's own summary and what Samsung
+    // Health computes from the export agree. Reading it back also means a
+    // resumed workout, or one whose page was rebuilt mid-session, is scored on
+    // everything recorded rather than only what this page instance saw.
+    final session = await _heartRateFor(workoutId);
+    int? workoutAvg = session.avg;
+    int? workoutMax = session.max;
+    if (workoutAvg == null) {
+      // No series at all (permission refused, or a watch with no HR sensor).
+      // Roll up whatever the per-set completions captured.
       final completions = await db.completionsForWorkout(workoutId);
       final avgs = [
         for (final c in completions)

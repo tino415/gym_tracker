@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- Health Services' ExerciseClient. The watch tracks heart rate as a real
+         exercise session rather than a spot measurement, which is what keeps it
+         sampling with the screen off — through every set. Requested at workout
+         start alongside BODY_SENSORS; a refusal drops us to spot measurement,
+         not to nothing. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <!-- Qualifies us to start the `health` foreground service. From API 34 the
          platform demands FOREGROUND_SERVICE_HEALTH *plus* one of
          ACTIVITY_RECOGNITION / BODY_SENSORS / HIGH_SAMPLING_RATE_SENSORS, and
@@ -97,10 +103,9 @@
 
         <!-- Health Connect links to this from its permission screen, and
              requires it to show the same privacy policy published in Play
-             Console. We have no policy URL yet (see the "Privacy policy URL and
-             Play data-safety form" task) — the activity currently shows an
-             in-app explanation and must be pointed at the real policy before
-             release, or the Health Connect review will bounce.
+             Console. The activity shows an offline-readable summary plus a
+             button to privacy_policy_url (strings.xml), which must stay the
+             policy published in Play Console or the review will bounce.
              Two entry points: the action below is how Android 13 and earlier
              (where Health Connect is a separate app) reach it; the alias is the
              Android 14+ platform equivalent. -->
