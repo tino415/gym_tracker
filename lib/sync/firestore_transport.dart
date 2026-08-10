@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'health_upload_consent.dart';
 import 'sync_codec.dart';
 import 'sync_transport.dart';
 
@@ -22,11 +23,23 @@ import 'sync_transport.dart';
 /// changes is what stops the push → own-snapshot → apply → push echo from
 /// looping — once the sets converge, no write fires and no snapshot follows.
 class FirestoreSyncTransport implements SyncTransport {
-  FirestoreSyncTransport({required this.uid, FirebaseFirestore? firestore})
-    : _fs = firestore ?? FirebaseFirestore.instance;
+  FirestoreSyncTransport({
+    required this.uid,
+    FirebaseFirestore? firestore,
+    bool Function()? allowHealthUpload,
+  })  : _fs = firestore ?? FirebaseFirestore.instance,
+        _allowHealthUpload = allowHealthUpload ?? (() => false);
 
   final String uid;
   final FirebaseFirestore _fs;
+
+  /// Whether the signed-in user has explicitly consented to storing heart rate
+  /// in the cloud. Read per push rather than captured once, so revoking takes
+  /// effect on the next write without rebuilding the transport.
+  ///
+  /// Defaults to **false**: a caller that forgets to wire consent uploads no
+  /// health data, which is the safe way to be wrong.
+  final bool Function() _allowHealthUpload;
 
   final StreamController<SyncMessage> _messages =
       StreamController<SyncMessage>.broadcast();
@@ -223,7 +236,16 @@ class FirestoreSyncTransport implements SyncTransport {
   /// (don't clobber an edit made elsewhere), or it's the same version with the
   /// same content (an idempotent re-push or our own echo — writing it would
   /// fire a snapshot and go round again).
-  Future<void> _pushWorkout(Map<String, Object?> payload) async {
+  Future<void> _pushWorkout(Map<String, Object?> rawPayload) async {
+    // Health data leaves this device only with explicit consent. Stripping here
+    // rather than at export keeps heart rate flowing phone ↔ watch over the
+    // Wear Data Layer, which never reaches a server of ours.
+    //
+    // This also *undoes* an upload: `set` replaces the whole document, so once
+    // consent is withdrawn the next push rewrites each workout without its
+    // readings. That is why the account page re-pushes on revoke.
+    final payload =
+        _allowHealthUpload() ? rawPayload : stripHealthData(rawPayload);
     final syncId = payload['syncId'] as String?;
     if (syncId == null) return;
     final version = (payload['version'] as num?)?.toInt() ?? 1;

@@ -7,7 +7,9 @@ import '../../data/providers.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/health_connect_bridge.dart';
+import '../../sync/health_upload_consent.dart';
 import '../../sync/sync_ownership.dart';
+import '../../sync/sync_service.dart';
 import '../breakpoints.dart';
 import 'health_connect_controller.dart';
 import 'theme_controller.dart';
@@ -241,6 +243,19 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             onClaim: _busy ? null : () => _claimDevice(user.uid),
           ),
         ],
+        // Only where the gate actually applies: the Firestore-direct web build
+        // writes its documents itself rather than through the transport, and a
+        // switch that changed nothing would be worse than no switch.
+        if (!direct && !paused) ...[
+          const Divider(height: 32),
+          _HealthUploadConsentSection(
+            granted: healthUploadAllowed(
+              consentUid: ref.watch(healthUploadConsentProvider),
+              signedInUid: user.uid,
+            ),
+            onChanged: _busy ? null : (v) => _setHealthUploadConsent(user, v),
+          ),
+        ],
         const SizedBox(height: 16),
         FilledButton(
           onPressed: _busy ? null : () => _run(auth.signOut, validate: false),
@@ -251,6 +266,25 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           onDelete: _busy ? null : () => _deleteAccount(user),
         ),
     ];
+  }
+
+  /// Grant or withdraw consent to store heart rate in the account.
+  ///
+  /// Either way the whole local set is re-pushed, which is what makes the
+  /// decision retroactive: the transport strips heart rate from every workout
+  /// document it writes while consent is absent, and `set` replaces the
+  /// document, so withdrawing removes readings already uploaded rather than
+  /// merely stopping new ones. Granting fills them back in.
+  Future<void> _setHealthUploadConsent(User user, bool granted) async {
+    await _run(() async {
+      final consent = ref.read(healthUploadConsentProvider.notifier);
+      if (granted) {
+        await consent.grant(user.uid);
+      } else {
+        await consent.revoke();
+      }
+      await ref.read(syncServiceProvider).pushAll();
+    }, validate: false);
   }
 
   /// Delete the account and its server data, after confirming and proving the
@@ -408,6 +442,46 @@ class _HealthConnectSection extends StatelessWidget {
           subtitle: const Text(
             'Finished workouts appear in Health Connect, with heart rate when '
             'a watch recorded it. Nothing is ever read back.',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Explicit consent to store heart rate — health data — in the account.
+///
+/// Separate from signing in on purpose. Signing in is the contract that makes
+/// routines and history follow you between devices; heart rate is a special
+/// category of data under GDPR Art. 9, which that contract does not cover. So
+/// it gets its own affirmative act, off until taken, and withdrawable — the
+/// switch is the consent record and the withdrawal mechanism both.
+class _HealthUploadConsentSection extends StatelessWidget {
+  const _HealthUploadConsentSection({
+    required this.granted,
+    required this.onChanged,
+  });
+
+  final bool granted;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Heart rate', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: granted,
+          onChanged: onChanged,
+          title: const Text('Store heart rate in my account'),
+          subtitle: const Text(
+            'Heart rate is health data. Off, your workouts still sync but '
+            'their readings stay on your devices. On, the readings are stored '
+            'with each workout so they appear on your other devices. Turning '
+            'it off again deletes the readings already stored.',
           ),
         ),
       ],

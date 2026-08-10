@@ -10,9 +10,12 @@
         health data.\n\nIt writes only: the start and end time of each workout,
         its name, and — when a workout was run on a watch with heart-rate
         permission — the heart-rate readings recorded during it.\n\nIt never
-        reads anything from Health Connect, and nothing is shared with anyone
-        else. You can turn this off at any time on the Account screen, and
-        revoke the permission in Health Connect itself.</string>
+        reads anything from Health Connect, and what it writes there stays on
+        this device.\n\nSeparately, if you sign in, your workouts are synced to
+        your account; heart rate is included only if you turn that on yourself
+        on the Account screen. Nothing is sold or shared with advertisers.\n\nYou
+        can turn Health Connect writing off at any time on the Account screen,
+        and revoke the permission in Health Connect itself.</string>
 
     <!-- Must stay the same policy that is published in Play Console: Health
          Connect review checks that this screen leads to it. Served as a static

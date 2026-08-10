@@ -8,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firestore_backend.dart';
 import 'firestore_transport.dart';
+import 'health_upload_consent.dart';
 import 'sync_ownership.dart';
 import 'sync_service.dart';
 
@@ -225,7 +226,20 @@ final firestoreSyncBinderProvider = Provider<void>((ref) {
     if (decision.newOwner != null) await store.write(decision.newOwner!);
     if (currentUid != uid) return; // recheck after the (possible) write await
 
-    final t = FirestoreSyncTransport(uid: uid);
+    // Load the health-data consent decision *before* attaching: addTransport
+    // pushes the whole local history immediately, and a transport that attached
+    // while consent was still unread would strip heart rate from that first
+    // push even for a user who had granted it.
+    await ref.read(healthUploadConsentProvider.notifier).load();
+    if (currentUid != uid) return;
+
+    final t = FirestoreSyncTransport(
+      uid: uid,
+      allowHealthUpload: () => healthUploadAllowed(
+        consentUid: ref.read(healthUploadConsentProvider),
+        signedInUid: uid,
+      ),
+    );
     current = t;
     svc.addTransport(t); // pushOnAttach defaults true — backup + catch-up
   }
