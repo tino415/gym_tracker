@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
+import '../sync/health_upload_consent.dart';
 import '../sync/sync_codec.dart';
 import 'database.dart';
 import 'muscle_seeds.dart';
@@ -724,11 +725,29 @@ class FirestoreRoutineRepository implements RoutineRepository {
 /// deletion writes a tombstone (`deletedAtMs`) rather than removing the doc so
 /// it can travel. Reads skip tombstoned docs.
 class FirestoreWorkoutRepository implements WorkoutRepository {
-  FirestoreWorkoutRepository({required this.uid, FirebaseFirestore? firestore})
-    : _fs = firestore ?? FirebaseFirestore.instance;
+  FirestoreWorkoutRepository({
+    required this.uid,
+    FirebaseFirestore? firestore,
+    bool Function()? allowHealthUpload,
+  })  : _fs = firestore ?? FirebaseFirestore.instance,
+        _allowHealthUpload = allowHealthUpload ?? (() => false);
 
   final String uid;
   final FirebaseFirestore _fs;
+
+  /// Whether the signed-in user consented to storing heart rate in the account.
+  ///
+  /// Web writes its documents itself rather than through the sync transport, so
+  /// the gate has to be enforced here too or web would be a hole in it. Reads
+  /// false when unwired, so forgetting to pass it withholds health data.
+  final bool Function() _allowHealthUpload;
+
+  /// Applied to every document this repository writes. Web can never *record*
+  /// heart rate — it has no sensor — so this only ever preserves or drops what
+  /// a phone uploaded, which is exactly what consent should decide.
+  Map<String, dynamic> _gated(Map<String, dynamic> doc) => _allowHealthUpload()
+      ? doc
+      : Map<String, dynamic>.from(stripHealthData(doc.cast<String, Object?>()));
 
   CollectionReference<Map<String, Object?>> get _col =>
       _fs.collection('users').doc(uid).collection('workouts');
@@ -1073,7 +1092,25 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     final m = Map<String, dynamic>.from(data);
     mutate(m);
     m['version'] = ((m['version'] as num?)?.toInt() ?? 1) + 1;
-    await ref.set(m);
+    await ref.set(_gated(m));
+  }
+
+  /// Rewrite every workout document without its heart-rate readings.
+  ///
+  /// This is what makes withdrawing consent on web delete what was already
+  /// stored, rather than merely stopping new writes — the counterpart of the
+  /// phone's re-push. Only documents that actually carry readings are written,
+  /// so a run with nothing to do costs one collection read.
+  Future<void> stripStoredHealthData() async {
+    final snap = await _col.get();
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (!hasHealthData(data)) continue;
+      await doc.reference.set({
+        ...stripHealthData(data),
+        'version': ((data['version'] as num?)?.toInt() ?? 1) + 1,
+      });
+    }
   }
 
   /// For the child-id-only APIs: scan for the doc that owns the id and edit it.
@@ -1088,7 +1125,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       final m = Map<String, dynamic>.from(data);
       if (findAndMutate(m)) {
         m['version'] = ((m['version'] as num?)?.toInt() ?? 1) + 1;
-        await doc.reference.set(m);
+        await doc.reference.set(_gated(m));
         return;
       }
     }

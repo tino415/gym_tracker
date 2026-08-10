@@ -10,7 +10,13 @@ void main() {
 
   setUp(() {
     fs = FakeFirebaseFirestore();
-    workouts = FirestoreWorkoutRepository(uid: 'u1', firestore: fs);
+    // Consented, so these cases exercise ordinary behaviour. The gate itself —
+    // and what happens without consent — is covered at the bottom of the file.
+    workouts = FirestoreWorkoutRepository(
+      uid: 'u1',
+      firestore: fs,
+      allowHealthUpload: () => true,
+    );
   });
 
   wcol() => fs.collection('users').doc('u1').collection('workouts');
@@ -690,6 +696,88 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  /// Web writes its documents directly rather than through the sync transport,
+  /// so the health-data consent gate has to be enforced here too — otherwise
+  /// web would be a hole in it.
+  group('health-data consent gate', () {
+    late FirestoreWorkoutRepository withoutConsent;
+
+    setUp(() {
+      withoutConsent = FirestoreWorkoutRepository(uid: 'u1', firestore: fs);
+    });
+
+    test('defaults to withholding when consent is not wired', () async {
+      // The safe way to be wrong: a caller that forgets to pass the callback
+      // uploads no health data rather than all of it.
+      await seed('w1', exercises: [exercise('we1', sets: [wset('ws1')])]);
+
+      await withoutConsent.upsertSetCompletion(
+        workoutId: 'w1',
+        workoutSetId: 'ws1',
+        actualReps: 10,
+        avgHeartRate: const Value(120),
+        maxHeartRate: const Value(150),
+      );
+
+      final comps =
+          (await wcol().doc('w1').get()).data()!['completions'] as List;
+      final row = comps.single as Map;
+      expect(row['actualReps'], 10, reason: 'the set itself still saves');
+      expect(row.containsKey('avgHeartRate'), isFalse);
+      expect(row.containsKey('maxHeartRate'), isFalse);
+    });
+
+    test('stripStoredHealthData clears readings already in the account',
+        () async {
+      // The counterpart of the phone's re-push: withdrawing consent has to
+      // delete what was stored, not merely stop new writes.
+      await seed('w1', exercises: [exercise('we1', sets: [wset('ws1')])]);
+      await workouts.upsertSetCompletion(
+        workoutId: 'w1',
+        workoutSetId: 'ws1',
+        actualReps: 10,
+        avgHeartRate: const Value(120),
+      );
+      await wcol().doc('w1').update({
+        'heartRateSamples': [
+          {'t': 1000, 'bpm': 120},
+        ],
+        'avgHeartRate': 118,
+      });
+      final before = (await wcol().doc('w1').get()).data()!;
+
+      await withoutConsent.stripStoredHealthData();
+
+      final after = (await wcol().doc('w1').get()).data()!;
+      expect(after.containsKey('heartRateSamples'), isFalse);
+      expect(after.containsKey('avgHeartRate'), isFalse);
+      expect(
+        ((after['completions'] as List).single as Map)
+            .containsKey('avgHeartRate'),
+        isFalse,
+      );
+      // The workout itself survives, and the rewrite is a versioned edit so it
+      // wins the LWW arbitration against a peer holding the old copy.
+      expect((after['completions'] as List).single['actualReps'], 10);
+      expect(
+        (after['version'] as num).toInt(),
+        greaterThan((before['version'] as num).toInt()),
+      );
+    });
+
+    test('a workout with no readings is left alone', () async {
+      await seed('w1', exercises: [exercise('we1')]);
+      final before = (await wcol().doc('w1').get()).data()!;
+
+      await withoutConsent.stripStoredHealthData();
+
+      // No pointless write, so no version bump and nothing for peers to
+      // re-sync.
+      final after = (await wcol().doc('w1').get()).data()!;
+      expect(after['version'], before['version']);
     });
   });
 }

@@ -1,7 +1,6 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gym_tracker/data/database.dart';
 import 'package:gym_tracker/sync/health_upload_consent.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Heart rate is health data, and signing in is a contract rather than consent
 /// to store it on a server. These cover the rule that decides whether it may
@@ -94,24 +93,82 @@ void main() {
     });
   });
 
-  group('store', () {
-    late AppDatabase db;
+  group('hasHealthData', () {
+    test('empty and null readings do not count', () {
+      // Every workout carries these keys whether or not a sensor was involved;
+      // treating them as data would rewrite a user's whole history for nothing.
+      expect(
+        hasHealthData({
+          'syncId': 'w1',
+          'avgHeartRate': null,
+          'maxHeartRate': null,
+          'heartRateSamples': const [],
+          'completions': [
+            {'syncId': 'c1', 'avgHeartRate': null, 'maxHeartRate': null},
+          ],
+        }),
+        isFalse,
+      );
+    });
 
-    setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));
-    tearDown(() => db.close());
+    test('a workout with no heart-rate keys at all does not count', () {
+      expect(hasHealthData({'syncId': 'w1'}), isFalse);
+    });
+
+    test('a single sample counts', () {
+      expect(
+        hasHealthData({
+          'heartRateSamples': [
+            {'t': 1, 'bpm': 90},
+          ],
+        }),
+        isTrue,
+      );
+    });
+
+    test('a reading hidden on one completion counts', () {
+      expect(
+        hasHealthData({
+          'avgHeartRate': null,
+          'completions': [
+            {'syncId': 'c1'},
+            {'syncId': 'c2', 'maxHeartRate': 150},
+          ],
+        }),
+        isTrue,
+      );
+    });
+  });
+
+  group('store', () {
+    // SharedPreferences rather than the Drift SyncMeta table, because the
+    // Firestore-direct web build never opens Drift — and web is signed-in by
+    // construction, so it is exactly where consent must be recordable.
+    setUp(() => SharedPreferences.setMockInitialValues({}));
 
     test('a fresh install has no consent', () async {
-      expect(await HealthUploadConsentStore(db).read(), isNull);
+      expect(await const HealthUploadConsentStore().read(), isNull);
     });
 
     test('consent survives, and revoking clears it', () async {
-      final store = HealthUploadConsentStore(db);
+      const store = HealthUploadConsentStore();
 
       await store.grant('u1');
       expect(await store.read(), 'u1');
 
       await store.revoke();
       expect(await store.read(), isNull);
+    });
+
+    test('the stored value is the uid, so it can be matched to an account',
+        () async {
+      const store = HealthUploadConsentStore();
+      await store.grant('u1');
+
+      expect(
+        healthUploadAllowed(consentUid: await store.read(), signedInUid: 'u2'),
+        isFalse,
+      );
     });
   });
 }

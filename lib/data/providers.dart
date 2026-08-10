@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../sync/auth_service.dart';
 import '../sync/firestore_backend.dart' show syncBackendEnabled;
+import '../sync/health_upload_consent.dart';
 import 'database.dart';
 import 'demo_seed.dart';
 import 'drift_repositories.dart';
@@ -51,7 +52,15 @@ final exerciseRepositoryProvider = Provider<ExerciseRepository>((ref) {
 final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
   if (ref.watch(firestoreDirectProvider)) {
     final uid = ref.watch(currentUidProvider);
-    if (uid != null) return FirestoreWorkoutRepository(uid: uid);
+    if (uid != null) {
+      return FirestoreWorkoutRepository(
+        uid: uid,
+        allowHealthUpload: () => healthUploadAllowed(
+          consentUid: ref.read(healthUploadConsentProvider),
+          signedInUid: uid,
+        ),
+      );
+    }
     throw StateError('workoutRepository read while signed out (web-direct)');
   }
   return DriftWorkoutRepository(ref.watch(databaseProvider));

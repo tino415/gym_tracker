@@ -238,6 +238,31 @@ Workouts used to be append-only + idempotent-skip, so **editing a saved workout 
 - **Loop safety** rests on that map: applying marks the id synced at the applied version, so an apply can never look like a local edit. A rejected *strictly older* inbound triggers one counter-push (a rejection writes no rows, so nothing else would repair the stale peer). The full argument is on `_relayToOthers`.
 - Timestamps: drift stores `DateTime` as unix **seconds**, so a DTO carrying sub-second millis (e.g. a doc written by the web) won't survive an apply → export round trip byte-identical. Harmless — it costs one redundant write, then converges.
 
+#### Heart rate needs explicit consent to reach the server
+
+Heart rate is special-category data (GDPR Art. 9), and signing in is a contract
+for syncing routines and history — it does not cover health data. So the upload
+is gated on its own opt-in (`lib/sync/health_upload_consent.dart`), off until
+granted, stored per-uid in SharedPreferences (**not** `SyncMeta`: the web build
+never opens Drift, and web is signed-in by construction).
+
+Three things are load-bearing:
+
+- **The gate is at the transport, not at export.** `stripHealthData` is applied
+  in `FirestoreSyncTransport._pushWorkout` and in the web repository's writes,
+  so heart rate still flows phone ↔ watch over the Wear Data Layer — a link
+  between two of the user's own devices that never reaches us. Stripping at
+  `exportWorkout` would have broken watch → phone.
+- **Both write paths must be gated.** Web bypasses the transport entirely
+  (`FirestoreWorkoutRepository`), so it carries the same `allowHealthUpload`
+  callback. Both default to **false** when unwired — forgetting to pass it
+  withholds data rather than leaking it.
+- **Withdrawal deletes, it doesn't just stop.** `set` replaces the whole
+  document, so revoking re-pushes (phone) or runs `stripStoredHealthData`
+  (web) and the readings go. The policy promises this, so it has to stay true.
+  Skip documents where `hasHealthData` is false, or every workout gets a
+  version bump for nothing.
+
 #### Transport abstraction
 
 `SyncService` is transport-agnostic: it fans every send out to a `List<SyncTransport>` and merges their inbound streams (`sync_transport.dart`). It does not know or care whether a message went over the Wear bridge or a server.

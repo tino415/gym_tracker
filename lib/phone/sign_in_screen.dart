@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/providers.dart';
 import '../sync/auth_service.dart';
+import '../sync/health_upload_consent.dart';
 
 /// Full-screen sign-in gate for the server-backed web build. Web reads and
 /// writes the account's data directly, so it is signed-in by construction:
@@ -23,6 +25,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _passwordController = TextEditingController();
   bool _busy = false;
 
+  /// Opt-in to storing heart rate — health data — in the account.
+  ///
+  /// Off by default and never a condition of signing in: consent that is the
+  /// price of using the app is not freely given (GDPR Art. 7(4)), and web is
+  /// signed-in by construction. Leaving it unchecked signs in normally.
+  bool _storeHeartRate = false;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -35,6 +44,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     setState(() => _busy = true);
     try {
       await action();
+      await _recordConsentChoice();
       // Sign-in submitted successfully — tell the platform the autofill context
       // is complete so password managers can offer to save the credentials.
       TextInput.finishAutofillContext();
@@ -51,6 +61,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Record the heart-rate opt-in against the account that just signed in.
+  ///
+  /// Only ever *grants*. An unchecked box leaves any stored decision alone
+  /// rather than revoking it: the box is an opt-in offered at sign-in, and a
+  /// returning user who already consented should not have that silently undone
+  /// by a default. Withdrawal lives on the Account screen, where the switch
+  /// shows the real state.
+  Future<void> _recordConsentChoice() async {
+    if (!_storeHeartRate) return;
+    final uid = ref.read(currentUidProvider);
+    if (uid == null) return;
+    await ref.read(healthUploadConsentProvider.notifier).grant(uid);
   }
 
   @override
@@ -129,7 +153,24 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                value: _storeHeartRate,
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _storeHeartRate = v ?? false),
+                title: const Text('Store heart rate in my account'),
+                subtitle: Text(
+                  'Heart rate is health data. Leave this off and your workouts '
+                  'still sync — their readings just stay on your devices. You '
+                  'can change it any time on the Account screen.',
+                  style: TextStyle(color: theme.colorScheme.outline),
+                ),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: _busy
                     ? null

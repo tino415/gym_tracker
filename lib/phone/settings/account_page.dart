@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../build_info.dart';
+import '../../data/firestore_repositories.dart';
 import '../../data/providers.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
@@ -243,10 +244,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             onClaim: _busy ? null : () => _claimDevice(user.uid),
           ),
         ],
-        // Only where the gate actually applies: the Firestore-direct web build
-        // writes its documents itself rather than through the transport, and a
-        // switch that changed nothing would be worse than no switch.
-        if (!direct && !paused) ...[
+        // Shown on web too: it writes its documents itself rather than through
+        // the transport, but honours the same gate, and withdrawal has to be as
+        // easy as consenting (GDPR Art. 7(3)) — a sign-in checkbox alone
+        // couldn't be changed without signing out.
+        if (!paused) ...[
           const Divider(height: 32),
           _HealthUploadConsentSection(
             granted: healthUploadAllowed(
@@ -283,7 +285,19 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       } else {
         await consent.revoke();
       }
-      await ref.read(syncServiceProvider).pushAll();
+      // Two ways to reach the same documents. The phone re-pushes its local
+      // set through the transport, which rewrites each workout under the new
+      // decision; web owns the documents directly and rewrites them itself.
+      if (ref.read(firestoreDirectProvider)) {
+        if (!granted) {
+          final repo = ref.read(workoutRepositoryProvider);
+          if (repo is FirestoreWorkoutRepository) {
+            await repo.stripStoredHealthData();
+          }
+        }
+      } else {
+        await ref.read(syncServiceProvider).pushAll();
+      }
     }, validate: false);
   }
 

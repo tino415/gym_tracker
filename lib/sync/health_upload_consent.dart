@@ -1,7 +1,8 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
-import '../data/database.dart';
-import '../data/providers.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Explicit consent to store heart rate — health data — in the account's cloud
 /// storage.
@@ -23,19 +24,33 @@ import '../data/providers.dart';
 /// Stored per-uid (not as a bare bool) so consent given by one account is never
 /// read as consent by another on a shared install, mirroring how
 /// `sync_ownership.dart` keys the store owner.
+///
+/// Kept in SharedPreferences rather than the Drift `SyncMeta` table because the
+/// Firestore-direct web build never opens Drift — and web is signed-in by
+/// construction, so it is precisely where consent has to be recordable.
 class HealthUploadConsentStore {
-  HealthUploadConsentStore(this._db);
+  const HealthUploadConsentStore();
 
-  static const _key = 'health_upload_consent_uid';
-
-  final AppDatabase _db;
+  static const prefsKey = 'health_upload_consent_uid';
 
   /// The uid that granted consent, or null if none has.
-  Future<String?> read() => _db.getSyncMeta(_key);
+  ///
+  /// A failed read reports "no consent": the safe way to be wrong is to
+  /// withhold health data, not to upload it.
+  Future<String?> read() async {
+    try {
+      return (await SharedPreferences.getInstance()).getString(prefsKey);
+    } catch (e, st) {
+      debugPrint('health consent read failed: $e\n$st');
+      return null;
+    }
+  }
 
-  Future<void> grant(String uid) => _db.setSyncMeta(_key, uid);
+  Future<void> grant(String uid) async =>
+      (await SharedPreferences.getInstance()).setString(prefsKey, uid);
 
-  Future<void> revoke() => _db.clearSyncMeta(_key);
+  Future<void> revoke() async =>
+      (await SharedPreferences.getInstance()).remove(prefsKey);
 }
 
 /// Whether heart rate may be uploaded: consent must exist *and* belong to the
@@ -49,6 +64,29 @@ bool healthUploadAllowed({
   required String? signedInUid,
 }) =>
     consentUid != null && signedInUid != null && consentUid == signedInUid;
+
+/// Whether a workout document actually carries readings.
+///
+/// Distinct from "has the keys": a document written under the current codec
+/// carries `avgHeartRate: null` and an empty `heartRateSamples` whether or not
+/// a sensor was involved, and rewriting those to drop empty keys would bump the
+/// version of every workout a user owns for no gain.
+bool hasHealthData(Map<String, Object?> workout) {
+  if (workout['avgHeartRate'] != null) return true;
+  if (workout['maxHeartRate'] != null) return true;
+  final samples = workout['heartRateSamples'];
+  if (samples is List && samples.isNotEmpty) return true;
+  final completions = workout['completions'];
+  if (completions is List) {
+    for (final c in completions) {
+      if (c is Map &&
+          (c['avgHeartRate'] != null || c['maxHeartRate'] != null)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /// Removes every heart-rate field from a workout document.
 ///
@@ -78,18 +116,24 @@ Map<String, Object?> stripHealthData(Map<String, Object?> workout) {
 }
 
 final healthUploadConsentStoreProvider = Provider<HealthUploadConsentStore>(
-  (ref) => HealthUploadConsentStore(ref.watch(databaseProvider)),
+  (ref) => const HealthUploadConsentStore(),
 );
 
 /// The uid that has consented, held in memory so the Firestore transport can
 /// consult it synchronously on every push.
 ///
-/// Starts null and is loaded by the sync binder before a transport is attached
-/// — the null default means a push that races the load strips heart rate rather
-/// than uploading it.
+/// Starts null and self-seeds from storage; the sync binder additionally awaits
+/// [load] before attaching a transport, so the first push can't race it. The
+/// null default means anything that does race reads as "no consent" and strips
+/// heart rate rather than uploading it.
 class HealthUploadConsent extends Notifier<String?> {
   @override
-  String? build() => null;
+  String? build() {
+    // Fire-and-forget so web — which has no binder step to await it — still
+    // ends up with the persisted decision in memory.
+    unawaited(load());
+    return null;
+  }
 
   HealthUploadConsentStore get _store =>
       ref.read(healthUploadConsentStoreProvider);
