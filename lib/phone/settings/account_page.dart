@@ -412,17 +412,22 @@ class _BuildStamp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final style =
+        Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.outline);
+    final parsed = parseBuildId(buildId);
     return Row(
       children: [
         Icon(Icons.tag, size: 16, color: scheme.outline),
         const SizedBox(width: 8),
         Expanded(
+          // The date on its own line: it is what tells you whether this is the
+          // bundle you just deployed, and it was previously buried in the tail
+          // of the id where it read as part of the commit.
           child: SelectableText(
-            'Build $buildId',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: scheme.outline),
+            parsed.when == null
+                ? 'Build ${parsed.commit}'
+                : 'Build ${parsed.commit}\n${parsed.when}',
+            style: style,
           ),
         ),
       ],
