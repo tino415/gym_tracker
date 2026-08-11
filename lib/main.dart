@@ -11,6 +11,7 @@ import 'phone/phone_app.dart';
 import 'phone/settings/health_connect_controller.dart';
 import 'phone/settings/theme_controller.dart';
 import 'phone/sign_in_screen.dart';
+import 'selectable_on_web.dart';
 import 'sync/auth_service.dart';
 import 'sync/firestore_backend.dart';
 import 'sync/sync_service.dart';
@@ -123,7 +124,7 @@ class _FirestoreDirectApp extends ConsumerWidget {
         if (user == null) {
           return const MaterialApp(
             title: 'GymTracker',
-            home: SignInScreen(),
+            home: SelectableOnWeb(child: SignInScreen()),
           );
         }
         return const PhoneApp();
@@ -140,14 +141,18 @@ class _BootScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GymTracker',
-      home: Scaffold(
-        body: Center(
-          child: message == null
-              ? const CircularProgressIndicator()
-              : Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(message!, textAlign: TextAlign.center),
-                ),
+      // Selectable so a backend error can be copied out of a screen that
+      // offers nothing else — it is the only thing here worth reporting.
+      home: SelectableOnWeb(
+        child: Scaffold(
+          body: Center(
+            child: message == null
+                ? const CircularProgressIndicator()
+                : Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(message!, textAlign: TextAlign.center),
+                  ),
+          ),
         ),
       ),
     );

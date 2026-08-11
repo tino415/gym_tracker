@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../selectable_on_web.dart';
 import 'breakpoints.dart';
 import 'exercises/exercise_edit_page.dart';
 import 'exercises/exercises_list_page.dart';
@@ -160,7 +161,9 @@ class PhoneApp extends ConsumerWidget {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: routinesWideMaxWidth),
-              child: child,
+              // Inside the cap so it covers every route in one place: on web,
+              // names and figures are selectable like text on any other page.
+              child: SelectableOnWeb(child: child),
             ),
           ),
         );
