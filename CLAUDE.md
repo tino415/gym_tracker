@@ -77,6 +77,24 @@ Two traps that cost real time, neither guessable from the failure:
    (`pumpWidget(const SizedBox())`) or the run ends with a pending-timer
    failure.
 
+### Web-only code paths need `just test-web`
+
+`just test` runs on the VM, where `kIsWeb` is **always false**. Anything gated on
+it is compiled but never executed, and a test asserting its absence passes for
+the wrong reason. `just test-web` runs a curated subset under
+`--platform chrome` so the other branch actually runs; write both directions and
+`skip:` the one that doesn't apply (`test/selectable_on_web_test.dart` is the
+pattern). Such a test only really passes once **both** recipes have run.
+
+The subset is an explicit list in the `Justfile` because it can't be derived:
+anything importing `lib/data/database.dart` pulls drift → sqlite3 → `dart:ffi`,
+which a browser lacks, and the run fails to compile rather than skipping.
+
+`just live-build` reads `BUILD_ID` out of the *served* `main.dart.js` and
+compares it to HEAD. Unlike the account screen it bypasses the service worker,
+so it separates the two failures that look identical: a deploy that didn't take
+(mismatch) versus a browser holding a stale bundle (match, app still wrong).
+
 ### Schema migrations
 
 `test/migration_test.dart` runs the real migration against a database actually

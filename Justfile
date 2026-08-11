@@ -62,6 +62,29 @@ analyze:
 test:
     flutter test --no-pub
 
+# The subset that can run in a real browser, so `kIsWeb` branches actually
+# execute. `just test` runs everything on the VM, where kIsWeb is always false:
+# a web-only path is compiled but never run, and a test asserting its absence
+# passes for the wrong reason. selectable_on_web_test asserts both directions
+# and skips the half that doesn't apply, so it only really passes when BOTH
+# recipes have run.
+#
+# The list is explicit because it can't be derived: anything importing
+# lib/data/database.dart pulls drift -> sqlite3 -> dart:ffi, which a browser
+# doesn't have, and the whole run fails to compile rather than skipping. Add a
+# new test here when it has no database dependency.
+[doc('Browser-side tests, so kIsWeb branches actually run')]
+test-web:
+    flutter test --no-pub --platform chrome \
+      test/build_info_test.dart \
+      test/circuit_nav_test.dart \
+      test/circuit_rest_v15_test.dart \
+      test/circuit_units_test.dart \
+      test/health_upload_consent_test.dart \
+      test/selectable_on_web_test.dart \
+      test/sync_codec_test.dart \
+      test/sync_payload_guard_test.dart
+
 # A single test file, e.g. `just test-file test/database_test.dart`
 test-file file:
     flutter test --no-pub {{file}}
@@ -123,7 +146,7 @@ watch-install device=WEAR_DEVICE:
     set -uo pipefail
     test -n "{{device}}" || { echo "no device: pass an adb serial or 'watch', or set GYM_WEAR_DEVICE" >&2; exit 1; }
     dev=$(tool/adb-device.sh "{{device}}") || exit 1
-    echo "→ installing gym-watch.apk to $dev ($(adb -s "$dev" shell getprop ro.product.model | tr -d '\r'))"
+    echo "→ installing gym-watch.apk to $(tool/adb-device.sh --describe "$dev")"
     adb -s "$dev" push {{APK_OUT}}/gym-watch.apk /data/local/tmp/gym-watch.apk || exit 1
     adb -s "$dev" shell pm install -r /data/local/tmp/gym-watch.apk; rc=$?
     adb -s "$dev" shell rm -f /data/local/tmp/gym-watch.apk
@@ -135,7 +158,7 @@ phone-install device=PHONE_DEVICE:
     set -uo pipefail
     test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
     dev=$(tool/adb-device.sh "{{device}}") || exit 1
-    echo "→ installing gym-phone.apk to $dev ($(adb -s "$dev" shell getprop ro.product.model | tr -d '\r'))"
+    echo "→ installing gym-phone.apk to $(tool/adb-device.sh --describe "$dev")"
     adb -s "$dev" push {{APK_OUT}}/gym-phone.apk /data/local/tmp/gym-phone.apk || exit 1
     adb -s "$dev" shell pm install -r /data/local/tmp/gym-phone.apk; rc=$?
     adb -s "$dev" shell rm -f /data/local/tmp/gym-phone.apk
@@ -272,6 +295,34 @@ web-emulator:
 [doc('Build + deploy the web app to Firebase Hosting (prod)')]
 deploy: web
     firebase deploy --only hosting --project {{FIREBASE_PROJECT}}
+
+# Which bundle is actually being served, against the commit you have checked out.
+#
+# Answers the question the build stamp exists for, without opening a browser —
+# and unlike the account screen, it reads the bundle straight off Hosting, so it
+# is immune to the service worker serving a stale main.dart.js to your tab.
+# A mismatch after a deploy means the deploy didn't take; a match while the app
+# still misbehaves means the *browser* is stale, not the server.
+[doc('Compare the deployed web build against HEAD')]
+live-build:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    url="https://{{FIREBASE_PROJECT}}.web.app/main.dart.js"
+    live=$(curl -fsSL "$url" \
+      | grep -oE '[0-9a-f]{7,}(-dirty)?-[0-9]{8}-[0-9]{4}' | sort -u | head -1)
+    head=$(git rev-parse --short HEAD 2>/dev/null || echo nogit)
+    if [ -z "$live" ]; then
+      echo "no BUILD_ID found in the served bundle — deployed without the"
+      echo "Justfile, or the stamp format changed (see BUILD_ID above)." >&2
+      exit 1
+    fi
+    echo "served $live"
+    echo "HEAD   $head"
+    case "$live" in
+      "$head"-*) echo "match" ;;
+      *"-dirty-"*) echo "MISMATCH — and the served build is dirty" >&2; exit 1 ;;
+      *) echo "MISMATCH — deploy, or check out the served commit" >&2; exit 1 ;;
+    esac
 
 # Ship everything, in the only order that works: `deploy` runs `flutter clean`
 # and would destroy APKs built beforehand, so web goes first and the device

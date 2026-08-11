@@ -22,8 +22,16 @@
 set -uo pipefail
 
 emulator_only=0
+describe_only=0
 if [ "${1:-}" = "--emulator-only" ]; then
   emulator_only=1
+  shift
+elif [ "${1:-}" = "--describe" ]; then
+  # Print "<serial> (<model>, emulator|physical)" for an already-resolved
+  # serial, so the install recipes can say where a build is going in the same
+  # words this script uses — a wrong-device `pm install` still reports Success,
+  # so that echo is the only thing that tells you.
+  describe_only=1
   shift
 fi
 
@@ -33,16 +41,39 @@ if [ -z "$spec" ]; then
   exit 2
 fi
 
+if [ "$describe_only" = 1 ]; then
+  model=$(adb -s "$spec" shell getprop ro.product.model 2>/dev/null | tr -d '\r')
+  chars=$(adb -s "$spec" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r')
+  case "$chars" in
+    *emulator*) kind=emulator ;;
+    *) kind=physical ;;
+  esac
+  echo "$spec (${model:-unknown}, $kind)"
+  exit 0
+fi
+
 serials=$(adb devices | awk 'NR>1 && $2 == "device" { print $1 }')
 if [ -z "$serials" ]; then
   echo "no adb devices connected" >&2
   exit 1
 fi
 
+# Names the device, and says whether it is an emulator.
+#
+# The kind matters more than it looks: when the handset drops off wireless adb —
+# which it does constantly, the port changing every reconnect — `watch` stops
+# being ambiguous and quietly resolves to the emulator instead. That is a
+# correct resolution of a question you didn't mean to ask, and the model name
+# alone ("sdk_gwear_arm64") is easy to skim past when you expected a serial.
 describe() {
-  local model
+  local model chars kind
   model=$(adb -s "$1" shell getprop ro.product.model 2>/dev/null | tr -d '\r')
-  echo "$1 (${model:-unknown})"
+  chars=$(adb -s "$1" shell getprop ro.build.characteristics 2>/dev/null | tr -d '\r')
+  case "$chars" in
+    *emulator*) kind=emulator ;;
+    *) kind=physical ;;
+  esac
+  echo "$1 (${model:-unknown}, $kind)"
 }
 
 # Emits the resolved serial, after the physical-device check.
