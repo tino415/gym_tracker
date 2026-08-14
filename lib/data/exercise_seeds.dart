@@ -16,6 +16,17 @@ class ExerciseSeed {
   final String kind;
 }
 
+/// Whether this build seeds the starter library at all. On unless built with
+/// `--dart-define=SEED_STARTER=false` (`just SEED_STARTER=false phone-apk`).
+///
+/// The escape hatch exists because seeding a device that then signs into an
+/// existing account duplicates the whole library on the server — the seed mints
+/// fresh uuids and the sign-in push writes them as new documents. Until that is
+/// solved properly, a device being reinstalled into an account that already has
+/// a library should be built with the seed off and let sync populate it.
+const bool seedStarterEnabled =
+    bool.fromEnvironment('SEED_STARTER', defaultValue: true);
+
 /// The library a new install starts with.
 ///
 /// Sourced from the exercise set collected in the production project — a real,

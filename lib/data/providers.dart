@@ -86,6 +86,7 @@ final demoSeedProvider = FutureProvider<void>((ref) async {
 /// Firestore-direct web build. Because the provider watches the uid it re-runs
 /// on sign-in, which is when a brand-new account's empty library appears.
 final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
+  if (!seedStarterEnabled) return;
   if (ref.watch(firestoreDirectProvider) &&
       ref.watch(currentUidProvider) == null) {
     return;

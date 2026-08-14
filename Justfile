@@ -28,6 +28,14 @@ APK_OUT := "build/app/outputs/flutter-apk"
 WATCH_ABIS := "android-arm,android-arm64"
 PHONE_ABIS := "android-arm64"
 
+# Whether the build seeds the starter exercise library on a first launch into an
+# empty library. Override for a device being reinstalled into an account that
+# already has one — `just SEED_STARTER=false phone-apk` — because seeding then
+# signing in duplicates the whole library on the server (the seed mints fresh
+# uuids and the sign-in push writes them as new documents). Sync repopulates the
+# library instead.
+SEED_STARTER := "true"
+
 # adb serials for the e2e recipes. No default in the repo — a serial is a
 # property of your local emulators/devices. Set them in the environment, or
 # pass one explicitly: `just e2e <serial>`.
@@ -125,7 +133,7 @@ watch-apk:
 # different Firebase project: GOOGLE_SERVER_CLIENT_ID=... just phone-apk.
 [doc('APK for the phone + Firestore backend')]
 phone-apk:
-    flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} \
+    flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_STARTER={{SEED_STARTER}} {{BUILD_DEFINE}} \
       {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
 
