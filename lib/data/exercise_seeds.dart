@@ -40,19 +40,25 @@ const exerciseSeeds = <ExerciseSeed>[
   ExerciseSeed('Decline wide push up', ['Chest']),
   ExerciseSeed('Parallel bars dips', ['Chest', 'Triceps']),
   ExerciseSeed('Cable chest fly', ['Chest']),
+  ExerciseSeed('Dumbbell pullover', ['Chest', 'Back']),
 
   // -- Back ----------------------------------------------------------------
   ExerciseSeed('Pull up', ['Back']),
   ExerciseSeed('Chin up', ['Back', 'Biceps']),
   ExerciseSeed('Barbell row', ['Back', 'Biceps']),
-  ExerciseSeed('Dumbbell row', ['Back']),
+  ExerciseSeed('Dumbbell row', ['Back', 'Biceps']),
+  ExerciseSeed('Chest supported dumbbell row', ['Back', 'Biceps']),
   ExerciseSeed('Cable lat pull down', ['Back']),
-  ExerciseSeed('Narrow MAG cable pull down', ['Back']),
+  ExerciseSeed('Narrow MAG cable lat pull down', ['Back']),
   ExerciseSeed('Wide MAG cable lat pull down', ['Back']),
   ExerciseSeed('Straight arm lat pull down', ['Back']),
-  ExerciseSeed('Wide grip cable row', ['Back']),
-  ExerciseSeed('Wide MAG cable row', ['Back']),
+  // "Seated" on all three, not just the plain one: the standing cable row is a
+  // common variant in its own right, so the word disambiguates against the
+  // world rather than against whatever this list currently happens to contain —
+  // and adding a standing row later shouldn't force renaming three entries.
   ExerciseSeed('Seated cable row', ['Back', 'Biceps']),
+  ExerciseSeed('Seated wide grip cable row', ['Back', 'Biceps']),
+  ExerciseSeed('Seated wide MAG cable row', ['Back', 'Biceps']),
 
   // -- Shoulders -----------------------------------------------------------
   ExerciseSeed('Overhead press', ['Shoulders', 'Triceps']),
@@ -74,6 +80,7 @@ const exerciseSeeds = <ExerciseSeed>[
   ExerciseSeed('Back squat', ['Quads', 'Glutes']),
   ExerciseSeed('Front squat', ['Quads']),
   ExerciseSeed('Leg press', ['Quads', 'Glutes']),
+  ExerciseSeed('Hack squat', ['Quads', 'Glutes']),
   ExerciseSeed('Leg extension machine', ['Quads']),
   ExerciseSeed('Lying leg curl machine', ['Hamstrings']),
   ExerciseSeed('Deadlift', ['Hamstrings', 'Glutes', 'Back']),
@@ -106,8 +113,8 @@ const exerciseSeeds = <ExerciseSeed>[
   ExerciseSeed('TRX Triceps extension', ['Triceps']),
   ExerciseSeed('TRX Face pull', ['Back', 'Shoulders']),
   ExerciseSeed('TRX Fallout', ['Abs', 'Chest', 'Shoulders']),
-  ExerciseSeed('TRX High row', ['Back']),
-  ExerciseSeed('TRX Low row', ['Back']),
+  ExerciseSeed('TRX High row', ['Back', 'Biceps']),
+  ExerciseSeed('TRX Low row', ['Back', 'Biceps']),
   ExerciseSeed('TRX Pike', ['Abs']),
   ExerciseSeed('TRX Suspended push-up', ['Chest', 'Shoulders']),
   ExerciseSeed('TRX Bulgarian split squat', ['Quads']),
