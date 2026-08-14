@@ -154,6 +154,20 @@ existing clients until they close), or just build with `--pwa-strategy=none`
 during dev iteration. Firestore's offline cache (IndexedDB) survives cache
 clears; it's separate from the SW app-shell cache.
 
+**This bit production, and the fix is in `firebase.json`.** Hosting's default is
+`Cache-Control: max-age=3600` for every file, which included
+`flutter_service_worker.js` and `flutter_bootstrap.js` — so the worker's own
+update check was answered from the HTTP cache, and each time it was, the
+cache-first worker re-served the shell it already had. The loop has no upper
+bound: a three-day-old bundle survived repeated hard reloads. The `headers`
+block now sends `no-cache` for the six fixed-name shell files (Flutter hashes
+neither `main.dart.js` nor the worker), so a deploy propagates on the next load.
+Hashed assets under `assets/` and `canvaskit/` keep the default.
+
+Also: `web.app` and `firebaseapp.com` are separate *origins* of the same site, so
+each keeps its own worker and cache — clearing one leaves the other stale, and
+`just live-build` only ever checks `web.app`.
+
 ## Architecture
 
 Single Flutter app shipped to both phone and Wear OS — the same binary, with a runtime branch.

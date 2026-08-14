@@ -2,7 +2,14 @@
   "hosting": {
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      {
+        "//": "Hosting's default is max-age=3600 for everything, which cached the shell for an hour after each deploy — including flutter_service_worker.js, the one file whose whole job is to notice a new version. A hard reload could not fix it, because the worker update check is a separate fetch served from that same cache. These four have fixed names (Flutter does not hash them), so revalidation is the only way a client learns they changed.",
+        "source": "/@(index.html|flutter_bootstrap.js|flutter_service_worker.js|main.dart.js|version.json|manifest.json)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
   },
   "firestore": {
     "rules": "firestore.rules"
