@@ -266,6 +266,17 @@ class HeartRateSamples extends Table {
       text().references(Workouts, #syncId, onDelete: KeyAction.cascade)();
   IntColumn get measuredAtMs => integer()();
   IntColumn get bpm => integer()();
+
+  /// What the sensor thought of this reading (`kHrAccuracy*` in
+  /// `lib/watch/heart_rate_thinning.dart`), or null on rows recorded before the
+  /// column existed — and on any device that reports no confidence at all.
+  ///
+  /// Recorded, not enforced: nothing filters on it yet. It exists because a
+  /// motion-artifact plateau is smooth and physiologically plausible, so no
+  /// statistic over bpm alone can tell it from real effort, and gating *capture*
+  /// on confidence is the one thing already known to fail (it deletes the work
+  /// intervals — see `WorkoutService.hasContact`).
+  IntColumn get accuracy => integer().nullable()();
   @override
   Set<Column> get primaryKey => {workoutId, measuredAtMs};
 }
@@ -412,7 +423,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -480,6 +491,12 @@ class AppDatabase extends _$AppDatabase {
           workoutExercises.circuitGroup,
         );
         await _translateGroupRestV15();
+      }
+      // v15 → v16: heart-rate samples carry the sensor's own confidence.
+      // Additive and nullable, so existing rows read back as "unknown" — which
+      // is what they are, the label having been discarded at capture until now.
+      if (from < 16) {
+        await m.addColumn(heartRateSamples, heartRateSamples.accuracy);
       }
     },
   );
@@ -1391,12 +1408,14 @@ class AppDatabase extends _$AppDatabase {
     required String workoutId,
     required int measuredAtMs,
     required int bpm,
+    int? accuracy,
   }) async {
     await into(heartRateSamples).insertOnConflictUpdate(
       HeartRateSamplesCompanion.insert(
         workoutId: workoutId,
         measuredAtMs: measuredAtMs,
         bpm: bpm,
+        accuracy: Value(accuracy),
       ),
     );
   }

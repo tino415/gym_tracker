@@ -117,6 +117,42 @@ void main() {
       expect(samples.single.bpm, 130);
     });
 
+    test('sensor confidence is stored with the reading', () async {
+      // Recorded, not acted on: a motion-artifact plateau is smooth and looks
+      // physiologically real, so the sensor's own label is the only signal that
+      // could ever tell it apart. Nothing filters on it yet.
+      final w = await seedWorkout();
+      await db.addHeartRateSample(
+        workoutId: w.syncId,
+        measuredAtMs: 1000,
+        bpm: 160,
+        accuracy: kHrAccuracyLow,
+      );
+      await db.addHeartRateSample(
+        workoutId: w.syncId,
+        measuredAtMs: 2000,
+        bpm: 158,
+        accuracy: kHrAccuracyHigh,
+      );
+
+      final samples = await db.heartRateSamplesFor(w.syncId);
+      expect(samples.map((s) => s.accuracy), [kHrAccuracyLow, kHrAccuracyHigh]);
+    });
+
+    test('a sample recorded without confidence reads back null', () async {
+      // Hardware that reports no accuracy, and every row written before the
+      // column existed.
+      final w = await seedWorkout();
+      await db.addHeartRateSample(
+        workoutId: w.syncId,
+        measuredAtMs: 1000,
+        bpm: 120,
+      );
+
+      final samples = await db.heartRateSamplesFor(w.syncId);
+      expect(samples.single.accuracy, isNull);
+    });
+
     test('sub-second precision survives the database', () async {
       // The reason measuredAtMs is an integer column: drift stores DateTime as
       // unix seconds, and a truncated timestamp would break the export/apply
@@ -193,6 +229,9 @@ void main() {
           workoutId: w.syncId,
           measuredAtMs: 1717171717000 + i * kHeartRateSampleGapMs,
           bpm: 120 + i,
+          // Mixed on purpose: the last sample carries no confidence, so the
+          // round-trip covers both the present and the omitted key.
+          accuracy: i == 4 ? null : kHrAccuracyMedium,
         );
       }
       return w.syncId;
@@ -223,6 +262,28 @@ void main() {
       );
       expect(reExported.heartRateSamples.map((s) => s.tMs),
           exported.heartRateSamples.map((s) => s.tMs));
+    });
+
+    test('confidence survives export and apply, and stays optional', () async {
+      final id = await seedWorkoutWithSamples();
+      final exported = await repo.exportWorkout(id);
+      final json = exported!.toJson()['heartRateSamples']! as List;
+
+      // Omitted rather than serialised as null: at ~720 samples a document, a
+      // dead key per sample is real payload against Firestore's 1 MiB cap.
+      expect((json.first as Map)['a'], kHrAccuracyMedium);
+      expect((json.last as Map).containsKey('a'), isFalse);
+
+      final other = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(other.close);
+      await SyncRepository(other).applyWorkoutCompleted(
+        WorkoutCompletedMessage(WorkoutDto.fromJson(exported.toJson())),
+      );
+
+      final applied = await other.heartRateSamplesFor(id);
+      expect(applied.map((s) => s.accuracy),
+          [kHrAccuracyMedium, kHrAccuracyMedium, kHrAccuracyMedium,
+           kHrAccuracyMedium, null]);
     });
 
     test('a workout from a peer without the field still applies', () async {

@@ -100,6 +100,17 @@ test-name name:
 codegen:
     flutter pub run build_runner build --force-jit
 
+# Re-dump the drift schema history and regenerate the classes migration_test
+# runs against. Mandatory after *every* schema change: without it the migration
+# test still builds the old version and validates nothing new. Both output
+# directories are committed — drift_schemas/ is the history, and a version never
+# dumped can never be tested again.
+[doc('Re-dump drift schemas + regenerate test schema classes (after a schema change)')]
+schema:
+    dart run drift_dev schema dump lib/data/database.dart drift_schemas/
+    dart run drift_dev schema generate --data-classes --companions \
+        drift_schemas/ test/drift_schemas/
+
 # APK for the watch + Wear emulator (fat 32+64 by default). Copied to a
 # per-target name because flutter always writes app-<variant>.apk — without
 # the copy, building the other target overwrites this one.

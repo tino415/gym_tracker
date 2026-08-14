@@ -181,7 +181,11 @@ class WorkoutBridge(
         val batch = WorkoutService.drainHeartRate()
         if (batch.isEmpty()) return
         val samples = batch.map {
-            mapOf("bpm" to it.bpm, "timestampMs" to it.timestampMs)
+            mapOf(
+                "bpm" to it.bpm,
+                "timestampMs" to it.timestampMs,
+                "accuracy" to it.accuracy,
+            )
         }
         mainHandler.post {
             val events = sink

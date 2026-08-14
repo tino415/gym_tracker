@@ -720,7 +720,11 @@ class SyncRepository {
       completions: completionDtos,
       heartRateSamples: [
         for (final s in samples)
-          HeartRateSampleDto(tMs: s.measuredAtMs, bpm: s.bpm),
+          HeartRateSampleDto(
+            tMs: s.measuredAtMs,
+            bpm: s.bpm,
+            accuracy: s.accuracy,
+          ),
       ],
       avgHeartRate: workout.avgHeartRate,
       maxHeartRate: workout.maxHeartRate,
@@ -910,6 +914,7 @@ class SyncRepository {
                 workoutId: workoutId,
                 measuredAtMs: s.tMs,
                 bpm: s.bpm,
+                accuracy: Value(s.accuracy),
               ),
               // A repeated timestamp in the payload must not abort the whole
               // apply on the composite key.

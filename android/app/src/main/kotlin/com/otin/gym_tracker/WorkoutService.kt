@@ -62,7 +62,15 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class WorkoutService : Service() {
 
-    data class HeartRateSample(val bpm: Int, val timestampMs: Long)
+    /**
+     * [accuracy] is the sensor's own confidence in this reading, as one of the
+     * [HR_ACCURACY_*] codes. Recorded, never acted on here — see [hasContact].
+     */
+    data class HeartRateSample(
+        val bpm: Int,
+        val timestampMs: Long,
+        val accuracy: Int,
+    )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var measureClient: MeasureClient? = null
@@ -142,7 +150,13 @@ class WorkoutService : Service() {
             if (!hasContact(p.accuracy)) continue
             val tMs = runCatching { p.getTimeInstant(boot).toEpochMilli() }
                 .getOrDefault(System.currentTimeMillis())
-            recordHeartRate(HeartRateSample(bpm = bpm, timestampMs = tMs))
+            recordHeartRate(
+                HeartRateSample(
+                    bpm = bpm,
+                    timestampMs = tMs,
+                    accuracy = accuracyCode(p.accuracy),
+                ),
+            )
         }
     }
 
@@ -154,10 +168,36 @@ class WorkoutService : Service() {
      * so discarding those samples cut out the work intervals and left a series
      * made of rest, dragging the average down to near-resting. That is the
      * opposite of what the old gate here was trying to achieve.
+     *
+     * The confidence itself is not lost, though: [accuracyCode] stores it
+     * alongside the reading, so a statistic can weigh it later without any
+     * sample being dropped at capture.
      */
     private fun hasContact(accuracy: DataPointAccuracy?): Boolean {
         val hr = accuracy as? HeartRateAccuracy ?: return true
         return hr.sensorStatus != HeartRateAccuracy.SensorStatus.NO_CONTACT
+    }
+
+    /**
+     * The sensor's confidence as a stable small int — see the `HR_ACCURACY_*`
+     * constants. Codes rather than enum names because the series is the bulk of
+     * a synced workout document.
+     *
+     * Hardware that reports no accuracy at all maps to [HR_ACCURACY_UNKNOWN],
+     * which is indistinguishable from a device that says UNKNOWN. That is
+     * deliberate: both mean "no confidence signal available", and a series that
+     * is entirely unknown is itself the finding.
+     */
+    private fun accuracyCode(accuracy: DataPointAccuracy?): Int {
+        val hr = accuracy as? HeartRateAccuracy ?: return HR_ACCURACY_UNKNOWN
+        return when (hr.sensorStatus) {
+            HeartRateAccuracy.SensorStatus.NO_CONTACT -> HR_ACCURACY_NO_CONTACT
+            HeartRateAccuracy.SensorStatus.UNRELIABLE -> HR_ACCURACY_UNRELIABLE
+            HeartRateAccuracy.SensorStatus.ACCURACY_LOW -> HR_ACCURACY_LOW
+            HeartRateAccuracy.SensorStatus.ACCURACY_MEDIUM -> HR_ACCURACY_MEDIUM
+            HeartRateAccuracy.SensorStatus.ACCURACY_HIGH -> HR_ACCURACY_HIGH
+            else -> HR_ACCURACY_UNKNOWN
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -482,6 +522,22 @@ class WorkoutService : Service() {
          * spaced correctly by the time Dart sees it.
          */
         private const val HR_MIN_GAP_MS = 5_000L
+
+        /**
+         * Sensor-confidence codes stored with every reading. Mirrors
+         * `HeartRateAccuracy.SensorStatus`, and `kHrAccuracy*` in
+         * `lib/watch/heart_rate_thinning.dart` — keep the three in sync.
+         *
+         * NO_CONTACT never reaches the buffer (see `hasContact`); its code
+         * exists so the mapping stays total and the numbering keeps matching
+         * the platform enum's order of confidence.
+         */
+        const val HR_ACCURACY_UNKNOWN = 0
+        const val HR_ACCURACY_NO_CONTACT = 1
+        const val HR_ACCURACY_UNRELIABLE = 2
+        const val HR_ACCURACY_LOW = 3
+        const val HR_ACCURACY_MEDIUM = 4
+        const val HR_ACCURACY_HIGH = 5
 
         /** ~3 h of thinned samples. A bound, not an expected depth. */
         private const val HR_BUFFER_MAX = 2048

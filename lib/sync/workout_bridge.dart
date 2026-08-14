@@ -5,10 +5,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class HeartRateSample {
-  HeartRateSample({required this.bpm, required this.timestampMs});
+  HeartRateSample({
+    required this.bpm,
+    required this.timestampMs,
+    this.accuracy,
+  });
 
   final int bpm;
   final int timestampMs;
+
+  /// The sensor's confidence in this reading (`kHrAccuracy*`), or null when the
+  /// native side did not report one — an older build, or a batch replayed from
+  /// a queue written before the field existed.
+  final int? accuracy;
 
   DateTime get timestamp =>
       DateTime.fromMillisecondsSinceEpoch(timestampMs);
@@ -84,7 +93,12 @@ class WorkoutBridge {
         final bpm = entry['bpm'];
         final ts = entry['timestampMs'];
         if (bpm is! int || ts is! int) continue;
-        batch.add(HeartRateSample(bpm: bpm, timestampMs: ts));
+        final accuracy = entry['accuracy'];
+        batch.add(HeartRateSample(
+          bpm: bpm,
+          timestampMs: ts,
+          accuracy: accuracy is int ? accuracy : null,
+        ));
       }
       if (batch.isEmpty) return;
       // The native buffer is append-ordered, but a replayed batch can still

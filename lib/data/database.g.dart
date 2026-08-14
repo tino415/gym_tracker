@@ -5165,8 +5165,24 @@ class $HeartRateSamplesTable extends HeartRateSamples
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _accuracyMeta = const VerificationMeta(
+    'accuracy',
+  );
   @override
-  List<GeneratedColumn> get $columns => [workoutId, measuredAtMs, bpm];
+  late final GeneratedColumn<int> accuracy = GeneratedColumn<int>(
+    'accuracy',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    workoutId,
+    measuredAtMs,
+    bpm,
+    accuracy,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -5206,6 +5222,12 @@ class $HeartRateSamplesTable extends HeartRateSamples
     } else if (isInserting) {
       context.missing(_bpmMeta);
     }
+    if (data.containsKey('accuracy')) {
+      context.handle(
+        _accuracyMeta,
+        accuracy.isAcceptableOrUnknown(data['accuracy']!, _accuracyMeta),
+      );
+    }
     return context;
   }
 
@@ -5227,6 +5249,10 @@ class $HeartRateSamplesTable extends HeartRateSamples
         DriftSqlType.int,
         data['${effectivePrefix}bpm'],
       )!,
+      accuracy: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}accuracy'],
+      ),
     );
   }
 
@@ -5241,10 +5267,22 @@ class HeartRateReading extends DataClass
   final String workoutId;
   final int measuredAtMs;
   final int bpm;
+
+  /// What the sensor thought of this reading (`kHrAccuracy*` in
+  /// `lib/watch/heart_rate_thinning.dart`), or null on rows recorded before the
+  /// column existed — and on any device that reports no confidence at all.
+  ///
+  /// Recorded, not enforced: nothing filters on it yet. It exists because a
+  /// motion-artifact plateau is smooth and physiologically plausible, so no
+  /// statistic over bpm alone can tell it from real effort, and gating *capture*
+  /// on confidence is the one thing already known to fail (it deletes the work
+  /// intervals — see `WorkoutService.hasContact`).
+  final int? accuracy;
   const HeartRateReading({
     required this.workoutId,
     required this.measuredAtMs,
     required this.bpm,
+    this.accuracy,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5252,6 +5290,9 @@ class HeartRateReading extends DataClass
     map['workout_id'] = Variable<String>(workoutId);
     map['measured_at_ms'] = Variable<int>(measuredAtMs);
     map['bpm'] = Variable<int>(bpm);
+    if (!nullToAbsent || accuracy != null) {
+      map['accuracy'] = Variable<int>(accuracy);
+    }
     return map;
   }
 
@@ -5260,6 +5301,9 @@ class HeartRateReading extends DataClass
       workoutId: Value(workoutId),
       measuredAtMs: Value(measuredAtMs),
       bpm: Value(bpm),
+      accuracy: accuracy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accuracy),
     );
   }
 
@@ -5272,6 +5316,7 @@ class HeartRateReading extends DataClass
       workoutId: serializer.fromJson<String>(json['workoutId']),
       measuredAtMs: serializer.fromJson<int>(json['measuredAtMs']),
       bpm: serializer.fromJson<int>(json['bpm']),
+      accuracy: serializer.fromJson<int?>(json['accuracy']),
     );
   }
   @override
@@ -5281,15 +5326,21 @@ class HeartRateReading extends DataClass
       'workoutId': serializer.toJson<String>(workoutId),
       'measuredAtMs': serializer.toJson<int>(measuredAtMs),
       'bpm': serializer.toJson<int>(bpm),
+      'accuracy': serializer.toJson<int?>(accuracy),
     };
   }
 
-  HeartRateReading copyWith({String? workoutId, int? measuredAtMs, int? bpm}) =>
-      HeartRateReading(
-        workoutId: workoutId ?? this.workoutId,
-        measuredAtMs: measuredAtMs ?? this.measuredAtMs,
-        bpm: bpm ?? this.bpm,
-      );
+  HeartRateReading copyWith({
+    String? workoutId,
+    int? measuredAtMs,
+    int? bpm,
+    Value<int?> accuracy = const Value.absent(),
+  }) => HeartRateReading(
+    workoutId: workoutId ?? this.workoutId,
+    measuredAtMs: measuredAtMs ?? this.measuredAtMs,
+    bpm: bpm ?? this.bpm,
+    accuracy: accuracy.present ? accuracy.value : this.accuracy,
+  );
   HeartRateReading copyWithCompanion(HeartRateSamplesCompanion data) {
     return HeartRateReading(
       workoutId: data.workoutId.present ? data.workoutId.value : this.workoutId,
@@ -5297,6 +5348,7 @@ class HeartRateReading extends DataClass
           ? data.measuredAtMs.value
           : this.measuredAtMs,
       bpm: data.bpm.present ? data.bpm.value : this.bpm,
+      accuracy: data.accuracy.present ? data.accuracy.value : this.accuracy,
     );
   }
 
@@ -5305,37 +5357,42 @@ class HeartRateReading extends DataClass
     return (StringBuffer('HeartRateReading(')
           ..write('workoutId: $workoutId, ')
           ..write('measuredAtMs: $measuredAtMs, ')
-          ..write('bpm: $bpm')
+          ..write('bpm: $bpm, ')
+          ..write('accuracy: $accuracy')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(workoutId, measuredAtMs, bpm);
+  int get hashCode => Object.hash(workoutId, measuredAtMs, bpm, accuracy);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is HeartRateReading &&
           other.workoutId == this.workoutId &&
           other.measuredAtMs == this.measuredAtMs &&
-          other.bpm == this.bpm);
+          other.bpm == this.bpm &&
+          other.accuracy == this.accuracy);
 }
 
 class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
   final Value<String> workoutId;
   final Value<int> measuredAtMs;
   final Value<int> bpm;
+  final Value<int?> accuracy;
   final Value<int> rowid;
   const HeartRateSamplesCompanion({
     this.workoutId = const Value.absent(),
     this.measuredAtMs = const Value.absent(),
     this.bpm = const Value.absent(),
+    this.accuracy = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   HeartRateSamplesCompanion.insert({
     required String workoutId,
     required int measuredAtMs,
     required int bpm,
+    this.accuracy = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : workoutId = Value(workoutId),
        measuredAtMs = Value(measuredAtMs),
@@ -5344,12 +5401,14 @@ class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
     Expression<String>? workoutId,
     Expression<int>? measuredAtMs,
     Expression<int>? bpm,
+    Expression<int>? accuracy,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (workoutId != null) 'workout_id': workoutId,
       if (measuredAtMs != null) 'measured_at_ms': measuredAtMs,
       if (bpm != null) 'bpm': bpm,
+      if (accuracy != null) 'accuracy': accuracy,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5358,12 +5417,14 @@ class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
     Value<String>? workoutId,
     Value<int>? measuredAtMs,
     Value<int>? bpm,
+    Value<int?>? accuracy,
     Value<int>? rowid,
   }) {
     return HeartRateSamplesCompanion(
       workoutId: workoutId ?? this.workoutId,
       measuredAtMs: measuredAtMs ?? this.measuredAtMs,
       bpm: bpm ?? this.bpm,
+      accuracy: accuracy ?? this.accuracy,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5380,6 +5441,9 @@ class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
     if (bpm.present) {
       map['bpm'] = Variable<int>(bpm.value);
     }
+    if (accuracy.present) {
+      map['accuracy'] = Variable<int>(accuracy.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5392,6 +5456,7 @@ class HeartRateSamplesCompanion extends UpdateCompanion<HeartRateReading> {
           ..write('workoutId: $workoutId, ')
           ..write('measuredAtMs: $measuredAtMs, ')
           ..write('bpm: $bpm, ')
+          ..write('accuracy: $accuracy, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11839,6 +11904,7 @@ typedef $$HeartRateSamplesTableCreateCompanionBuilder =
       required String workoutId,
       required int measuredAtMs,
       required int bpm,
+      Value<int?> accuracy,
       Value<int> rowid,
     });
 typedef $$HeartRateSamplesTableUpdateCompanionBuilder =
@@ -11846,6 +11912,7 @@ typedef $$HeartRateSamplesTableUpdateCompanionBuilder =
       Value<String> workoutId,
       Value<int> measuredAtMs,
       Value<int> bpm,
+      Value<int?> accuracy,
       Value<int> rowid,
     });
 
@@ -11901,6 +11968,11 @@ class $$HeartRateSamplesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get accuracy => $composableBuilder(
+    column: $table.accuracy,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$WorkoutsTableFilterComposer get workoutId {
     final $$WorkoutsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11944,6 +12016,11 @@ class $$HeartRateSamplesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get accuracy => $composableBuilder(
+    column: $table.accuracy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutsTableOrderingComposer get workoutId {
     final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11984,6 +12061,9 @@ class $$HeartRateSamplesTableAnnotationComposer
 
   GeneratedColumn<int> get bpm =>
       $composableBuilder(column: $table.bpm, builder: (column) => column);
+
+  GeneratedColumn<int> get accuracy =>
+      $composableBuilder(column: $table.accuracy, builder: (column) => column);
 
   $$WorkoutsTableAnnotationComposer get workoutId {
     final $$WorkoutsTableAnnotationComposer composer = $composerBuilder(
@@ -12042,11 +12122,13 @@ class $$HeartRateSamplesTableTableManager
                 Value<String> workoutId = const Value.absent(),
                 Value<int> measuredAtMs = const Value.absent(),
                 Value<int> bpm = const Value.absent(),
+                Value<int?> accuracy = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HeartRateSamplesCompanion(
                 workoutId: workoutId,
                 measuredAtMs: measuredAtMs,
                 bpm: bpm,
+                accuracy: accuracy,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12054,11 +12136,13 @@ class $$HeartRateSamplesTableTableManager
                 required String workoutId,
                 required int measuredAtMs,
                 required int bpm,
+                Value<int?> accuracy = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => HeartRateSamplesCompanion.insert(
                 workoutId: workoutId,
                 measuredAtMs: measuredAtMs,
                 bpm: bpm,
+                accuracy: accuracy,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

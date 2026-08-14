@@ -37,7 +37,9 @@ void main() {
       deletedAtMs: 3000,
       avgHeartRate: 120,
       maxHeartRate: 165,
-      heartRateSamples: [HeartRateSampleDto(tMs: 1500, bpm: 130)],
+      heartRateSamples: [
+        HeartRateSampleDto(tMs: 1500, bpm: 130, accuracy: 4),
+      ],
       exercises: [
         WorkoutExerciseDto(
           syncId: 'we1',
@@ -86,6 +88,9 @@ void main() {
       'maxHeartRate',
       'heartRateSamples[].t',
       'heartRateSamples[].bpm',
+      // Sensor confidence. Optional — omitted entirely when null, so a series
+      // recorded before the field existed adds no keys.
+      'heartRateSamples[].a',
       'exercises[].syncId',
       'exercises[].exerciseSyncId',
       'exercises[].exerciseName',

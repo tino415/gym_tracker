@@ -19,6 +19,24 @@ const int kHeartRateSampleGapMs = 5000;
 /// work equally on rows read back from Drift and on samples still in flight.
 typedef HeartRateReadingView = ({int tMs, int bpm});
 
+/// The sensor's confidence in a reading, as stored in
+/// `HeartRateSamples.accuracy`. Mirrors `HR_ACCURACY_*` in `WorkoutService.kt`,
+/// which mirrors Health Services' `HeartRateAccuracy.SensorStatus` — keep the
+/// three in sync. Ordered by confidence, so `>= kHrAccuracyMedium` is a
+/// meaningful test.
+///
+/// Nothing filters on these yet, deliberately. Dropping low-confidence readings
+/// at capture was tried and reverted: PPG reports exactly that while the wrist
+/// is moving, so the gate removed the work intervals and heart rate read
+/// near-resting. The label is recorded first, and what to do with it is decided
+/// from a real session's data.
+const int kHrAccuracyUnknown = 0;
+const int kHrAccuracyNoContact = 1;
+const int kHrAccuracyUnreliable = 2;
+const int kHrAccuracyLow = 3;
+const int kHrAccuracyMedium = 4;
+const int kHrAccuracyHigh = 5;
+
 /// Longest gap between two readings that still counts as continuous, for
 /// [heartRateSeriesAverage]. A dropout longer than this contributes nothing
 /// rather than being counted as steady heart rate across the hole.

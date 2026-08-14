@@ -170,6 +170,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
             workoutId: workoutId,
             measuredAtMs: sample.timestampMs,
             bpm: sample.bpm,
+            accuracy: sample.accuracy,
           ),
         );
       }

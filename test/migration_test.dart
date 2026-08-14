@@ -6,6 +6,7 @@ import 'package:gym_tracker/data/database.dart';
 import 'drift_schemas/schema.dart';
 import 'drift_schemas/schema_v14.dart' as v14;
 import 'drift_schemas/schema_v15.dart' as v15;
+import 'drift_schemas/schema_v16.dart' as v16;
 
 /// Schema migrations, against databases actually created at the old version.
 ///
@@ -28,17 +29,50 @@ void main() {
   test('migrates a v14 database to the current schema', () async {
     // Catches drift between the migration steps and the table definitions —
     // `migrateAndValidate` compares the migrated database against the dumped
-    // v15 schema, column by column.
+    // v16 schema, column by column.
     final connection = await verifier.startAt(14);
     final db = AppDatabase.forTesting(connection);
-    await verifier.migrateAndValidate(db, 15);
+    await verifier.migrateAndValidate(db, 16);
     await db.close();
+  });
+
+  test('v15 → v16 keeps existing samples, with no recorded accuracy', () async {
+    // The column is added, never backfilled: readings captured before it
+    // existed have no confidence label, and null is the honest value for that.
+    final schema = await verifier.schemaAt(15);
+    final oldDb = v15.DatabaseAtV15(schema.newConnection());
+    await oldDb
+        .into(oldDb.workouts)
+        .insert(v15.WorkoutsCompanion.insert(
+          syncId: 'w1',
+          startedAt: DateTime(2026, 8, 12, 18),
+        ));
+    await oldDb.into(oldDb.heartRateSamples).insert(
+          v15.HeartRateSamplesCompanion.insert(
+            workoutId: 'w1',
+            measuredAtMs: 1000,
+            bpm: 142,
+          ),
+        );
+    await oldDb.close();
+
+    final db = AppDatabase.forTesting(schema.newConnection());
+    await verifier.migrateAndValidate(db, 16);
+    await db.close();
+
+    final checkDb = v16.DatabaseAtV16(schema.newConnection());
+    final rows = await checkDb.select(checkDb.heartRateSamples).get();
+    await checkDb.close();
+    expect(rows, hasLength(1));
+    expect(rows.single.bpm, 142);
+    // Plain `null`, not `isNull`: drift exports a matcher of that name too.
+    expect(rows.single.accuracy, null);
   });
 
   group('v14 → v15 rest translation', () {
     /// Seeds a v14 database with [exercises] as `(syncId, group, rest)` under
     /// one routine, runs the real migration, and returns the v15 rows in order.
-    Future<List<v15.RoutineExercisesData>> migrateRoutine(
+    Future<List<v16.RoutineExercisesData>> migrateRoutine(
       List<(String, int?, int)> exercises, {
       int startVersion = 1,
     }) async {
@@ -74,10 +108,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 15);
+      await verifier.migrateAndValidate(migrated, 16);
       await migrated.close();
 
-      final checkDb = v15.DatabaseAtV15(schema.newConnection());
+      final checkDb = v16.DatabaseAtV16(schema.newConnection());
       final rows = await (checkDb.select(checkDb.routineExercises)
             ..orderBy([(t) => OrderingTerm(expression: t.orderIndex)]))
           .get();
@@ -160,10 +194,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 15);
+      await verifier.migrateAndValidate(migrated, 16);
       await migrated.close();
 
-      final checkDb = v15.DatabaseAtV15(schema.newConnection());
+      final checkDb = v16.DatabaseAtV16(schema.newConnection());
       final byId = {
         for (final r in await checkDb.select(checkDb.routines).get())
           r.syncId: r.version,
@@ -201,10 +235,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 15);
+      await verifier.migrateAndValidate(migrated, 16);
       await migrated.close();
 
-      final checkDb = v15.DatabaseAtV15(schema.newConnection());
+      final checkDb = v16.DatabaseAtV16(schema.newConnection());
       final rows = await (checkDb.select(checkDb.workoutExercises)
             ..orderBy([(t) => OrderingTerm(expression: t.orderIndex)]))
           .get();

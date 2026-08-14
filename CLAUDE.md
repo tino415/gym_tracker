@@ -4,17 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Everything runnable is a `just` recipe — run `just` with no argument for the
-list. **Prefer them over raw `flutter` / `firebase` invocations**: each recipe's
-comment records why its flags are what they are, and several are load-bearing
-(`--force-jit` for codegen, the fat `--target-platform` for the watch APK, the
-`flutter clean` before a web build). Read the `Justfile` before reaching for the
-underlying tool.
+Everything runnable is a `just` recipe. **Prefer them over raw `flutter` /
+`firebase` invocations** — several flags are load-bearing (`--force-jit` for
+codegen, the fat `--target-platform` for the watch APK, the `flutter clean`
+before a web build), and a recipe carries them for you.
 
-Values that vary by machine or device — adb serials, the debug/release APK mode
-(derived from `arch()`), the target ABIs — are variables at the top of the
-`Justfile`. Override any of them inline: `just PHONE_ABIS=android-x64 phone-apk`.
-The dev stack (`just up`) is described in `process-compose.yaml`.
+`just` with no argument lists every recipe with its parameters and a one-line
+description; that listing is the reference, so there is no need to open the
+`Justfile` to find out what exists. Values that vary by machine or device — adb
+serials, the debug/release APK mode (derived from `arch()`), the target ABIs —
+are variables, printed with their resolved values by `just --evaluate`. Override
+any of them inline: `just PHONE_ABIS=android-x64 phone-apk`. The dev stack
+(`just up`) is described in `process-compose.yaml`.
 
 Device recipes take an adb serial or the alias `phone` / `watch`, resolved by
 form factor (`tool/adb-device.sh`) so a wireless serial's changing port stops
@@ -102,19 +103,14 @@ created at the old version, using drift's schema tooling. The demo seed can't
 substitute: it writes through the *current* Drift classes, so it only ever
 produces rows already in the new shape.
 
-**After every schema change, re-dump and regenerate**, or the tests still
-validate against the previous schema:
+**After every schema change run `just schema`** (dump + regenerate), or the
+tests still validate against the previous version. Then point the existing
+`migrateAndValidate` calls at the new version and add the read-back through the
+new `DatabaseAtV<n>` — a check-back class one version behind the migrated file
+fails with "you've bumped the schema version … didn't provide a strategy",
+which reads like a missing migration and is not one.
 
-```
-dart run drift_dev schema dump lib/data/database.dart drift_schemas/
-dart run drift_dev schema generate --data-classes --companions \
-    drift_schemas/ test/drift_schemas/
-```
-
-Both directories are committed — `drift_schemas/` is the schema history, and
-losing it means losing the ability to test any past migration.
-
-Two things that bite:
+Three things that bite:
 
 - **Column defaults must be literals.** `schema dump` copies the Dart
   expression verbatim, and the code generated from it imports only drift — so
@@ -123,6 +119,9 @@ Two things that bite:
 - **Dumping an *older* version needs that version's source.** Check the
   pre-change `database.dart` + `database.g.dart` out of git into place, dump,
   then restore — there's no way to re-derive a schema you never dumped.
+- **`isNull` is ambiguous in `migration_test.dart`.** It imports
+  `package:drift/drift.dart`, which exports a matcher of that name alongside
+  `package:matcher`'s. Assert against plain `null`.
 
 ## Web / PWA
 
@@ -209,6 +208,21 @@ Health Connect reading near-resting. Three rules came out of it:
 Only `NO_CONTACT` readings are dropped. `ACCURACY_LOW` / `UNRELIABLE` correlate
 with a moving wrist, so filtering them cut out the work intervals — a gate that
 was added to stop heart rate reading low and did the opposite.
+
+The confidence itself *is* recorded, though (`HeartRateSamples.accuracy`, codes
+in `WorkoutService.HR_ACCURACY_*` mirrored as `kHrAccuracy*` in
+`heart_rate_thinning.dart` — keep the two in sync). Nothing filters on it yet,
+deliberately: it exists so a statistic can weigh it later without any sample
+being dropped at capture.
+
+**Why a number can be too high and still not be an outlier.** Dense capture
+exposed the opposite failure: sustained plateaus that are smooth,
+physiologically shaped and wrong — optical PPG tracking wrist motion rather than
+pulse. In the 2026-08-13 session the day's peak landed on cable biceps curls,
+~30 bpm above chin-ups, and held for six minutes. Consecutive readings never
+move more than ~14 bpm, so *no statistic over bpm alone can see it* — a median
+or outlier filter changes nothing. The sensor's own confidence is the only
+independent signal, which is what the column is for.
 
 ### Sync — `lib/sync/`
 Phone ↔ watch over the Wear Data Layer (`MessageClient`). The native bridge `GymWearBridge.kt` (with `lib/sync/wear_bridge.dart` on the Dart side, path `/gym_tracker/sync`) is hand-rolled — the `voo_watch` plugin leaks JSONObject into the Flutter codec and crashes, so don't reintroduce it.

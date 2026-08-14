@@ -579,17 +579,27 @@ class WorkoutDto {
 /// drift stores `DateTime` as unix seconds, and losing the sub-second part
 /// would break the export/apply content comparison that suppresses sync echoes.
 class HeartRateSampleDto {
-  HeartRateSampleDto({required this.tMs, required this.bpm});
+  HeartRateSampleDto({required this.tMs, required this.bpm, this.accuracy});
 
   final int tMs;
   final int bpm;
 
-  Map<String, Object?> toJson() => {'t': tMs, 'bpm': bpm};
+  /// Sensor confidence (`kHrAccuracy*`), omitted from the JSON when null so a
+  /// series recorded before the field existed costs nothing to carry — and so a
+  /// peer on an older build still round-trips a document byte-identically.
+  final int? accuracy;
+
+  Map<String, Object?> toJson() => {
+        't': tMs,
+        'bpm': bpm,
+        if (accuracy != null) 'a': accuracy,
+      };
 
   factory HeartRateSampleDto.fromJson(Map<String, Object?> json) =>
       HeartRateSampleDto(
         tMs: (json['t']! as num).toInt(),
         bpm: (json['bpm']! as num).toInt(),
+        accuracy: (json['a'] as num?)?.toInt(),
       );
 }
 
