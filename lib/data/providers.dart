@@ -10,6 +10,7 @@ import 'drift_repositories.dart';
 import 'exercise_seeds.dart';
 import 'firestore_repositories.dart';
 import 'repositories.dart';
+import 'routine_name_repair.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -92,6 +93,21 @@ final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
   await seedStarterExercises(
     exercises: ref.read(exerciseRepositoryProvider),
   );
+});
+
+/// One-off data migration: routines whose embedded exercise names predate the
+/// rename fan-out. Web only — the Drift side joins by id and was never stale.
+///
+/// Guarded per account, so the collection scan happens once rather than on every
+/// start (`routine_name_repair.dart`, which is deletable once every account has
+/// been through it).
+final routineNameRepairProvider = FutureProvider<void>((ref) async {
+  if (!ref.watch(firestoreDirectProvider)) return;
+  final uid = ref.watch(currentUidProvider);
+  if (uid == null) return;
+  final routines = ref.read(routineRepositoryProvider);
+  if (routines is! FirestoreRoutineRepository) return;
+  await repairRoutineNamesOnce(uid: uid, routines: routines);
 });
 
 final exercisesStreamProvider = StreamProvider<List<Exercise>>((ref) {

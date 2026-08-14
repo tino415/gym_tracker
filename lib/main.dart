@@ -98,6 +98,9 @@ class GymTrackerRoot extends ConsumerWidget {
     // watch: the phone owns the library and hands it over by sync, and seeding
     // both sides would mean two devices creating the same names independently.
     if (!isWatch) ref.watch(starterExerciseSeedProvider);
+    // One-off repair of routines whose embedded exercise names predate the
+    // rename fan-out. Self-gates to the web build and to one run per account.
+    if (!isWatch) ref.watch(routineNameRepairProvider);
     if (isWatch) return const _WearShell();
     return const PhoneApp();
   }

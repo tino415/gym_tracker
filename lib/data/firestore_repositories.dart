@@ -56,6 +56,10 @@ class FirestoreExerciseRepository implements ExerciseRepository {
 
   CollectionReference<Map<String, Object?>> get _col =>
       _fs.collection('users').doc(uid).collection('exercises');
+  // Renames have to reach the copies that routine documents embed — see
+  // [_refreshEmbeddedInRoutines].
+  CollectionReference<Map<String, Object?>> get _routCol =>
+      _fs.collection('users').doc(uid).collection('routines');
 
   // -- Reads ------------------------------------------------------------
 
@@ -153,16 +157,57 @@ class FirestoreExerciseRepository implements ExerciseRepository {
   }
 
   @override
-  Future<void> renameExercise(String id, String name) => _col.doc(id).update({
-    'name': name,
-    'version': FieldValue.increment(1),
-  });
+  Future<void> renameExercise(String id, String name) async {
+    await _col.doc(id).update({
+      'name': name,
+      'version': FieldValue.increment(1),
+    });
+    await _refreshEmbeddedInRoutines(id);
+  }
 
   @override
-  Future<void> setExerciseKind(String id, String kind) => _col.doc(id).update({
-    'kind': kind,
-    'version': FieldValue.increment(1),
-  });
+  Future<void> setExerciseKind(String id, String kind) async {
+    await _col.doc(id).update({
+      'kind': kind,
+      'version': FieldValue.increment(1),
+    });
+    await _refreshEmbeddedInRoutines(id);
+  }
+
+  /// Rewrite the `exerciseName` / `exerciseKind` that routine documents embed
+  /// for this exercise, bumping each touched routine's version.
+  ///
+  /// Routines carry that copy so one received over sync is self-contained — the
+  /// watch has no exercise library to join against. Refreshing it is not
+  /// cosmetic: [SyncRepository] deliberately writes an incoming bundle's name
+  /// onto the local exercise ("the authority may have renamed it"), so a routine
+  /// doc left holding the old name renames the exercise *back* on the phone. It
+  /// also stops a stale name being frozen into a workout snapshot the next time
+  /// the routine is started on the web.
+  ///
+  /// Re-reads the exercise afterwards rather than trusting the caller's one
+  /// field, so a rename also repairs a kind that had drifted (and vice versa).
+  Future<void> _refreshEmbeddedInRoutines(String exerciseId) async {
+    final data = (await _col.doc(exerciseId).get()).data();
+    if (data == null) return;
+    final now = (
+      name: (data['name'] as String?) ?? '',
+      kind: (data['kind'] as String?) ?? exerciseKindReps,
+    );
+    if (now.name.isEmpty) return;
+
+    for (final doc in (await _routCol.get()).docs) {
+      final rewritten = _patchEmbeddedExercises(
+        doc.data()['exercises'],
+        (id) => id == exerciseId ? now : null,
+      );
+      if (rewritten == null) continue;
+      await doc.reference.update({
+        'exercises': rewritten,
+        'version': FieldValue.increment(1),
+      });
+    }
+  }
 
   @override
   Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds) =>
@@ -178,6 +223,54 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     'deletedAtMs': DateTime.now().millisecondsSinceEpoch,
     'version': FieldValue.increment(1),
   });
+}
+
+/// Rewrites the `exerciseName` / `exerciseKind` a routine document embeds for
+/// every slot — and every alternative — whose exercise [current] resolves.
+///
+/// Returns null when nothing changed, so callers skip both the write and the
+/// version bump: bumping a routine that was already correct would re-push it to
+/// every peer for nothing. A slot whose exercise [current] doesn't know is left
+/// exactly as it is, which is what keeps a partial library from blanking names.
+///
+/// Shared by the per-rename fan-out and the whole-library repair, so the two can
+/// never disagree about what "up to date" means.
+List<Map<String, dynamic>>? _patchEmbeddedExercises(
+  Object? rawSlots,
+  ({String name, String kind})? Function(String exerciseSyncId) current,
+) {
+  var touched = false;
+  Map<String, dynamic> patch(Map<String, dynamic> slot) {
+    final id = slot['exerciseSyncId'];
+    if (id is! String) return slot;
+    final now = current(id);
+    if (now == null) return slot;
+    final next = Map<String, dynamic>.from(slot);
+    if (next['exerciseName'] != now.name) {
+      next['exerciseName'] = now.name;
+      touched = true;
+    }
+    if (next['exerciseKind'] != now.kind) {
+      next['exerciseKind'] = now.kind;
+      touched = true;
+    }
+    return next;
+  }
+
+  final out = <Map<String, dynamic>>[];
+  for (final raw in (rawSlots as List?) ?? const []) {
+    final slot = patch(Map<String, dynamic>.from(raw as Map));
+    final alts = (slot['alternatives'] as List?) ?? const [];
+    out.add(alts.isEmpty
+        ? slot
+        : {
+            ...slot,
+            'alternatives': [
+              for (final a in alts) patch(Map<String, dynamic>.from(a as Map)),
+            ],
+          });
+  }
+  return touched ? out : null;
 }
 
 Exercise _synthExercise(String syncId, String name, String kind) => Exercise(
@@ -222,6 +315,15 @@ class FirestoreRoutineRepository implements RoutineRepository {
         : DateTime.fromMillisecondsSinceEpoch(dto.deletedAtMs!),
   );
 
+  /// Renders the name/kind the routine document embeds, deliberately — no join
+  /// against the exercise library.
+  ///
+  /// That copy is what every other device sees (the watch has no library to join
+  /// against, and [SyncRepository] writes an incoming bundle's name back onto the
+  /// local exercise), so it has to be correct at rest, and
+  /// [FirestoreExerciseRepository] keeps it that way on rename. A read-time join
+  /// here would only make a stale document *look* right on the web while the
+  /// phone kept reverting the rename — hiding the one symptom that reveals it.
   FullRoutine _toFullRoutine(RoutineTemplateDto dto) => FullRoutine(
     routine: _routineRow(dto),
     exercises: [
@@ -325,6 +427,52 @@ class FirestoreRoutineRepository implements RoutineRepository {
     if (d == null) return null;
     final dto = RoutineTemplateDto.fromJson(d);
     return dto.deletedAtMs == null ? _toFullRoutine(dto) : null;
+  }
+
+  /// One-off repair: bring every routine's embedded `exerciseName` /
+  /// `exerciseKind` back in line with the exercise library. Returns how many
+  /// routines were rewritten.
+  ///
+  /// Needed because renames used to touch only the exercise document, leaving
+  /// every routine holding the name it was created with. That is not a web-only
+  /// cosmetic problem: the watch reads the embedded copy, and an inbound bundle
+  /// carrying the stale name renames the exercise *back* on the phone
+  /// ([SyncRepository]).
+  ///
+  /// The library is the authority here, which is safe because exercise documents
+  /// sync to every device on their own (`exerciseBundleType`, version-LWW) rather
+  /// than only inside routine bundles.
+  ///
+  /// Writes nothing when everything already matches, so re-running is harmless —
+  /// but it is guarded to run once per account anyway
+  /// (`routine_name_repair.dart`), since scanning two collections on every start
+  /// is real cost for a one-time need. Workout snapshots are deliberately left
+  /// alone: a session recorded under the old name genuinely happened under it.
+  Future<int> repairEmbeddedExerciseNames() async {
+    final library = {
+      for (final d in (await _exCol.get()).docs)
+        if (((d.data()['name'] as String?) ?? '').isNotEmpty)
+          d.id: (
+            name: d.data()['name']! as String,
+            kind: (d.data()['kind'] as String?) ?? exerciseKindReps,
+          ),
+    };
+    if (library.isEmpty) return 0;
+
+    var repaired = 0;
+    for (final doc in (await _col.get()).docs) {
+      final rewritten = _patchEmbeddedExercises(
+        doc.data()['exercises'],
+        (id) => library[id],
+      );
+      if (rewritten == null) continue;
+      await doc.reference.update({
+        'exercises': rewritten,
+        'version': FieldValue.increment(1),
+      });
+      repaired++;
+    }
+    return repaired;
   }
 
   // -- Write helpers ----------------------------------------------------

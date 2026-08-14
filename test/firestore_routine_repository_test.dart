@@ -173,6 +173,179 @@ void main() {
     expect(slot.alternatives, isEmpty);
   });
 
+  group('renaming an exercise reaches the routines that use it', () {
+    /// Routine docs embed `exerciseName`/`exerciseKind` for sync
+    /// self-containment, and web reads rendered that copy — so a rename never
+    /// showed up in a routine. Worse, `SyncRepository` writes an incoming
+    /// bundle's name onto the local exercise, so a stale routine doc renamed the
+    /// exercise *back* on the phone.
+    Future<List<Map<String, Object?>>> embeddedSlots(String routineId) async {
+      final doc = await fs
+          .collection('users')
+          .doc('u1')
+          .collection('routines')
+          .doc(routineId)
+          .get();
+      return [
+        for (final e in doc.data()!['exercises'] as List)
+          (e as Map).cast<String, Object?>(),
+      ];
+    }
+
+    test('the embedded copy is rewritten, and the version bumped', () async {
+      final ex = await exercises.createExercise('Dumbbell row');
+      final r = await routines.createRoutine('Pull');
+      await routines.addExerciseToRoutine(
+        routineId: r.syncId,
+        exerciseId: ex.syncId,
+      );
+      final before = await routineVersion(r.syncId);
+
+      await exercises.renameExercise(ex.syncId, 'Chest supported dumbbell row');
+
+      expect((await embeddedSlots(r.syncId)).single['exerciseName'],
+          'Chest supported dumbbell row');
+      // The bump is what makes the rewrite win version-LWW against the copy a
+      // peer still holds.
+      expect(await routineVersion(r.syncId), greaterThan(before));
+      final slot = (await routines.loadFullRoutine(r.syncId))!.exercises.single;
+      expect(slot.exercise.name, 'Chest supported dumbbell row');
+    });
+
+    test('alternatives are rewritten too', () async {
+      final bench = await exercises.createExercise('Bench');
+      final alt = await exercises.createExercise('Dumbbell Press');
+      final r = await routines.createRoutine('Push');
+      final re = await routines.addExerciseToRoutine(
+        routineId: r.syncId,
+        exerciseId: bench.syncId,
+      );
+      await routines.addRoutineExerciseAlternative(
+        routineExerciseId: re.syncId,
+        exerciseId: alt.syncId,
+      );
+
+      await exercises.renameExercise(alt.syncId, 'Dumbbell bench press');
+
+      final slot = (await routines.loadFullRoutine(r.syncId))!.exercises.single;
+      expect(slot.alternatives.single.exercise.name, 'Dumbbell bench press');
+    });
+
+    test('a routine not using the exercise is left alone', () async {
+      final ex = await exercises.createExercise('Squat');
+      final other = await exercises.createExercise('Bench');
+      final untouched = await routines.createRoutine('Push');
+      await routines.addExerciseToRoutine(
+        routineId: untouched.syncId,
+        exerciseId: other.syncId,
+      );
+      final before = await routineVersion(untouched.syncId);
+
+      await exercises.renameExercise(ex.syncId, 'Back squat');
+
+      // A version bump on every routine would re-push the lot for nothing.
+      expect(await routineVersion(untouched.syncId), before);
+    });
+
+    test('reads render the embedded copy, not a live join', () async {
+      // Deliberate: the embedded copy is what the watch and the phone see, so a
+      // read-time join would make a stale document look correct on the web while
+      // the phone kept reverting the rename. Reading it straight means a stale
+      // doc is visible as stale.
+      final ex = await exercises.createExercise('Old name');
+      final r = await routines.createRoutine('Pull');
+      await routines.addExerciseToRoutine(
+        routineId: r.syncId,
+        exerciseId: ex.syncId,
+      );
+      // Bypass renameExercise, so the fan-out does not run.
+      await fs
+          .collection('users')
+          .doc('u1')
+          .collection('exercises')
+          .doc(ex.syncId)
+          .update({'name': 'New name'});
+
+      final slot = (await routines.loadFullRoutine(r.syncId))!.exercises.single;
+      expect(slot.exercise.name, 'Old name');
+    });
+
+    test('the one-off repair brings stale docs back in line', () async {
+      final ex = await exercises.createExercise('Old name');
+      final other = await exercises.createExercise('Untouched');
+      final stale = await routines.createRoutine('Pull');
+      final fresh = await routines.createRoutine('Push');
+      final re = await routines.addExerciseToRoutine(
+        routineId: stale.syncId,
+        exerciseId: ex.syncId,
+      );
+      await routines.addRoutineExerciseAlternative(
+        routineExerciseId: re.syncId,
+        exerciseId: ex.syncId,
+      );
+      await routines.addExerciseToRoutine(
+        routineId: fresh.syncId,
+        exerciseId: other.syncId,
+      );
+      // Rename the library entry behind the fan-out's back, the way every
+      // rename behaved before it existed.
+      await fs
+          .collection('users')
+          .doc('u1')
+          .collection('exercises')
+          .doc(ex.syncId)
+          .update({'name': 'New name'});
+      final freshVersionBefore = await routineVersion(fresh.syncId);
+
+      expect(await routines.repairEmbeddedExerciseNames(), 1);
+
+      final slot = (await routines.loadFullRoutine(stale.syncId))!
+          .exercises
+          .single;
+      expect(slot.exercise.name, 'New name');
+      expect(slot.alternatives.single.exercise.name, 'New name');
+      // A routine that was already correct must not be bumped — that would
+      // re-push it to every peer for nothing.
+      expect(await routineVersion(fresh.syncId), freshVersionBefore);
+    });
+
+    test('the repair leaves an unknown exercise alone', () async {
+      // A slot whose exercise is missing from the library keeps its embedded
+      // name rather than being blanked.
+      final ex = await exercises.createExercise('Ghost');
+      final r = await routines.createRoutine('Pull');
+      await routines.addExerciseToRoutine(
+        routineId: r.syncId,
+        exerciseId: ex.syncId,
+      );
+      await fs
+          .collection('users')
+          .doc('u1')
+          .collection('exercises')
+          .doc(ex.syncId)
+          .delete();
+
+      expect(await routines.repairEmbeddedExerciseNames(), 0);
+      expect((await embeddedSlots(r.syncId)).single['exerciseName'], 'Ghost');
+    });
+
+    test('setExerciseKind propagates, since the run page branches on it',
+        () async {
+      final ex = await exercises.createExercise('Plank');
+      final r = await routines.createRoutine('Core');
+      await routines.addExerciseToRoutine(
+        routineId: r.syncId,
+        exerciseId: ex.syncId,
+      );
+
+      await exercises.setExerciseKind(ex.syncId, 'time');
+
+      expect((await embeddedSlots(r.syncId)).single['exerciseKind'], 'time');
+      final slot = (await routines.loadFullRoutine(r.syncId))!.exercises.single;
+      expect(slot.exercise.kind, 'time');
+    });
+  });
+
   test('deleteRoutine tombstones: gone from summaries and watchFullRoutine',
       () async {
     final ex = await exercises.createExercise('Bench');
