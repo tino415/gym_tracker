@@ -1020,7 +1020,6 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         );
       },
       child: Scaffold(
-        backgroundColor: widget.ambient ? Colors.black : null,
         body: RoundSafeArea(
           child: widget.ambient
               ? _buildAmbient(context)
@@ -1060,6 +1059,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   Widget _buildAmbient(BuildContext context) {
     final kind = _currentKind();
     final name = _currentExerciseName();
+    // Dimmer than the interactive UI on purpose — see _AmbientFace.
     final muted = Colors.white70;
     String value;
     if (kind == exerciseKindTime) {
@@ -1842,7 +1842,7 @@ class _RestView extends StatelessWidget {
         ? Colors.white70
         : Theme.of(context).colorScheme.onSurface;
     final big = TextStyle(
-      fontSize: ambient ? 36 : 36,
+      fontSize: 36,
       fontWeight: FontWeight.w300,
       color: muted,
       fontFeatures: const [FontFeature.tabularFigures()],

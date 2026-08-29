@@ -11,13 +11,25 @@ class WatchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GymTracker',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      theme: watchTheme(),
       home: ambient ? const _AmbientFace() : const WatchPickRoutinePage(),
     );
   }
+}
+
+/// The watch is dark unconditionally — there is no setting, unlike the phone.
+ThemeData watchTheme() {
+  return ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.deepPurple,
+      brightness: Brightness.dark,
+    ),
+    // True black rather than Material's dark grey: on OLED these pixels are
+    // off for a whole session, and it makes the transition into the ambient
+    // face continuous instead of a flash.
+    scaffoldBackgroundColor: Colors.black,
+    useMaterial3: true,
+  );
 }
 
 class _AmbientFace extends StatelessWidget {
@@ -25,8 +37,9 @@ class _AmbientFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // white70 rather than a theme colour: ambient renders dimmer than the
+    // interactive UI on purpose, for burn-in and power.
     return const Scaffold(
-      backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
           child: Text('GymTracker', style: TextStyle(color: Colors.white70)),

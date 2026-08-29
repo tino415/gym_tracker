@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
+import 'package:gym_tracker/watch/watch_app.dart';
 import 'package:gym_tracker/watch/watch_exercise_preview_page.dart';
 
 /// The watch routine preview must surface the slot's alternative exercises —
@@ -41,7 +42,10 @@ void main() {
 
   Future<void> pumpPreview(WidgetTester tester, FullRoutineExercise re) async {
     await tester.pumpWidget(
-      MaterialApp(home: WatchExercisePreviewPage.fromRoutine(re)),
+      MaterialApp(
+        theme: watchTheme(),
+        home: WatchExercisePreviewPage.fromRoutine(re),
+      ),
     );
     await tester.pumpAndSettle();
   }

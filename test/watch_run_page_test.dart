@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
 import 'package:gym_tracker/data/providers.dart';
+import 'package:gym_tracker/watch/watch_app.dart';
 import 'package:gym_tracker/watch/watch_run_page.dart';
 
 /// Build a routine described as `[(name, kind, [(reps?, kg?, sec?)], group?)]`
@@ -69,7 +70,10 @@ Future<void> _pumpRun(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [databaseProvider.overrideWithValue(db)],
-      child: MaterialApp(home: WatchRunPage(routine: routine)),
+      child: MaterialApp(
+        theme: watchTheme(),
+        home: WatchRunPage(routine: routine),
+      ),
     ),
   );
   await tester.pumpAndSettle();
