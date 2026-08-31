@@ -5,8 +5,8 @@
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
       {
-        "//": "Hosting's default is max-age=3600 for everything, which cached the shell for an hour after each deploy — including flutter_service_worker.js, the one file whose whole job is to notice a new version. A hard reload could not fix it, because the worker update check is a separate fetch served from that same cache. These four have fixed names (Flutter does not hash them), so revalidation is the only way a client learns they changed.",
-        "source": "/@(index.html|flutter_bootstrap.js|flutter_service_worker.js|main.dart.js|version.json|manifest.json)",
+        "//": "Flutter content-hashes NOTHING in build/web — every filename is fixed, canvaskit/ and assets/ included. So Hosting's max-age=3600 default lets a client pair a fresh main.dart.js with an hour-old canvaskit.wasm, and the service worker cannot repair it: its re-fetch of a changed resource goes through the same HTTP cache. An earlier version of this block listed the six shell files by name and left the rest on the default, which is how that hole survived. Match everything instead; no-cache means revalidate, so unchanged files still cost a 304 and no bytes.",
+        "source": "**",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ]

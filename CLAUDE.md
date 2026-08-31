@@ -160,9 +160,18 @@ clears; it's separate from the SW app-shell cache.
 update check was answered from the HTTP cache, and each time it was, the
 cache-first worker re-served the shell it already had. The loop has no upper
 bound: a three-day-old bundle survived repeated hard reloads. The `headers`
-block now sends `no-cache` for the six fixed-name shell files (Flutter hashes
-neither `main.dart.js` nor the worker), so a deploy propagates on the next load.
-Hashed assets under `assets/` and `canvaskit/` keep the default.
+block now sends `no-cache` for **every** file, so a deploy propagates on the
+next load.
+
+It says `**` rather than a list because **Flutter content-hashes nothing in
+`build/web`** — `canvaskit/canvaskit.wasm`, `flutter.js` and everything under
+`assets/` have fixed names too. The first version of that block listed only the
+six shell files and left the rest on `max-age=3600`, on the mistaken belief that
+`assets/` and `canvaskit/` were hashed. That let a client pair a fresh
+`main.dart.js` with an hour-old CanvasKit runtime — an engine talking to a
+renderer it wasn't built against, which is a candidate cause of the WebGL
+cross-context errors seen on desktop. `no-cache` is revalidation, not
+no-storage, so an unchanged `canvaskit.wasm` still costs a 304 and no bytes.
 
 Also: `web.app` and `firebaseapp.com` are separate *origins* of the same site, so
 each keeps its own worker and cache — clearing one leaves the other stale, and
