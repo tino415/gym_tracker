@@ -4,6 +4,7 @@ import 'package:gym_tracker/data/database.dart';
 import 'package:gym_tracker/data/drift_repositories.dart';
 import 'package:gym_tracker/data/exercise_seeds.dart';
 import 'package:gym_tracker/data/muscle_seeds.dart';
+import 'package:gym_tracker/sync/sync_repository.dart';
 
 /// The starter library a new install gets, and the guards that keep it from
 /// writing over — or reviving — a library the user has already curated.
@@ -88,26 +89,46 @@ void main() {
       expect(squatMuscles.map((m) => m.name).toSet(), {'Quads', 'Glutes'});
     });
 
-    test(
-      'seeds every entry under its own id',
-      () async {
-        await seedStarterExercises(exercises: repo);
+    test('seeds every entry under its own id', () async {
+      await seedStarterExercises(exercises: repo);
 
-        final rows = await repo.watchExercises().first;
-        final idByName = {for (final r in rows) r.name: r.syncId};
-        final wrong = exerciseSeeds
-            .where((s) => idByName[s.name] != s.id)
-            .map((s) => s.name);
-        expect(wrong, isEmpty);
-      },
-      // Fails today, deliberately, and was checked to fail rather than assumed
-      // to. Every entry carries the id it should be seeded under, but
-      // seedStarterExercises still goes through createExercise, which mints a
-      // uuid of its own. Un-skip when the seed writes the ids: without this
-      // assertion nothing notices that ExerciseSeed.id is read nowhere outside
-      // these tests.
-      skip: 'seeding does not use ExerciseSeed.id yet',
-    );
+      final rows = await repo.watchExercises().first;
+      final idByName = {for (final r in rows) r.name: r.syncId};
+      final wrong = exerciseSeeds
+          .where((s) => idByName[s.name] != s.id)
+          .map((s) => s.name);
+      expect(wrong, isEmpty);
+    });
+
+    test('two independent installs seed byte-identical libraries', () async {
+      // Identity is only worth anything if two devices agree on it without
+      // talking. Comparing whole DTOs rather than id sets is what catches a
+      // non-deterministic createdAt: the ids would match while the two devices
+      // rewrote every document against each other forever.
+      final otherDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(otherDb.close);
+
+      await seedStarterExercises(exercises: repo);
+      await seedStarterExercises(exercises: DriftExerciseRepository(otherDb));
+
+      final mine = await SyncRepository(db).exportAllExercises();
+      final theirs = await SyncRepository(otherDb).exportAllExercises();
+      expect(
+        theirs.map((e) => e.toJson()),
+        equals(mine.map((e) => e.toJson())),
+      );
+    });
+
+    test('a seeded row rests at version 1, so it loses to an edited account',
+        () async {
+      // setExerciseMuscles ends in a version bump, so seeding through it would
+      // leave every row at 2 and let a fresh install outrank a real library.
+      await seedStarterExercises(exercises: repo);
+
+      final rows = await repo.watchExercises().first;
+      expect(rows, isNotEmpty);
+      expect(rows.map((r) => r.version).toSet(), {1});
+    });
 
     test('is a no-op when the library already has an exercise', () async {
       await db.createExercise('Bench Press');

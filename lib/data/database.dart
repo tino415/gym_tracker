@@ -720,6 +720,67 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Insert one catalogue exercise under an id chosen by the caller, with its
+  /// muscle tags, in one transaction. Returns the row, or null when a
+  /// *different* row already holds [name].
+  ///
+  /// Distinct from [createExercise] in three ways that all matter to the seed:
+  ///
+  /// The id is given, not minted, so two installs seeding the same catalogue
+  /// entry agree on it and the second one upserts instead of creating a
+  /// duplicate document.
+  ///
+  /// The row rests at version 1. Tags are written inside the same transaction
+  /// rather than through [setExerciseMuscles], which ends in a version bump and
+  /// would leave every seeded row at 2. A fresh seed has to lose to an account
+  /// that has been edited, and it can only do that from the bottom.
+  ///
+  /// A name collision returns null rather than reconciling. [createExercise]
+  /// deliberately revives a tombstone or returns the live row of that name,
+  /// which is right for a user typing a name and wrong for a seed: it would
+  /// hand back a row under an id the catalogue does not own. The collision is
+  /// reachable because the seed's emptiness check happens once and the writes
+  /// that follow are interleaved with inbound sync.
+  Future<Exercise?> createCatalogExercise({
+    required String syncId,
+    required String name,
+    required String kind,
+    required List<String> muscleSyncIds,
+    required DateTime createdAt,
+  }) async {
+    return transaction(() async {
+      final existing =
+          await (select(exercises)..where((t) => t.syncId.equals(syncId)))
+              .getSingleOrNull();
+      if (existing != null) return existing;
+
+      final byName = await (select(
+        exercises,
+      )..where((t) => t.name.equals(name))).getSingleOrNull();
+      if (byName != null) return null;
+
+      await into(exercises).insert(
+        ExercisesCompanion.insert(
+          syncId: syncId,
+          name: name,
+          createdAt: createdAt,
+          kind: Value(kind),
+        ),
+      );
+      for (final muscleId in muscleSyncIds) {
+        await into(exerciseMuscles).insert(
+          ExerciseMusclesCompanion.insert(
+            exerciseId: syncId,
+            muscleId: muscleId,
+          ),
+        );
+      }
+      return (select(
+        exercises,
+      )..where((t) => t.syncId.equals(syncId))).getSingle();
+    });
+  }
+
   Future<void> _bumpExerciseVersion(String id) async {
     await customUpdate(
       'UPDATE exercises SET version = version + 1 WHERE sync_id = ?',

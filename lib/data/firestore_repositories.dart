@@ -157,6 +157,41 @@ class FirestoreExerciseRepository implements ExerciseRepository {
   }
 
   @override
+  Future<Exercise?> createCatalogExercise({
+    required String syncId,
+    required String name,
+    required String kind,
+    required List<String> muscleSyncIds,
+    required DateTime createdAt,
+  }) async {
+    // The document id is the catalogue's id, so a second install seeding the
+    // same entry writes the same document rather than a second one. Existing
+    // doc wins outright: this is a seed, and it never edits what is already
+    // there.
+    final own = await _col.doc(syncId).get();
+    if (own.exists) return _exerciseFromData(own.data()!);
+
+    // A different doc under this name means the library is not the pristine
+    // one the seed assumes. Skip rather than reconcile, so nothing is handed
+    // back under an id the catalogue does not own. Firestore has no
+    // UNIQUE(name), so unlike Drift nothing else would have stopped it.
+    final byName = await _col.where('name', isEqualTo: name).get();
+    if (byName.docs.isNotEmpty) return null;
+
+    final data = <String, Object?>{
+      'syncId': syncId,
+      'name': name,
+      'kind': kind,
+      'version': 1,
+      'createdAtMs': createdAt.millisecondsSinceEpoch,
+      'muscleSyncIds': muscleSyncIds,
+      'deletedAtMs': null,
+    };
+    await _col.doc(syncId).set(data);
+    return _exerciseFromData(data);
+  }
+
+  @override
   Future<void> renameExercise(String id, String name) async {
     await _col.doc(id).update({
       'name': name,

@@ -89,6 +89,23 @@ abstract class ExerciseRepository {
 
   // Mutations
   Future<Exercise> createExercise(String name, {String kind = exerciseKindReps});
+
+  /// Insert a catalogue exercise under an id the caller chooses, with its
+  /// muscle tags, resting at version 1. Returns null when a *different* row
+  /// already holds [name].
+  ///
+  /// The seed uses this rather than [createExercise] so two installs agree on
+  /// the id, and so a fresh library always loses to an account that has been
+  /// edited. Returning null rather than reconciling by name is deliberate: a
+  /// row handed back under an id the catalogue does not own would defeat the
+  /// point.
+  Future<Exercise?> createCatalogExercise({
+    required String syncId,
+    required String name,
+    required String kind,
+    required List<String> muscleSyncIds,
+    required DateTime createdAt,
+  });
   Future<void> renameExercise(String id, String name);
   Future<void> deleteExercise(String id);
   Future<void> setExerciseKind(String id, String kind);

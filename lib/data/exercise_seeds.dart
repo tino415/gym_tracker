@@ -43,6 +43,16 @@ class ExerciseSeed {
 const bool seedStarterEnabled =
     bool.fromEnvironment('SEED_STARTER', defaultValue: true);
 
+/// The `createdAt` every seeded row gets, fixed rather than `DateTime.now()`.
+///
+/// It has to be a constant or two installs seeding the same entry produce DTOs
+/// that differ in `createdAtMs` alone. `_upsertOneExercise` never writes
+/// `createdAt` on an update, so neither device could ever adopt the other's
+/// value, and the two would rewrite all 87 documents against each other on
+/// every cold start, forever. Lists order by name, so nothing user-visible
+/// depends on it.
+final catalogueEpoch = DateTime.utc(2026, 1, 1);
+
 /// The library a new install starts with.
 ///
 /// Sourced from the exercise set collected in the production project — a real,
@@ -193,11 +203,16 @@ Future<bool> seedStarterExercises({
 }) async {
   if (await exercises.hasAnyExercise()) return false;
   for (final seed in exerciseSeeds) {
-    final created = await exercises.createExercise(seed.name, kind: seed.kind);
-    if (seed.muscles.isEmpty) continue;
-    await exercises.setExerciseMuscles(
-      created.syncId,
-      [for (final m in seed.muscles) muscleSyncId(m)],
+    // Null means a different row already holds this name, so the library was
+    // not pristine after all: the emptiness check above happens once, and the
+    // writes that follow are interleaved with whatever sync delivers. Skip that
+    // entry rather than take a row the catalogue does not own.
+    await exercises.createCatalogExercise(
+      syncId: seed.id,
+      name: seed.name,
+      kind: seed.kind,
+      muscleSyncIds: [for (final m in seed.muscles) muscleSyncId(m)],
+      createdAt: catalogueEpoch,
     );
   }
   return true;
