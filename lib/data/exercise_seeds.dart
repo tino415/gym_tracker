@@ -30,16 +30,18 @@ class ExerciseSeed {
 /// Whether this build seeds the starter library at all. On unless built with
 /// `--dart-define=SEED_STARTER=false` (`just SEED_STARTER=false phone-apk`).
 ///
-/// Still required for any device joining an account that already has a library.
-/// Seeding mints a fresh uuid per entry, so the sign-in push writes the whole
-/// library again as new documents. Build with the seed off and let sync
-/// populate it.
+/// It no longer guards against what it was written for. Seeding used to mint a
+/// fresh uuid per entry, so a device that seeded and then signed in wrote the
+/// whole library again as new documents. [ExerciseSeed.id] and the version
+/// guard on the exercise push closed that: a seeded device now writes the ids
+/// the account already holds, at version 1, and loses arbitration to anything
+/// the account has edited.
 ///
-/// [ExerciseSeed.id] is the fix, and it is only half landed: every entry now
-/// carries the id it should be seeded under, but [seedStarterExercises] still
-/// goes through [ExerciseRepository.createExercise], which mints its own. Until
-/// the seed writes those ids, and until the push refuses to overwrite a newer
-/// server document, this flag is the only thing preventing the duplication.
+/// It still matters for one case. An account whose library was created by the
+/// *old* uuid-minting seed holds different ids for the same names, so a device
+/// seeding into it duplicates by name however well the ids are chosen. Until
+/// such an account has been reconciled, build with the seed off and let sync
+/// populate it.
 const bool seedStarterEnabled =
     bool.fromEnvironment('SEED_STARTER', defaultValue: true);
 

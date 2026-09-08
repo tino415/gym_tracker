@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/sync/firestore_transport.dart';
@@ -131,37 +132,62 @@ void main() {
           payload: {'exercises': rows},
         );
 
-    /// Start the transport and let its first snapshot land. The guard takes its
-    /// server state from that snapshot, so a push before it writes nothing.
-    /// SyncService always calls start() before any send, so this is the
-    /// ordinary path, not a test convenience.
+    /// Start the transport and let its listeners attach, as SyncService does
+    /// before any send. The guard reads the server itself, so a push works
+    /// without this; it is here so the listener-driven cases behave as they do
+    /// in the app.
     Future<void> connected() async {
       transport.start();
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
 
-    test('a push before the server has answered is held, then replayed',
-        () async {
-      // A sign-in with no network. Writing blind is what would let a freshly
-      // seeded library at version 1 flatten an edited account, and dropping the
-      // bundle would strand a user who never touches the app again, since every
-      // other route back into a push needs an external trigger.
-      await pushExercises([exercise(version: 1, name: 'Deferred')]);
-      expect((await ecol().doc('e1').get()).exists, isFalse,
-          reason: 'nothing may be written before the server has answered');
+    test('an unreadable server holds the push back, then replays it', () async {
+      // The case the guard exists for: a sign-in with no network. Writing blind
+      // would let a freshly seeded library at version 1 flatten an edited
+      // account; dropping the bundle would strand a user who never touches the
+      // app again, since every other route into a push needs an external
+      // trigger. So it must do neither.
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+      t.failReads = true;
 
-      await connected();
+      await t.send(
+        type: exerciseBundleType,
+        payload: {
+          'exercises': [exercise(version: 1, name: 'Deferred')],
+        },
+      );
+      expect((await ecol().doc('e1').get()).exists, isFalse,
+          reason: 'nothing may be written while the server is unreachable');
+
+      // Network back, and the retry the transport schedules for itself finds
+      // it. Driven directly here rather than waiting 30s of wall clock.
+      t.failReads = false;
+      await t.retryGuard();
+
       final doc = await ecol().doc('e1').get();
-      expect(doc.exists, isTrue, reason: 'the held bundle replays on connect');
+      expect(doc.exists, isTrue, reason: 'the held bundle replays');
       expect(doc.data()!['name'], 'Deferred');
     });
 
     test('a held push still loses to a newer server doc when it replays',
         () async {
+      // Holding must not become a way to skip arbitration: the bundle waits,
+      // and then loses on version exactly as it would have.
       await ecol().doc('e1').set(exercise(version: 5, name: 'Server copy'));
-      await pushExercises([exercise(version: 1, name: 'Local copy')]);
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+      t.failReads = true;
 
-      await connected();
+      await t.send(
+        type: exerciseBundleType,
+        payload: {
+          'exercises': [exercise(version: 1, name: 'Local copy')],
+        },
+      );
+      t.failReads = false;
+      await t.retryGuard();
+
       final doc = await ecol().doc('e1').get();
       expect(doc.data()!['name'], 'Server copy');
       expect(doc.data()!['version'], 5);
@@ -240,3 +266,30 @@ void main() {
 /// fake_cloud_firestore returns its own collection type; this alias keeps the
 /// helper above readable without importing cloud_firestore just for the type.
 typedef CollectionReferenceLike = dynamic;
+
+/// Lets a test decide whether the guard's server read succeeds. The fake routes
+/// neither `mock_exceptions` nor its security rules through a collection `get`,
+/// so an unreachable server cannot be simulated from outside, and that is the
+/// only situation the guard's holding behaviour exists to handle.
+class _FailableReadTransport extends FirestoreSyncTransport {
+  _FailableReadTransport({required super.uid, super.firestore});
+
+  bool failReads = false;
+
+  @override
+  Future<QuerySnapshot<Map<String, Object?>>> readServerExercises() {
+    if (failReads) {
+      return Future.error(
+        FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+      );
+    }
+    return super.readServerExercises();
+  }
+
+  /// Runs one iteration of what the transport's own retry timer does, so the
+  /// test does not wait 30 seconds of wall clock for it.
+  Future<void> retryGuard() => send(
+        type: exerciseBundleType,
+        payload: const {'exercises': <Map<String, Object?>>[]},
+      );
+}

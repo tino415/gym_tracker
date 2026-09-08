@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'health_upload_consent.dart';
 import 'sync_codec.dart';
@@ -67,6 +68,12 @@ class FirestoreSyncTransport implements SyncTransport {
   /// what lets a freshly seeded library at version 1 flatten an account that
   /// has been edited for months.
   bool _serverExerciseVersionsLoaded = false;
+  Future<void>? _serverExerciseVersionsLoad;
+
+  /// Retries the guard read while a push is waiting on it. Nothing else would:
+  /// every route into a push needs an external trigger, and the snapshot
+  /// listener cannot be relied on either (see [_loadServerExerciseVersions]).
+  Timer? _guardRetry;
 
   /// The bundle [_pushExercises] held back because the guard had no server
   /// data yet, replayed when it arrives. Holding rather than dropping matters
@@ -99,6 +106,68 @@ class FirestoreSyncTransport implements SyncTransport {
     _subs.add(_routines.snapshots().listen(_onRoutinesSnapshot));
     _subs.add(_workouts.snapshots().listen(_onWorkoutsSnapshot));
     _subs.add(_exercises.snapshots().listen(_onExercisesSnapshot));
+    // Head start on the guard. Not awaited: start() is synchronous by
+    // contract, and _pushExercises awaits it properly.
+    unawaited(_ensureServerExerciseVersionsLoaded());
+  }
+
+  Future<void> _ensureServerExerciseVersionsLoaded() async {
+    if (_serverExerciseVersionsLoaded || _disposed) return;
+    await (_serverExerciseVersionsLoad ??= _loadServerExerciseVersions());
+  }
+
+  /// The one read the guard makes, as its own method so a test can fail it.
+  /// `fake_cloud_firestore` routes neither `mock_exceptions` nor its security
+  /// rules through a collection `get`, so the offline path is otherwise
+  /// unreachable from outside, and it is the path the guard exists for.
+  @visibleForTesting
+  Future<QuerySnapshot<Map<String, Object?>>> readServerExercises() =>
+      _exercises.get(const GetOptions(source: Source.server));
+
+  /// Loads server versions with an explicit read rather than waiting for the
+  /// snapshot listener to report a non-cached snapshot.
+  ///
+  /// The listener cannot carry this. Firestore suppresses an event whose only
+  /// change is metadata unless the subscription opts into metadata changes, so
+  /// the `isFromCache` true-to-false transition raises nothing when the server
+  /// documents match the cache. That is the steady state, and it is trivially
+  /// true for a new account where both are empty, which is exactly the offline
+  /// sign-in this guard was built for: the flag would never flip and every
+  /// exercise push would be held for the life of the process.
+  Future<void> _loadServerExerciseVersions() async {
+    try {
+      final snap = await readServerExercises();
+      // A cache-served snapshot says nothing about the server. The SDK falls
+      // back to cache without throwing, and offline that is an empty snapshot,
+      // which would read as "the server holds nothing" and disable the guard.
+      if (snap.metadata.isFromCache) return;
+      for (final doc in snap.docs) {
+        final v = (doc.data()['version'] as num?)?.toInt();
+        if (v != null) _serverExerciseVersions[doc.id] = v;
+      }
+      _serverExerciseVersionsLoaded = true;
+    } catch (_) {
+      // Stays unloaded, so nothing is pushed blind.
+    } finally {
+      _serverExerciseVersionsLoad = null;
+    }
+    if (_serverExerciseVersionsLoaded) {
+      _guardRetry?.cancel();
+      _guardRetry = null;
+      await _flushDeferredExercisePush();
+    }
+  }
+
+  void _scheduleGuardRetry() {
+    if (_guardRetry != null || _disposed) return;
+    _guardRetry = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_disposed || _serverExerciseVersionsLoaded) {
+        _guardRetry?.cancel();
+        _guardRetry = null;
+        return;
+      }
+      unawaited(_ensureServerExerciseVersionsLoaded());
+    });
   }
 
   Future<void> _flushDeferredExercisePush() async {
@@ -108,7 +177,10 @@ class FirestoreSyncTransport implements SyncTransport {
     try {
       await _pushExercises(deferred);
     } catch (_) {
-      // Best-effort, like every other push path here.
+      // Put it back. Dropping here would quietly break the reason for holding
+      // it: a device that signed in offline and is never touched again has no
+      // other route into a push.
+      if (!_disposed) _deferredExercisePush ??= deferred;
     }
   }
 
@@ -122,21 +194,15 @@ class FirestoreSyncTransport implements SyncTransport {
   /// [exerciseBundleType]; the receiver applies them with version-LWW. A genuine
   /// doc removal is ignored — deletions ride as tombstone docs, not removals.
   void _onExercisesSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
-    // The listener is the guard's source of truth. It delivers the whole
-    // collection on connect and again on reconnect, which is both cheaper than
-    // a separate read and self-healing: a device that signed in with no network
-    // starts guarding, and releases whatever it held back, the moment the
-    // server first answers. A cache-served snapshot says nothing about the
-    // server, and on a fresh install it is empty, which would read as "the
-    // server holds nothing" and disable the guard entirely.
+    // Keep the guard current from the listener, so a rename pushed by another
+    // device updates it without a second read. This only refreshes versions it
+    // is already tracking; it does not decide whether the guard is loaded,
+    // because a metadata-only transition raises no event here (see
+    // [_loadServerExerciseVersions]).
     if (!snap.metadata.isFromCache) {
       for (final doc in snap.docs) {
         final v = (doc.data()['version'] as num?)?.toInt();
         if (v != null) _serverExerciseVersions[doc.id] = v;
-      }
-      if (!_serverExerciseVersionsLoaded) {
-        _serverExerciseVersionsLoaded = true;
-        unawaited(_flushDeferredExercisePush());
       }
     }
 
@@ -267,10 +333,12 @@ class FirestoreSyncTransport implements SyncTransport {
     // Fail closed. Until the server has answered there is no way to tell a
     // local row that is genuinely newer from one that is merely fresh, and
     // writing anyway is how a seeded library at version 1 would flatten an
-    // account's renames and muscle tags. Held, not dropped: the listener
-    // releases it as soon as the server answers.
+    // account's renames and muscle tags. Held, not dropped, and retried on a
+    // timer, because nothing else would come back for it.
+    await _ensureServerExerciseVersionsLoaded();
     if (!_serverExerciseVersionsLoaded) {
       _deferredExercisePush = payload;
+      _scheduleGuardRetry();
       return;
     }
 
@@ -358,6 +426,8 @@ class FirestoreSyncTransport implements SyncTransport {
   @override
   Future<void> dispose() async {
     _disposed = true;
+    _guardRetry?.cancel();
+    _guardRetry = null;
     for (final s in _subs) {
       await s.cancel();
     }
