@@ -36,6 +36,25 @@ void main() {
       expect(names.where((n) => n.trim().isEmpty), isEmpty);
     });
 
+    test('every id is a well-formed uuid', () {
+      // The ids are hand-transcribed, most of them out of a device backup, and
+      // a truncated or mistyped one is invisible on the page. Shape is the only
+      // thing that catches it before a device seeds under a bad id.
+      final uuid = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      );
+      final malformed =
+          exerciseSeeds.where((s) => !uuid.hasMatch(s.id)).map((s) => s.name);
+      expect(malformed, isEmpty);
+    });
+
+    test('ids are unique', () {
+      // Two entries sharing an id would collapse to one row on seeding, and the
+      // second name would be lost without any error.
+      final ids = exerciseSeeds.map((s) => s.id).toList();
+      expect(ids.toSet(), hasLength(ids.length));
+    });
+
     test('kinds are the two the schema allows', () {
       final kinds = exerciseSeeds.map((s) => s.kind).toSet();
       expect(kinds.difference({exerciseKindReps, exerciseKindTime}), isEmpty);
@@ -68,6 +87,27 @@ void main() {
       final squatMuscles = await repo.musclesForExercise(squat.syncId);
       expect(squatMuscles.map((m) => m.name).toSet(), {'Quads', 'Glutes'});
     });
+
+    test(
+      'seeds every entry under its own id',
+      () async {
+        await seedStarterExercises(exercises: repo);
+
+        final rows = await repo.watchExercises().first;
+        final idByName = {for (final r in rows) r.name: r.syncId};
+        final wrong = exerciseSeeds
+            .where((s) => idByName[s.name] != s.id)
+            .map((s) => s.name);
+        expect(wrong, isEmpty);
+      },
+      // Fails today, deliberately, and was checked to fail rather than assumed
+      // to. Every entry carries the id it should be seeded under, but
+      // seedStarterExercises still goes through createExercise, which mints a
+      // uuid of its own. Un-skip when the seed writes the ids: without this
+      // assertion nothing notices that ExerciseSeed.id is read nowhere outside
+      // these tests.
+      skip: 'seeding does not use ExerciseSeed.id yet',
+    );
 
     test('is a no-op when the library already has an exercise', () async {
       await db.createExercise('Bench Press');
