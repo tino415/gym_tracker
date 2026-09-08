@@ -55,6 +55,27 @@ class FirestoreSyncTransport implements SyncTransport {
   /// Same echo-suppression cache for exercise-library docs.
   final Map<String, Map<String, Object?>> _lastWrittenExercise = {};
 
+  /// Server version per exercise doc, so a push can refuse to overwrite a
+  /// newer one. Deliberately holds versions rather than content and is kept
+  /// apart from [_lastWrittenExercise]: it is filled from the whole collection
+  /// at once, and a *content* cache filled that way would make the next push
+  /// believe it had already written every doc.
+  final Map<String, int> _serverExerciseVersions = {};
+
+  /// Whether [_serverExerciseVersions] reflects the server rather than nothing
+  /// at all. Until it does, [_pushExercises] writes nothing: pushing blind is
+  /// what lets a freshly seeded library at version 1 flatten an account that
+  /// has been edited for months.
+  bool _serverExerciseVersionsLoaded = false;
+
+  /// The bundle [_pushExercises] held back because the guard had no server
+  /// data yet, replayed when it arrives. Holding rather than dropping matters
+  /// because every other route back into a push needs an external trigger (an
+  /// edit, a peer's sync request, "Sync now"): a user who signs in with no
+  /// network and then simply does not touch the app would otherwise never
+  /// upload their library, however long they are online afterwards.
+  Map<String, Object?>? _deferredExercisePush;
+
   /// Last workout doc we wrote or observed, per sync id. Doubles as the echo
   /// suppression cache (like [_lastWrittenRoutine]) and the server-version
   /// guard, so a push neither rewrites an identical doc nor clobbers a newer
@@ -80,6 +101,17 @@ class FirestoreSyncTransport implements SyncTransport {
     _subs.add(_exercises.snapshots().listen(_onExercisesSnapshot));
   }
 
+  Future<void> _flushDeferredExercisePush() async {
+    final deferred = _deferredExercisePush;
+    if (deferred == null || _disposed) return;
+    _deferredExercisePush = null;
+    try {
+      await _pushExercises(deferred);
+    } catch (_) {
+      // Best-effort, like every other push path here.
+    }
+  }
+
   /// Nothing to drain: the snapshot listeners replay the whole collection on
   /// attach, so anything written while this device was offline arrives that
   /// way. The offline queue exists only for the Wear transport.
@@ -90,9 +122,34 @@ class FirestoreSyncTransport implements SyncTransport {
   /// [exerciseBundleType]; the receiver applies them with version-LWW. A genuine
   /// doc removal is ignored — deletions ride as tombstone docs, not removals.
   void _onExercisesSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
+    // The listener is the guard's source of truth. It delivers the whole
+    // collection on connect and again on reconnect, which is both cheaper than
+    // a separate read and self-healing: a device that signed in with no network
+    // starts guarding, and releases whatever it held back, the moment the
+    // server first answers. A cache-served snapshot says nothing about the
+    // server, and on a fresh install it is empty, which would read as "the
+    // server holds nothing" and disable the guard entirely.
+    if (!snap.metadata.isFromCache) {
+      for (final doc in snap.docs) {
+        final v = (doc.data()['version'] as num?)?.toInt();
+        if (v != null) _serverExerciseVersions[doc.id] = v;
+      }
+      if (!_serverExerciseVersionsLoaded) {
+        _serverExerciseVersionsLoaded = true;
+        unawaited(_flushDeferredExercisePush());
+      }
+    }
+
     final upserted = <Map<String, Object?>>[];
     for (final change in snap.docChanges) {
-      if (change.type == DocumentChangeType.removed) continue;
+      if (change.type == DocumentChangeType.removed) {
+        // Keep the guard honest about a doc that is gone (console edit, future
+        // server-side GC). A stale entry would make the same id, recreated at
+        // version 1, unpushable for the rest of the process.
+        _serverExerciseVersions.remove(change.doc.id);
+        _lastWrittenExercise.remove(change.doc.id);
+        continue;
+      }
       upserted.add(change.doc.data()!);
     }
     if (upserted.isNotEmpty) {
@@ -207,18 +264,40 @@ class FirestoreSyncTransport implements SyncTransport {
   /// content we already wrote, so the push → own-snapshot → apply → push echo
   /// terminates without a Firestore read. Deletions ride as tombstone docs.
   Future<void> _pushExercises(Map<String, Object?> payload) async {
+    // Fail closed. Until the server has answered there is no way to tell a
+    // local row that is genuinely newer from one that is merely fresh, and
+    // writing anyway is how a seeded library at version 1 would flatten an
+    // account's renames and muscle tags. Held, not dropped: the listener
+    // releases it as soon as the server answers.
+    if (!_serverExerciseVersionsLoaded) {
+      _deferredExercisePush = payload;
+      return;
+    }
+
     final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
     final batch = _fs.batch();
-    var writes = 0;
+    final pendingContent = <String, Map<String, Object?>>{};
+    final pendingVersions = <String, int>{};
     for (final e in raw) {
       final data = (e as Map).cast<String, Object?>();
       final syncId = data['syncId'] as String;
+      final version = (data['version'] as num?)?.toInt() ?? 1;
+      final serverVersion = _serverExerciseVersions[syncId];
+      // Someone else edited this exercise more recently. Our copy will be
+      // corrected by the inbound snapshot; overwriting theirs would lose it.
+      if (serverVersion != null && serverVersion > version) continue;
       if (jsonEquals(_lastWrittenExercise[syncId], data)) continue;
       batch.set(_exercises.doc(syncId), data);
-      _lastWrittenExercise[syncId] = data;
-      writes++;
+      pendingContent[syncId] = data;
+      pendingVersions[syncId] = version;
     }
-    if (writes > 0) await batch.commit();
+    if (pendingContent.isEmpty) return;
+    // Cache only once the write lands. Caching inside the loop, as this used
+    // to, leaves the caches claiming every doc was written when the commit
+    // throws, which suppresses the retry.
+    await batch.commit();
+    _lastWrittenExercise.addAll(pendingContent);
+    _serverExerciseVersions.addAll(pendingVersions);
   }
 
   Future<void> _deleteRoutines(Map<String, Object?> payload) async {
