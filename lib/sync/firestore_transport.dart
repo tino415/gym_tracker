@@ -151,22 +151,31 @@ class FirestoreSyncTransport implements SyncTransport {
     } finally {
       _serverExerciseVersionsLoad = null;
     }
-    if (_serverExerciseVersionsLoaded) {
-      _guardRetry?.cancel();
-      _guardRetry = null;
-      await _flushDeferredExercisePush();
-    }
+    // Not awaited. The flush commits a batch, and offline a Firestore write
+    // resolves only on reconnection, so awaiting it here would hang the
+    // original send() and stall _pushContext's fan-out for this transport.
+    if (_serverExerciseVersionsLoaded) unawaited(_flushDeferredExercisePush());
   }
 
+  /// One timer covering both ways a push can be stuck: the guard has never
+  /// loaded, or it has loaded and a replay failed. It has to cover the second
+  /// as well, or restoring the payload on a failed replay would be decorative:
+  /// the load is memoized on success and would never run again, so nothing
+  /// would come back for what was put back.
   void _scheduleGuardRetry() {
     if (_guardRetry != null || _disposed) return;
     _guardRetry = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (_disposed || _serverExerciseVersionsLoaded) {
+      if (_disposed ||
+          (_serverExerciseVersionsLoaded && _deferredExercisePush == null)) {
         _guardRetry?.cancel();
         _guardRetry = null;
         return;
       }
-      unawaited(_ensureServerExerciseVersionsLoaded());
+      unawaited(
+        _serverExerciseVersionsLoaded
+            ? _flushDeferredExercisePush()
+            : _ensureServerExerciseVersionsLoaded(),
+      );
     });
   }
 
@@ -176,11 +185,17 @@ class FirestoreSyncTransport implements SyncTransport {
     _deferredExercisePush = null;
     try {
       await _pushExercises(deferred);
+      if (_deferredExercisePush == null) {
+        _guardRetry?.cancel();
+        _guardRetry = null;
+      }
     } catch (_) {
-      // Put it back. Dropping here would quietly break the reason for holding
-      // it: a device that signed in offline and is never touched again has no
-      // other route into a push.
-      if (!_disposed) _deferredExercisePush ??= deferred;
+      // Put it back and keep a retry armed. Dropping here, or restoring without
+      // rearming, breaks the reason for holding it: a device that signed in
+      // offline and is never touched again has no other route into a push.
+      if (_disposed) return;
+      _deferredExercisePush ??= deferred;
+      _scheduleGuardRetry();
     }
   }
 
@@ -330,19 +345,26 @@ class FirestoreSyncTransport implements SyncTransport {
   /// content we already wrote, so the push → own-snapshot → apply → push echo
   /// terminates without a Firestore read. Deletions ride as tombstone docs.
   Future<void> _pushExercises(Map<String, Object?> payload) async {
+    final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
+
     // Fail closed. Until the server has answered there is no way to tell a
     // local row that is genuinely newer from one that is merely fresh, and
     // writing anyway is how a seeded library at version 1 would flatten an
     // account's renames and muscle tags. Held, not dropped, and retried on a
     // timer, because nothing else would come back for it.
+    //
+    // Only a non-empty bundle is worth holding, and holding one unconditionally
+    // would be worse than not holding at all: a later empty bundle arriving
+    // while the guard is still unloaded would replace a real library with
+    // nothing, and the eventual replay would write nothing at all.
     await _ensureServerExerciseVersionsLoaded();
     if (!_serverExerciseVersionsLoaded) {
-      _deferredExercisePush = payload;
-      _scheduleGuardRetry();
+      if (raw.isNotEmpty) {
+        _deferredExercisePush = payload;
+        _scheduleGuardRetry();
+      }
       return;
     }
-
-    final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
     final batch = _fs.batch();
     final pendingContent = <String, Map<String, Object?>>{};
     final pendingVersions = <String, int>{};

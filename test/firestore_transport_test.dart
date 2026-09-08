@@ -170,6 +170,33 @@ void main() {
       expect(doc.data()!['name'], 'Deferred');
     });
 
+    test('an empty bundle does not displace a held one', () async {
+      // The held payload is the only copy. A later empty bundle arriving while
+      // the guard is still unloaded must not replace it, or the eventual replay
+      // writes nothing and the library is lost for the session.
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+      t.failReads = true;
+
+      await t.send(
+        type: exerciseBundleType,
+        payload: {
+          'exercises': [exercise(version: 1, name: 'Real library')],
+        },
+      );
+      await t.send(
+        type: exerciseBundleType,
+        payload: const {'exercises': <Map<String, Object?>>[]},
+      );
+
+      t.failReads = false;
+      await t.retryGuard();
+
+      final doc = await ecol().doc('e1').get();
+      expect(doc.exists, isTrue, reason: 'the real bundle survived');
+      expect(doc.data()!['name'], 'Real library');
+    });
+
     test('a held push still loses to a newer server doc when it replays',
         () async {
       // Holding must not become a way to skip arbitration: the bundle waits,
@@ -288,8 +315,15 @@ class _FailableReadTransport extends FirestoreSyncTransport {
 
   /// Runs one iteration of what the transport's own retry timer does, so the
   /// test does not wait 30 seconds of wall clock for it.
-  Future<void> retryGuard() => send(
-        type: exerciseBundleType,
-        payload: const {'exercises': <Map<String, Object?>>[]},
-      );
+  ///
+  /// The settle matters: the replay is fired unawaited, because awaiting a
+  /// batch commit that only resolves on reconnection would hang the send that
+  /// triggered it.
+  Future<void> retryGuard() async {
+    await send(
+      type: exerciseBundleType,
+      payload: const {'exercises': <Map<String, Object?>>[]},
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
 }

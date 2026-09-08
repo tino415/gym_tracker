@@ -164,18 +164,28 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     required List<String> muscleSyncIds,
     required DateTime createdAt,
   }) async {
+    // Both checks read the server explicitly, and that is the whole safety
+    // story on this path. There is no version guard here: the arbitration in
+    // FirestoreSyncTransport._pushExercises belongs to the Drift backends, and
+    // the web build writes documents directly. A default-source read answered
+    // from a cold cache would report an empty library that is not empty, and
+    // 87 version-1 documents would then replace an account's edited ones.
+    // Failing offline is the right way to be wrong here: the seed aborts and
+    // nothing is written.
+    const fromServer = GetOptions(source: Source.server);
+
     // The document id is the catalogue's id, so a second install seeding the
     // same entry writes the same document rather than a second one. Existing
     // doc wins outright: this is a seed, and it never edits what is already
     // there.
-    final own = await _col.doc(syncId).get();
+    final own = await _col.doc(syncId).get(fromServer);
     if (own.exists) return _exerciseFromData(own.data()!);
 
     // A different doc under this name means the library is not the pristine
     // one the seed assumes. Skip rather than reconcile, so nothing is handed
     // back under an id the catalogue does not own. Firestore has no
     // UNIQUE(name), so unlike Drift nothing else would have stopped it.
-    final byName = await _col.where('name', isEqualTo: name).get();
+    final byName = await _col.where('name', isEqualTo: name).get(fromServer);
     if (byName.docs.isNotEmpty) return null;
 
     final data = <String, Object?>{
