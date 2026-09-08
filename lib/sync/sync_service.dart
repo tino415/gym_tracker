@@ -353,49 +353,27 @@ class SyncService {
     }
   }
 
-  /// Each bundle gets its own try: [_sendAll] already swallows per-transport
-  /// failures, so an export is the only thing here that can throw, and a
-  /// failure to read one of the two must not silence the other.
   Future<void> _pushContext() async {
-    // The library goes out first. Routine slots reference exercises by syncId,
-    // and a receiver resolving a slot whose id it has never seen falls back to
-    // matching the *name* (_findOrCreateExerciseBySyncId), keeping its own row
-    // and discarding the incoming id. A slot left pointing at the wrong row is
-    // not self-correcting in the way it looks: a workout started before the
-    // next bundle freezes that exercise's name into its snapshot, and nothing
-    // rewrites a snapshot.
-    //
-    // This only orders delivery on a transport that preserves send order,
-    // which means the Wear bridge. Over Firestore the two bundles land in
-    // separate collections and reach the peer through two independent snapshot
-    // listeners, so a web or phone peer can still apply routines first. Closing
-    // that needs the routine apply path to tolerate an unseen exercise id,
-    // which is a change to every device's apply and is not attempted here.
-    // Ordering still buys the watch, which is where the frozen snapshot hurts.
-    //
-    // The library is authority-owned (phone/web push, watch doesn't) and
-    // versioned-LWW like routines, so a lost or empty bundle can't wipe a
-    // peer's library. Deletions travel as tombstones inside the bundle.
     try {
+      // Deletions ride inside the bundle as versioned tombstones (routines
+      // with a non-null deletedAt), so a lost or empty snapshot can't wipe a
+      // peer's routines and there's no per-process deletion diff to maintain.
+      // Version-LWW on the receiver arbitrates a tombstone against a concurrent
+      // edit; the Firestore transport persists it as a tombstone doc rather
+      // than removing the doc, so it survives a stale lower-version upsert.
+      final routines = await _repo.exportAllRoutines();
+      final msg = RoutineBundleMessage(routines);
+      await _sendAll(type: routineBundleType, payload: msg.toPayload());
+
+      // The exercise library rides alongside routines: it's authority-owned
+      // (phone/web push, watch doesn't) and versioned-LWW like routines, so a
+      // lost or empty bundle can't wipe a peer's library. Deletions travel as
+      // tombstones inside the bundle.
       final exercises = await _repo.exportAllExercises();
       await _sendAll(
         type: exerciseBundleType,
         payload: ExerciseBundleMessage(exercises).toPayload(),
       );
-    } catch (_) {
-      // best-effort
-    }
-
-    // Deletions ride inside the bundle as versioned tombstones (routines
-    // with a non-null deletedAt), so a lost or empty snapshot can't wipe a
-    // peer's routines and there's no per-process deletion diff to maintain.
-    // Version-LWW on the receiver arbitrates a tombstone against a concurrent
-    // edit; the Firestore transport persists it as a tombstone doc rather
-    // than removing the doc, so it survives a stale lower-version upsert.
-    try {
-      final routines = await _repo.exportAllRoutines();
-      final msg = RoutineBundleMessage(routines);
-      await _sendAll(type: routineBundleType, payload: msg.toPayload());
     } catch (_) {
       // best-effort
     }

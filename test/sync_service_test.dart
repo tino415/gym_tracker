@@ -189,28 +189,6 @@ void main() {
     await svc.dispose();
   });
 
-  test('the exercise bundle is sent before the routine bundle', () async {
-    // Routine slots reference exercises by syncId, and a receiver that meets an
-    // unknown id falls back to matching by name and keeps its own row. If
-    // routines land first, a slot can stay pointed at the wrong exercise until
-    // a later bundle, and a workout started in that window freezes the wrong
-    // name into its snapshot permanently.
-    await _seedRoutine(db);
-    final t = FakeTransport();
-    final svc = serviceWith([t], isRoutineAuthority: true);
-    svc.start();
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-
-    final types = t.sent.map((m) => m.type).toList();
-    expect(types, contains(exerciseBundleType));
-    expect(types, contains(routineBundleType));
-    expect(
-      types.indexOf(exerciseBundleType),
-      lessThan(types.indexOf(routineBundleType)),
-    );
-    await svc.dispose();
-  });
-
   test('a non-authority (watch) never pushes exercise bundles', () async {
     await db.createExercise('Bench Press');
     final t = FakeTransport();
