@@ -313,17 +313,14 @@ class _FailableReadTransport extends FirestoreSyncTransport {
     return super.readServerExercises();
   }
 
-  /// Runs one iteration of what the transport's own retry timer does, so the
-  /// test does not wait 30 seconds of wall clock for it.
+  /// Drives exactly what the transport's own retry timer runs, without the
+  /// 30 seconds of wall clock.
   ///
-  /// The settle matters: the replay is fired unawaited, because awaiting a
-  /// batch commit that only resolves on reconnection would hang the send that
-  /// triggered it.
+  /// The settle matters: a flush reached through the load is fired unawaited,
+  /// because awaiting a batch commit that only resolves on reconnection would
+  /// hang the send that triggered it.
   Future<void> retryGuard() async {
-    await send(
-      type: exerciseBundleType,
-      payload: const {'exercises': <Map<String, Object?>>[]},
-    );
+    await runGuardRetryTick();
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
 }

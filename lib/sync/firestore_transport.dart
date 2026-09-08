@@ -164,19 +164,27 @@ class FirestoreSyncTransport implements SyncTransport {
   /// would come back for what was put back.
   void _scheduleGuardRetry() {
     if (_guardRetry != null || _disposed) return;
-    _guardRetry = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (_disposed ||
-          (_serverExerciseVersionsLoaded && _deferredExercisePush == null)) {
-        _guardRetry?.cancel();
-        _guardRetry = null;
-        return;
-      }
-      unawaited(
-        _serverExerciseVersionsLoaded
-            ? _flushDeferredExercisePush()
-            : _ensureServerExerciseVersionsLoaded(),
-      );
-    });
+    _guardRetry = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(runGuardRetryTick()),
+    );
+  }
+
+  /// One retry attempt, as its own method so a test can drive it without
+  /// waiting 30 seconds of wall clock.
+  @visibleForTesting
+  Future<void> runGuardRetryTick() async {
+    if (_disposed ||
+        (_serverExerciseVersionsLoaded && _deferredExercisePush == null)) {
+      _guardRetry?.cancel();
+      _guardRetry = null;
+      return;
+    }
+    if (_serverExerciseVersionsLoaded) {
+      await _flushDeferredExercisePush();
+    } else {
+      await _ensureServerExerciseVersionsLoaded();
+    }
   }
 
   Future<void> _flushDeferredExercisePush() async {
