@@ -172,6 +172,15 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     // an account's edited ones. Offline the read throws, the seed aborts, and
     // nothing is written, which is the right way to be wrong.
     final existing = await _col.get(const GetOptions(source: Source.server));
+    // Source.server is not a promise. The SDK falls back to the cache without
+    // throwing, and offline with a cold cache that is an empty snapshot, which
+    // would read as "this account has no library" and write the whole catalogue
+    // over one that exists. FirestoreSyncTransport refuses to trust the same
+    // result for the same reason; this path has more at stake, because there is
+    // no version guard behind it.
+    if (existing.metadata.isFromCache) {
+      throw StateError('catalogue seed needs a server read, got the cache');
+    }
     final byId = {for (final d in existing.docs) d.id};
     final byName = {
       for (final d in existing.docs) d.data()['name'] as String? ?? '',

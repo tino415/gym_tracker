@@ -209,7 +209,7 @@ Future<bool> seedStarterExercises({
   // whose id or name has been taken meanwhile are skipped inside rather than
   // reconciled: a row under an id the catalogue does not own is worse than a
   // missing one.
-  await exercises.writeCatalogExercises([
+  final written = await exercises.writeCatalogExercises([
     for (final seed in exerciseSeeds)
       CatalogExercise(
         syncId: seed.id,
@@ -219,5 +219,8 @@ Future<bool> seedStarterExercises({
         createdAt: catalogueEpoch,
       ),
   ]);
-  return true;
+  // Whether it wrote, not whether it ran. Every entry can be skipped when the
+  // library stopped being pristine between the check above and the write, and
+  // reporting that as a write would be a lie the callers act on.
+  return written > 0;
 }

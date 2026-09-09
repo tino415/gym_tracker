@@ -241,6 +241,16 @@ class FirestoreSyncTransport implements SyncTransport {
         // document is absent when it is not, and a version-1 seeded row would
         // then be written straight over a higher-versioned one that still
         // exists.
+        //
+        // The echo cache goes too, which means the next push rewrites the
+        // document. That is deliberate, and it is a real trade. A removal is
+        // not a deletion channel here: deletions ride as tombstone documents,
+        // so a doc that merely vanished is divergence, and re-pushing the row
+        // we still hold repairs it. Keeping the echo entry instead would leave
+        // the two stores permanently out of step with nothing to notice. The
+        // cost is that a console deletion comes back, and that server-side
+        // tombstone GC, if it is ever built, would need to delete the local row
+        // rather than just the document.
         if (!snap.metadata.isFromCache) {
           _serverExerciseVersions.remove(change.doc.id);
           _lastWrittenExercise.remove(change.doc.id);
@@ -403,6 +413,14 @@ class FirestoreSyncTransport implements SyncTransport {
       final serverVersion = _serverExerciseVersions[syncId];
       // Someone else edited this exercise more recently. Our copy will be
       // corrected by the inbound snapshot; overwriting theirs would lose it.
+      //
+      // Strictly newer, matching _pushWorkout. At equal versions the guard
+      // does not arbitrate, so a seeded row at version 1 does overwrite a
+      // server document still at version 1, replacing its tags, kind and
+      // createdAt with the catalogue's. That is the intended direction for a
+      // document nobody has edited, and rows the account *has* edited sit at 2
+      // or above and are safe. It is not the same claim as "a fresh seed always
+      // loses", which is what the surrounding comments used to say.
       if (serverVersion != null && serverVersion > version) continue;
       if (jsonEquals(_lastWrittenExercise[syncId], data)) continue;
       batch.set(_exercises.doc(syncId), data);
@@ -413,7 +431,21 @@ class FirestoreSyncTransport implements SyncTransport {
     // Cache only once the write lands. Caching inside the loop, as this used
     // to, leaves the caches claiming every doc was written when the commit
     // throws, which suppresses the retry.
-    await batch.commit();
+    //
+    // A failed commit hands the bundle back to the deferred slot and arms the
+    // retry, the same recovery the flush path has. Without it this path is the
+    // one hole left in the argument for holding rather than dropping: the
+    // exception reaches _sendAll, which swallows it, and nothing would come
+    // back for a library that was never written.
+    try {
+      await batch.commit();
+    } catch (_) {
+      if (!_disposed) {
+        _deferredExercisePush ??= payload;
+        _scheduleGuardRetry();
+      }
+      rethrow;
+    }
     _lastWrittenExercise.addAll(pendingContent);
     _serverExerciseVersions.addAll(pendingVersions);
   }

@@ -742,9 +742,8 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Insert one catalogue exercise under an id chosen by the caller, with its
-  /// muscle tags, in one transaction. Returns the row, or null when a
-  /// *different* row already holds [name].
+  /// Insert the catalogue under the ids it chose, with its muscle tags, in one
+  /// transaction. Returns how many rows were written.
   ///
   /// Distinct from [createExercise] in three ways that all matter to the seed:
   ///
@@ -757,12 +756,13 @@ class AppDatabase extends _$AppDatabase {
   /// would leave every seeded row at 2. A fresh seed has to lose to an account
   /// that has been edited, and it can only do that from the bottom.
   ///
-  /// A name collision returns null rather than reconciling. [createExercise]
+  /// A name collision skips that entry rather than reconciling. [createExercise]
   /// deliberately revives a tombstone or returns the live row of that name,
   /// which is right for a user typing a name and wrong for a seed: it would
-  /// hand back a row under an id the catalogue does not own. The collision is
+  /// take a row under an id the catalogue does not own. The collision is
   /// reachable because the seed's emptiness check happens once and the writes
   /// that follow are interleaved with inbound sync.
+  ///
   /// See [CatalogExercise] and the repository seam for why this is plural.
   Future<int> writeCatalogExercises(List<CatalogExercise> entries) async {
     return transaction(() async {
