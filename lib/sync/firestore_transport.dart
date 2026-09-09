@@ -235,8 +235,16 @@ class FirestoreSyncTransport implements SyncTransport {
         // Keep the guard honest about a doc that is gone (console edit, future
         // server-side GC). A stale entry would make the same id, recreated at
         // version 1, unpushable for the rest of the process.
-        _serverExerciseVersions.remove(change.doc.id);
-        _lastWrittenExercise.remove(change.doc.id);
+        //
+        // Only on a server snapshot, matching the refresh above. Dropping a
+        // guard entry on a cache-only removal would tell the next push that a
+        // document is absent when it is not, and a version-1 seeded row would
+        // then be written straight over a higher-versioned one that still
+        // exists.
+        if (!snap.metadata.isFromCache) {
+          _serverExerciseVersions.remove(change.doc.id);
+          _lastWrittenExercise.remove(change.doc.id);
+        }
         continue;
       }
       upserted.add(change.doc.data()!);
@@ -361,18 +369,30 @@ class FirestoreSyncTransport implements SyncTransport {
     // account's renames and muscle tags. Held, not dropped, and retried on a
     // timer, because nothing else would come back for it.
     //
+    // The load is started, never awaited here. SyncService awaits each
+    // transport's send serially and pushAll runs the context push before the
+    // workout pushes, and a Source.server read has no client deadline: on a
+    // reachable but slow connection, awaiting would park "Sync now" on the
+    // exercise bundle and the workouts behind it would never go out at all.
+    //
     // Only a non-empty bundle is worth holding, and holding one unconditionally
     // would be worse than not holding at all: a later empty bundle arriving
     // while the guard is still unloaded would replace a real library with
     // nothing, and the eventual replay would write nothing at all.
-    await _ensureServerExerciseVersionsLoaded();
     if (!_serverExerciseVersionsLoaded) {
+      unawaited(_ensureServerExerciseVersionsLoaded());
       if (raw.isNotEmpty) {
         _deferredExercisePush = payload;
         _scheduleGuardRetry();
       }
       return;
     }
+
+    // This bundle is a full export of the library and supersedes anything held
+    // from before the guard loaded. Keeping the older one would leave two
+    // independent batch commits racing over the same documents, with the stale
+    // one able to land last and undo whatever the newer one carried.
+    _deferredExercisePush = null;
     final batch = _fs.batch();
     final pendingContent = <String, Map<String, Object?>>{};
     final pendingVersions = <String, int>{};

@@ -157,48 +157,51 @@ class FirestoreExerciseRepository implements ExerciseRepository {
   }
 
   @override
-  Future<Exercise?> createCatalogExercise({
-    required String syncId,
-    required String name,
-    required String kind,
-    required List<String> muscleSyncIds,
-    required DateTime createdAt,
-  }) async {
-    // Both checks read the server explicitly, and that is the whole safety
-    // story on this path. There is no version guard here: the arbitration in
-    // FirestoreSyncTransport._pushExercises belongs to the Drift backends, and
-    // the web build writes documents directly. A default-source read answered
-    // from a cold cache would report an empty library that is not empty, and
-    // 87 version-1 documents would then replace an account's edited ones.
-    // Failing offline is the right way to be wrong here: the seed aborts and
-    // nothing is written.
-    const fromServer = GetOptions(source: Source.server);
-
-    // The document id is the catalogue's id, so a second install seeding the
-    // same entry writes the same document rather than a second one. Existing
-    // doc wins outright: this is a seed, and it never edits what is already
-    // there.
-    final own = await _col.doc(syncId).get(fromServer);
-    if (own.exists) return _exerciseFromData(own.data()!);
-
-    // A different doc under this name means the library is not the pristine
-    // one the seed assumes. Skip rather than reconcile, so nothing is handed
-    // back under an id the catalogue does not own. Firestore has no
-    // UNIQUE(name), so unlike Drift nothing else would have stopped it.
-    final byName = await _col.where('name', isEqualTo: name).get(fromServer);
-    if (byName.docs.isNotEmpty) return null;
-
-    final data = <String, Object?>{
-      'syncId': syncId,
-      'name': name,
-      'kind': kind,
-      'version': 1,
-      'createdAtMs': createdAt.millisecondsSinceEpoch,
-      'muscleSyncIds': muscleSyncIds,
-      'deletedAtMs': null,
+  Future<int> writeCatalogExercises(List<CatalogExercise> entries) async {
+    // One server read for the whole collection, then one batch. Reading per
+    // entry would be ~87 round trips before ~87 more to write, and writing per
+    // entry means a failure part way through leaves a prefix of the catalogue
+    // that hasAnyExercise() reports as a curated library forever, with no way
+    // back. A batch commits all or nothing.
+    //
+    // The read is explicitly Source.server, and that is the whole safety story
+    // on this path: there is no version guard here, because the arbitration in
+    // FirestoreSyncTransport._pushExercises belongs to the Drift backends and
+    // this build writes documents directly. A cache-answered read would report
+    // an empty library that is not empty, and version-1 documents would replace
+    // an account's edited ones. Offline the read throws, the seed aborts, and
+    // nothing is written, which is the right way to be wrong.
+    final existing = await _col.get(const GetOptions(source: Source.server));
+    final byId = {for (final d in existing.docs) d.id};
+    final byName = {
+      for (final d in existing.docs) d.data()['name'] as String? ?? '',
     };
-    await _col.doc(syncId).set(data);
-    return _exerciseFromData(data);
+
+    final batch = _fs.batch();
+    var written = 0;
+    for (final e in entries) {
+      // The document id is the catalogue's id, so a second install seeding the
+      // same entry addresses the same document. Already there wins outright:
+      // this is a seed and it never edits what it finds.
+      if (byId.contains(e.syncId)) continue;
+      // A different doc under this name means the library is not the pristine
+      // one the seed assumes. Skip rather than reconcile. Firestore has no
+      // UNIQUE(name), so unlike Drift nothing else would have stopped it.
+      if (byName.contains(e.name)) continue;
+
+      batch.set(_col.doc(e.syncId), <String, Object?>{
+        'syncId': e.syncId,
+        'name': e.name,
+        'kind': e.kind,
+        'version': 1,
+        'createdAtMs': e.createdAt.millisecondsSinceEpoch,
+        'muscleSyncIds': e.muscleSyncIds,
+        'deletedAtMs': null,
+      });
+      written++;
+    }
+    if (written > 0) await batch.commit();
+    return written;
   }
 
   @override

@@ -1,4 +1,4 @@
-import 'database.dart' show exerciseKindReps, exerciseKindTime;
+import 'database.dart' show CatalogExercise, exerciseKindReps, exerciseKindTime;
 import 'muscle_seeds.dart';
 import 'repositories.dart';
 
@@ -204,18 +204,20 @@ Future<bool> seedStarterExercises({
   required ExerciseRepository exercises,
 }) async {
   if (await exercises.hasAnyExercise()) return false;
-  for (final seed in exerciseSeeds) {
-    // Null means a different row already holds this name, so the library was
-    // not pristine after all: the emptiness check above happens once, and the
-    // writes that follow are interleaved with whatever sync delivers. Skip that
-    // entry rather than take a row the catalogue does not own.
-    await exercises.createCatalogExercise(
-      syncId: seed.id,
-      name: seed.name,
-      kind: seed.kind,
-      muscleSyncIds: [for (final m in seed.muscles) muscleSyncId(m)],
-      createdAt: catalogueEpoch,
-    );
-  }
+  // One call, all or nothing. The emptiness check above happens once and the
+  // write that follows is interleaved with whatever sync delivers, so entries
+  // whose id or name has been taken meanwhile are skipped inside rather than
+  // reconciled: a row under an id the catalogue does not own is worse than a
+  // missing one.
+  await exercises.writeCatalogExercises([
+    for (final seed in exerciseSeeds)
+      CatalogExercise(
+        syncId: seed.id,
+        name: seed.name,
+        kind: seed.kind,
+        muscleSyncIds: [for (final m in seed.muscles) muscleSyncId(m)],
+        createdAt: catalogueEpoch,
+      ),
+  ]);
   return true;
 }

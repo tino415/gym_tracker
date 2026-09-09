@@ -14,6 +14,28 @@ const _uuid = Uuid();
 const exerciseKindReps = 'reps';
 const exerciseKindTime = 'time';
 
+/// One starter-catalogue row as the write path needs it: identity, display and
+/// tags, with nothing derived at write time so two installs seeding the same
+/// entry produce the same document.
+///
+/// Lives here rather than beside the repository seam because [AppDatabase]
+/// takes it too, and the seam already imports this file.
+class CatalogExercise {
+  const CatalogExercise({
+    required this.syncId,
+    required this.name,
+    required this.kind,
+    required this.muscleSyncIds,
+    required this.createdAt,
+  });
+
+  final String syncId;
+  final String name;
+  final String kind;
+  final List<String> muscleSyncIds;
+  final DateTime createdAt;
+}
+
 // Every table is keyed by its `syncId` (a uuid string) — the same identity
 // used across the Wear bridge and Firestore. There is no separate autoincrement
 // int id: Drift rows, server docs, and the UI all address by this one string,
@@ -741,43 +763,40 @@ class AppDatabase extends _$AppDatabase {
   /// hand back a row under an id the catalogue does not own. The collision is
   /// reachable because the seed's emptiness check happens once and the writes
   /// that follow are interleaved with inbound sync.
-  Future<Exercise?> createCatalogExercise({
-    required String syncId,
-    required String name,
-    required String kind,
-    required List<String> muscleSyncIds,
-    required DateTime createdAt,
-  }) async {
+  /// See [CatalogExercise] and the repository seam for why this is plural.
+  Future<int> writeCatalogExercises(List<CatalogExercise> entries) async {
     return transaction(() async {
-      final existing =
-          await (select(exercises)..where((t) => t.syncId.equals(syncId)))
-              .getSingleOrNull();
-      if (existing != null) return existing;
+      var written = 0;
+      for (final e in entries) {
+        final existing =
+            await (select(exercises)..where((t) => t.syncId.equals(e.syncId)))
+                .getSingleOrNull();
+        if (existing != null) continue;
 
-      final byName = await (select(
-        exercises,
-      )..where((t) => t.name.equals(name))).getSingleOrNull();
-      if (byName != null) return null;
+        final byName = await (select(
+          exercises,
+        )..where((t) => t.name.equals(e.name))).getSingleOrNull();
+        if (byName != null) continue;
 
-      await into(exercises).insert(
-        ExercisesCompanion.insert(
-          syncId: syncId,
-          name: name,
-          createdAt: createdAt,
-          kind: Value(kind),
-        ),
-      );
-      for (final muscleId in muscleSyncIds) {
-        await into(exerciseMuscles).insert(
-          ExerciseMusclesCompanion.insert(
-            exerciseId: syncId,
-            muscleId: muscleId,
+        await into(exercises).insert(
+          ExercisesCompanion.insert(
+            syncId: e.syncId,
+            name: e.name,
+            createdAt: e.createdAt,
+            kind: Value(e.kind),
           ),
         );
+        for (final muscleId in e.muscleSyncIds) {
+          await into(exerciseMuscles).insert(
+            ExerciseMusclesCompanion.insert(
+              exerciseId: e.syncId,
+              muscleId: muscleId,
+            ),
+          );
+        }
+        written++;
       }
-      return (select(
-        exercises,
-      )..where((t) => t.syncId.equals(syncId))).getSingle();
+      return written;
     });
   }
 

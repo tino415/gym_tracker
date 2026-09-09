@@ -167,20 +167,8 @@ class DriftExerciseRepository implements ExerciseRepository {
       _db.createExercise(name, kind: kind);
 
   @override
-  Future<Exercise?> createCatalogExercise({
-    required String syncId,
-    required String name,
-    required String kind,
-    required List<String> muscleSyncIds,
-    required DateTime createdAt,
-  }) =>
-      _db.createCatalogExercise(
-        syncId: syncId,
-        name: name,
-        kind: kind,
-        muscleSyncIds: muscleSyncIds,
-        createdAt: createdAt,
-      );
+  Future<int> writeCatalogExercises(List<CatalogExercise> entries) =>
+      _db.writeCatalogExercises(entries);
 
   @override
   Future<void> renameExercise(String id, String name) =>

@@ -90,22 +90,21 @@ abstract class ExerciseRepository {
   // Mutations
   Future<Exercise> createExercise(String name, {String kind = exerciseKindReps});
 
-  /// Insert a catalogue exercise under an id the caller chooses, with its
-  /// muscle tags, resting at version 1. Returns null when a *different* row
-  /// already holds [name].
+  /// Write the whole starter catalogue, each entry under the id the catalogue
+  /// chose, with its muscle tags, resting at version 1.
   ///
-  /// The seed uses this rather than [createExercise] so two installs agree on
-  /// the id, and so a fresh library always loses to an account that has been
-  /// edited. Returning null rather than reconciling by name is deliberate: a
-  /// row handed back under an id the catalogue does not own would defeat the
-  /// point.
-  Future<Exercise?> createCatalogExercise({
-    required String syncId,
-    required String name,
-    required String kind,
-    required List<String> muscleSyncIds,
-    required DateTime createdAt,
-  });
+  /// Plural and all-or-nothing on purpose. The seed uses this rather than
+  /// [createExercise] so two installs agree on the ids, and so a fresh library
+  /// always loses to an account that has been edited. Writing entry by entry
+  /// was survivable while this only ran against local Drift, but on the
+  /// Firestore-direct build it is ~87 network round trips, and a failure part
+  /// way through leaves an arbitrary prefix of the catalogue that
+  /// [hasAnyExercise] then reports as a curated library forever.
+  ///
+  /// Entries whose name is already held by a *different* row are skipped rather
+  /// than reconciled: handing back a row under an id the catalogue does not own
+  /// would defeat the point. Returns how many were written.
+  Future<int> writeCatalogExercises(List<CatalogExercise> entries);
   Future<void> renameExercise(String id, String name);
   Future<void> deleteExercise(String id);
   Future<void> setExerciseKind(String id, String kind);

@@ -13,12 +13,12 @@ void main() {
     repo = FirestoreExerciseRepository(uid: 'u1', firestore: fs);
   });
 
-  group('createCatalogExercise', () {
-    Future<Exercise?> seedOne({
+  group('writeCatalogExercises', () {
+    CatalogExercise entry({
       String syncId = 'seed-1',
       String name = 'Bench press',
     }) =>
-        repo.createCatalogExercise(
+        CatalogExercise(
           syncId: syncId,
           name: name,
           kind: exerciseKindReps,
@@ -26,38 +26,60 @@ void main() {
           createdAt: DateTime.utc(2026, 1, 1),
         );
 
-    test('writes under the given id, at version 1, with its tags', () async {
+    test('writes under the given ids, at version 1, with their tags', () async {
       // Version 1 is the safety property: a fresh seed must always lose to an
       // account that has been edited, and it can only do that from the bottom.
-      final ex = await seedOne();
-      expect(ex, isNotNull);
-      expect(ex!.syncId, 'seed-1');
-      expect(ex.version, 1);
+      final written = await repo.writeCatalogExercises(
+        [entry(), entry(syncId: 'seed-2', name: 'Squat')],
+      );
+      expect(written, 2);
 
-      final tags = await repo.musclesForExercise('seed-1');
-      expect(tags.map((m) => m.name), ['Chest']);
+      final list = await repo.watchExercises().first;
+      expect(list.map((e) => e.syncId).toSet(), {'seed-1', 'seed-2'});
+      expect(list.map((e) => e.version).toSet(), {1});
+      expect(
+        (await repo.musclesForExercise('seed-1')).map((m) => m.name),
+        ['Chest'],
+      );
     });
 
     test('a second install seeding the same entry writes no second doc',
         () async {
-      await seedOne();
-      final again = await seedOne();
+      await repo.writeCatalogExercises([entry()]);
+      final again = await repo.writeCatalogExercises([entry()]);
 
-      expect(again, isNotNull);
-      final list = await repo.watchExercises().first;
-      expect(list, hasLength(1), reason: 'same id means upsert, not duplicate');
+      expect(again, 0, reason: 'same id means the entry is already there');
+      expect(await repo.watchExercises().first, hasLength(1));
     });
 
-    test('returns null when a different doc already holds the name', () async {
+    test('skips an entry whose name a different doc already holds', () async {
       // Firestore has no UNIQUE(name), so nothing else would stop this. The
-      // seed must not adopt a row under an id the catalogue does not own.
+      // seed must not write a row under an id the catalogue does not own.
       await repo.createExercise('Bench press');
-      final clash = await seedOne();
+      final written = await repo.writeCatalogExercises(
+        [entry(), entry(syncId: 'seed-2', name: 'Squat')],
+      );
 
-      expect(clash, isNull);
+      expect(written, 1, reason: 'only the non-clashing entry');
       final list = await repo.watchExercises().first;
-      expect(list, hasLength(1));
-      expect(list.single.syncId, isNot('seed-1'));
+      expect(list.map((e) => e.syncId), isNot(contains('seed-1')));
+      expect(list.map((e) => e.syncId), contains('seed-2'));
+    });
+
+    test('writes nothing at all when one entry cannot be written', () async {
+      // The reason this is plural. Entry by entry, a failure part way through
+      // leaves a prefix of the catalogue that hasAnyExercise() then reports as
+      // a curated library forever, with no way back.
+      final tooMany = [
+        for (var i = 0; i < 600; i++)
+          entry(syncId: 'seed-$i', name: 'Exercise $i'),
+      ];
+      await expectLater(
+        repo.writeCatalogExercises(tooMany),
+        throwsA(anything),
+        reason: 'a batch over the Firestore limit fails as a unit',
+      );
+      expect(await repo.watchExercises().first, isEmpty);
     });
   });
 
