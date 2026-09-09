@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 
+import 'firestore_retry.dart';
 import 'health_upload_consent.dart';
 import 'sync_codec.dart';
 import 'sync_transport.dart';
@@ -83,6 +84,17 @@ class FirestoreSyncTransport implements SyncTransport {
   /// upload their library, however long they are online afterwards.
   Map<String, Object?>? _deferredExercisePush;
 
+  /// Exercise pushes run one at a time.
+  ///
+  /// Dropping a held bundle when a fresher one arrives only helps while the
+  /// held one is still held. Once its commit is in flight nothing supersedes
+  /// it, so a slow replay and a quick edit-triggered push become two batch
+  /// writes over the same documents with no ordering between them, and if the
+  /// older lands last the server keeps the pre-edit content while the local
+  /// row is newer. The inbound snapshot is then correctly rejected on version,
+  /// so the two stay diverged with nothing scheduled to repair it.
+  Future<void> _exercisePushLock = Future<void>.value();
+
   /// Last workout doc we wrote or observed, per sync id. Doubles as the echo
   /// suppression cache (like [_lastWrittenRoutine]) and the server-version
   /// guard, so a push neither rewrites an identical doc nor clobbers a newer
@@ -146,8 +158,18 @@ class FirestoreSyncTransport implements SyncTransport {
         if (v != null) _serverExerciseVersions[doc.id] = v;
       }
       _serverExerciseVersionsLoaded = true;
-    } catch (_) {
-      // Stays unloaded, so nothing is pushed blind.
+    } catch (e) {
+      // Stays unloaded, so nothing is pushed blind. A permanent failure stops
+      // the retry as well: rules that reject this read reject it every time,
+      // and re-issuing a whole-collection read every 30 seconds forever learns
+      // nothing. Pushes stay blocked, which is the right way to be stuck —
+      // writing without knowing what the server holds is the thing the guard
+      // exists to prevent.
+      if (!isRetryableFirestoreFailure(e)) {
+        _guardRetry?.cancel();
+        _guardRetry = null;
+        debugPrint('exercise guard read failed permanently: $e');
+      }
     } finally {
       _serverExerciseVersionsLoad = null;
     }
@@ -370,7 +392,16 @@ class FirestoreSyncTransport implements SyncTransport {
   /// upsert-only (never deletes a doc for being absent) and skips docs whose
   /// content we already wrote, so the push → own-snapshot → apply → push echo
   /// terminates without a Firestore read. Deletions ride as tombstone docs.
-  Future<void> _pushExercises(Map<String, Object?> payload) async {
+  Future<void> _pushExercises(Map<String, Object?> payload) {
+    final next = _exercisePushLock.then((_) => _pushExercisesSerial(payload));
+    // The chain must survive a failure, or one error wedges every later push.
+    // The caller still sees it: `next` keeps the error, this only detaches it
+    // from the queue.
+    _exercisePushLock = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _pushExercisesSerial(Map<String, Object?> payload) async {
     final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
 
     // Fail closed. Until the server has answered there is no way to tell a

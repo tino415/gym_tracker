@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../sync/auth_service.dart';
 import '../sync/firestore_backend.dart' show syncBackendEnabled;
+import '../sync/firestore_retry.dart';
 import '../sync/health_upload_consent.dart';
 import 'database.dart';
 import 'demo_seed.dart';
@@ -87,11 +88,19 @@ final demoSeedProvider = FutureProvider<void>((ref) async {
 /// on sign-in, which is when a brand-new account's empty library appears.
 /// Retried, because on the web the seed is a network write that fails closed.
 /// It reads the server explicitly and aborts rather than write a catalogue over
-/// a library it could not see, so a flaky connection at sign-up leaves an empty
-/// library with nothing on screen to say so and nothing to try again until the
-/// app is restarted. The transport arms a retry for the same failure; this path
-/// had none. Bounded rather than indefinite: past a few attempts the connection
-/// is not flaky, and the next launch re-runs it anyway.
+/// a library it could not see, so a flaky connection at sign-up would otherwise
+/// leave an empty library with nothing on screen to say so.
+///
+/// Retries until it works or the provider goes away, matching the transport's
+/// guard rather than the "a restart will fix it" bound I first gave it. A
+/// restart is not a thing that reliably happens: on web this is a PWA that can
+/// stay open for days, this provider is not auto-dispose, and nothing else
+/// triggers it. A few attempts over fifteen seconds is exactly the window a bad
+/// connection outlives.
+///
+/// It stops early on a failure that cannot succeed — rules rejecting the read
+/// reject it every time — so a misconfigured account does not re-read a whole
+/// collection every half minute for as long as the tab is open.
 final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
   if (!seedStarterEnabled) return;
   if (ref.watch(firestoreDirectProvider) &&
@@ -101,20 +110,18 @@ final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
   var disposed = false;
   ref.onDispose(() => disposed = true);
 
-  const attempts = 3;
-  for (var attempt = 1; attempt <= attempts; attempt++) {
-    if (disposed) return;
+  for (var attempt = 1; !disposed; attempt++) {
     try {
       await seedStarterExercises(exercises: ref.read(exerciseRepositoryProvider));
       return;
     } catch (e, st) {
-      if (attempt == attempts) {
-        // Give up loudly. Nothing renders this, but the library being empty is
-        // visible on its own, and a silent swallow would leave no trace of why.
-        debugPrint('starter seed failed after $attempts attempts: $e\n$st');
+      if (!isRetryableFirestoreFailure(e)) {
+        // Loudly. Nothing renders this, and an empty library is the only other
+        // symptom, so a silent swallow would leave no trace of why.
+        debugPrint('starter seed failed permanently on attempt $attempt: $e\n$st');
         rethrow;
       }
-      await Future<void>.delayed(Duration(seconds: attempt * 5));
+      await Future<void>.delayed(firestoreRetryDelay(attempt));
     }
   }
 });

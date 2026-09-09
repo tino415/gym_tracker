@@ -320,7 +320,14 @@ class _FailableReadTransport extends FirestoreSyncTransport {
   /// because awaiting a batch commit that only resolves on reconnection would
   /// hang the send that triggered it.
   Future<void> retryGuard() async {
-    await runGuardRetryTick();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // Twice, because the timer fires repeatedly and one tick can accomplish
+    // nothing through no fault of its own: it joins whatever load is already in
+    // flight, and if that one was started while the server was still
+    // unreachable it fails and the tick ends. The next tick starts a fresh
+    // read. In the app that costs 30 seconds; here it costs a line.
+    for (var i = 0; i < 2; i++) {
+      await runGuardRetryTick();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
   }
 }
