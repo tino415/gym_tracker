@@ -71,6 +71,12 @@ class FirestoreSyncTransport implements SyncTransport {
   bool _serverExerciseVersionsLoaded = false;
   Future<void>? _serverExerciseVersionsLoad;
 
+  /// Counts guard reads so a failure that is usually permanent can still get a
+  /// couple of goes. The transport attaches and reads the moment the user signs
+  /// in, which is exactly when a token has not reached the backend yet and the
+  /// read comes back permission-denied for a second.
+  int _guardReadAttempts = 0;
+
   /// Retries the guard read while a push is waiting on it. Nothing else would:
   /// every route into a push needs an external trigger, and the snapshot
   /// listener cannot be relied on either (see [_loadServerExerciseVersions]).
@@ -147,6 +153,7 @@ class FirestoreSyncTransport implements SyncTransport {
   /// sign-in this guard was built for: the flag would never flip and every
   /// exercise push would be held for the life of the process.
   Future<void> _loadServerExerciseVersions() async {
+    _guardReadAttempts++;
     try {
       final snap = await readServerExercises();
       // A cache-served snapshot says nothing about the server. The SDK falls
@@ -165,7 +172,7 @@ class FirestoreSyncTransport implements SyncTransport {
       // nothing. Pushes stay blocked, which is the right way to be stuck —
       // writing without knowing what the server holds is the thing the guard
       // exists to prevent.
-      if (!isRetryableFirestoreFailure(e)) {
+      if (!isRetryableFirestoreFailure(e, attempt: _guardReadAttempts)) {
         _guardRetry?.cancel();
         _guardRetry = null;
         debugPrint('exercise guard read failed permanently: $e');
@@ -402,6 +409,13 @@ class FirestoreSyncTransport implements SyncTransport {
   }
 
   Future<void> _pushExercisesSerial(Map<String, Object?> payload) async {
+    // Re-checked here, not just in send(). send() refuses once disposed so a
+    // fan-out already in flight cannot touch a signed-out account's documents,
+    // and queueing broke that: a push admitted while the transport was alive
+    // now runs whenever the queue reaches it, which can be after a sign-out or
+    // an account switch has disposed us.
+    if (_disposed) return;
+
     final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
 
     // Fail closed. Until the server has answered there is no way to tell a
@@ -462,6 +476,14 @@ class FirestoreSyncTransport implements SyncTransport {
     // Cache only once the write lands. Caching inside the loop, as this used
     // to, leaves the caches claiming every doc was written when the commit
     // throws, which suppresses the retry.
+    //
+    // The opposite of _pushWorkout, deliberately. That one caches first because
+    // the snapshot for its own write can arrive before `set` resolves and its
+    // listener consults the cache to decide whether to emit. This listener does
+    // not: _onExercisesSnapshot emits every added or modified doc regardless,
+    // so caching earlier would suppress nothing. What the cache decides here is
+    // whether the *next push* rewrites, and the queue above guarantees the next
+    // push cannot start until this one has finished filling it.
     //
     // A failed commit hands the bundle back to the deferred slot and arms the
     // retry, the same recovery the flush path has. Without it this path is the

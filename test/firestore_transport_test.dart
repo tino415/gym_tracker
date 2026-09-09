@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,6 +169,31 @@ void main() {
       final doc = await ecol().doc('e1').get();
       expect(doc.exists, isTrue, reason: 'the held bundle replays');
       expect(doc.data()!['name'], 'Deferred');
+    });
+
+    test('a push queued before dispose does not write after it', () async {
+      // Pushes run one at a time, so a push accepted while the transport was
+      // alive can reach the front of the queue long after it was disposed. That
+      // is a sign-out or an account switch, and writing then puts one account's
+      // library into whatever collection this transport still points at.
+      final t = FirestoreSyncTransport(uid: 'u1', firestore: fs);
+      t.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Issued, not awaited: both are queued while the transport is still live.
+      unawaited(t.send(
+        type: exerciseBundleType,
+        payload: {'exercises': [exercise(version: 1)]},
+      ));
+      unawaited(t.send(
+        type: exerciseBundleType,
+        payload: {'exercises': [exercise(version: 1, syncId: 'e2', name: 'Squat')]},
+      ));
+      await t.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(await ecol().get().then((s) => s.docs), isEmpty,
+          reason: 'nothing may be written on behalf of a disposed transport');
     });
 
     test('an empty bundle does not displace a held one', () async {

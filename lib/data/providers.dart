@@ -115,10 +115,13 @@ final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
       await seedStarterExercises(exercises: ref.read(exerciseRepositoryProvider));
       return;
     } catch (e, st) {
-      if (!isRetryableFirestoreFailure(e)) {
-        // Loudly. Nothing renders this, and an empty library is the only other
-        // symptom, so a silent swallow would leave no trace of why.
-        debugPrint('starter seed failed permanently on attempt $attempt: $e\n$st');
+      // Every failure is logged, not just the last. Nothing renders this and an
+      // empty library is the only other symptom, so a silent swallow leaves no
+      // trace of why — and on the phone path the error is a Drift one, which
+      // this cannot classify and will stop retrying after a few goes.
+      debugPrint('starter seed attempt $attempt failed: $e');
+      if (!isRetryableFirestoreFailure(e, attempt: attempt)) {
+        debugPrint('starter seed giving up: $e\n$st');
         rethrow;
       }
       await Future<void>.delayed(firestoreRetryDelay(attempt));

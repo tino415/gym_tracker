@@ -24,18 +24,42 @@ void main() {
   test('a failure that will repeat identically is not', () {
     // Rules rejecting a read reject it every time. Retrying costs battery and
     // quota to learn nothing, and on web it would run for as long as the tab.
-    for (final code in ['permission-denied', 'unauthenticated',
-        'invalid-argument', 'not-found', 'failed-precondition']) {
+    for (final code in ['invalid-argument', 'not-found', 'already-exists',
+        'failed-precondition', 'out-of-range', 'unimplemented']) {
       expect(isRetryableFirestoreFailure(err(code)), isFalse, reason: code);
     }
   });
 
-  test('anything unrecognised is retried', () {
-    // Including errors that are not Firestore's at all: a StateError from our
-    // own cache-answered-read check has to keep the loop alive, since the very
-    // next attempt may reach the server.
+  test('an auth rejection gets a few goes, then stops', () {
+    // The transport attaches and reads the instant the user signs in, which is
+    // exactly when the token may not have reached the backend yet, so the first
+    // permission-denied is as likely to be a race as a misconfiguration. It is
+    // still usually a misconfiguration, so this must not become a forever loop.
+    for (final code in ['permission-denied', 'unauthenticated']) {
+      expect(isRetryableFirestoreFailure(err(code), attempt: 1), isTrue,
+          reason: code);
+      expect(isRetryableFirestoreFailure(err(code), attempt: 3), isTrue,
+          reason: code);
+      expect(isRetryableFirestoreFailure(err(code), attempt: 4), isFalse,
+          reason: code);
+    }
+  });
+
+  test('an unrecognised Firestore code is retried indefinitely', () {
     expect(isRetryableFirestoreFailure(err('some-future-code')), isTrue);
-    expect(isRetryableFirestoreFailure(StateError('cache')), isTrue);
+    expect(
+      isRetryableFirestoreFailure(err('some-future-code'), attempt: 99),
+      isTrue,
+    );
+  });
+
+  test('a non-Firestore failure is retried, but not forever', () {
+    // Nothing here can classify one. The realistic case is the phone seed path,
+    // where the repository is Drift and the error is a SqliteException that will
+    // repeat identically — an unbounded loop there re-runs a whole transaction
+    // every thirty seconds for the life of the process.
+    expect(isRetryableFirestoreFailure(StateError('cache'), attempt: 1), isTrue);
+    expect(isRetryableFirestoreFailure(StateError('cache'), attempt: 4), isFalse);
   });
 
   test('backoff grows then holds, so a late recovery is picked up quickly', () {
