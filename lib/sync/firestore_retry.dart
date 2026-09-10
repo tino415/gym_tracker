@@ -10,6 +10,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// either an infinite loop or an immediate surrender.
 const _uncertainAttempts = 3;
 
+/// A read that had to be answered by the server came back from the cache.
+///
+/// Its own type because it is the one failure here that is *known* transient:
+/// it means the network was unreachable, which is the exact condition a retry
+/// loop exists to outlive. Thrown as a plain error it would be unclassifiable
+/// (see below), get the few uncertain attempts, and give up after seconds —
+/// abandoning the caller precisely when it should keep waiting.
+class ServerReadUnavailable implements Exception {
+  const ServerReadUnavailable(this.what);
+
+  /// What was being read, for the log.
+  final String what;
+
+  @override
+  String toString() => 'ServerReadUnavailable: $what needs a server read, '
+      'got the cache';
+}
+
 /// Whether retrying a failed call could still succeed on attempt [attempt].
 ///
 /// Retry loops here run for the life of the process, so this is not cosmetic: a
@@ -17,6 +35,10 @@ const _uncertainAttempts = 3;
 /// whole-collection read every thirty seconds forever costs battery and quota to
 /// learn nothing.
 bool isRetryableFirestoreFailure(Object error, {int attempt = 1}) {
+  // Offline. Nothing about it gets truer or falser with attempts, and the
+  // caller has no other route back — so this one never gives up.
+  if (error is ServerReadUnavailable) return true;
+
   // Not Firestore's, so nothing here can tell transient from fatal. A Drift
   // failure on the phone seed path is the realistic one, and it repeats
   // identically, so this must not become an unbounded loop.

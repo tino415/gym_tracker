@@ -153,7 +153,6 @@ class FirestoreSyncTransport implements SyncTransport {
   /// sign-in this guard was built for: the flag would never flip and every
   /// exercise push would be held for the life of the process.
   Future<void> _loadServerExerciseVersions() async {
-    _guardReadAttempts++;
     try {
       final snap = await readServerExercises();
       // A cache-served snapshot says nothing about the server. The SDK falls
@@ -166,6 +165,12 @@ class FirestoreSyncTransport implements SyncTransport {
       }
       _serverExerciseVersionsLoaded = true;
     } catch (e) {
+      // Counted here rather than per call, so only failures spend the budget.
+      // Charging every attempt let an offline stretch — which returns above
+      // without failing at all — exhaust it, and the first permission-denied
+      // afterwards would then be judged permanent on its first occurrence.
+      // That is the token-catching-up race the budget exists to survive.
+      _guardReadAttempts++;
       // Stays unloaded, so nothing is pushed blind. A permanent failure stops
       // the retry as well: rules that reject this read reject it every time,
       // and re-issuing a whole-collection read every 30 seconds forever learns
@@ -198,6 +203,12 @@ class FirestoreSyncTransport implements SyncTransport {
       (_) => unawaited(runGuardRetryTick()),
     );
   }
+
+  /// Whether the guard will try again. Cancelling it strands whatever bundle
+  /// is being held, so "did that failure end the retries" is the thing worth
+  /// asserting about classification.
+  @visibleForTesting
+  bool get guardRetryArmed => _guardRetry != null;
 
   /// One retry attempt, as its own method so a test can drive it without
   /// waiting 30 seconds of wall clock.

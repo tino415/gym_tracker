@@ -53,6 +53,17 @@ void main() {
     );
   });
 
+  test('an unreachable server is retried for as long as it takes', () {
+    // The seed's own abort when a Source.server read is answered from the
+    // cache. It is the one failure here that is known transient, and it has
+    // its own type for exactly that reason: as a plain error it fell into the
+    // clause below, gave up after about seven seconds, and left the account
+    // with an empty library for the life of the tab.
+    const offline = ServerReadUnavailable('catalogue seed');
+    expect(isRetryableFirestoreFailure(offline), isTrue);
+    expect(isRetryableFirestoreFailure(offline, attempt: 99), isTrue);
+  });
+
   test('a non-Firestore failure is retried, but not forever', () {
     // Nothing here can classify one. The realistic case is the phone seed path,
     // where the repository is Drift and the error is a SqliteException that will

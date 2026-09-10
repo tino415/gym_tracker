@@ -171,6 +171,52 @@ void main() {
       expect(doc.data()!['name'], 'Deferred');
     });
 
+    test('an offline stretch does not spend the budget for real failures',
+        () async {
+      // The budget exists for one thing: a permission-denied right after
+      // sign-in is usually the auth token catching up, so it gets a few goes
+      // before being called permanent. Cache-answered reads are not failures —
+      // offline the SDK falls back without throwing — and charging them for
+      // attempts let a few quiet minutes exhaust the budget, so the first real
+      // permission-denied afterwards was judged permanent on sight, cancelling
+      // the retry and stranding the held library for the life of the process.
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+
+      t.failReads = true;
+      await t.send(
+        type: exerciseBundleType,
+        payload: {
+          'exercises': [exercise(version: 1, name: 'Held')],
+        },
+      );
+      expect(t.guardRetryArmed, isTrue, reason: 'a bundle is being held');
+
+      // Offline for longer than the budget is deep.
+      t.failReads = false;
+      t.answerFromCache = true;
+      for (var i = 0; i < 5; i++) {
+        await t.runGuardRetryTick();
+      }
+      expect(t.guardRetryArmed, isTrue,
+          reason: 'a non-answer must not end the retries');
+
+      // Now the race the budget is for, on its first occurrence.
+      t.answerFromCache = false;
+      t.failReads = true;
+      t.failureCode = 'permission-denied';
+      await t.runGuardRetryTick();
+
+      expect(t.guardRetryArmed, isTrue,
+          reason: 'the first permission-denied is a race, not a verdict');
+
+      // And it still recovers once the token lands.
+      t.failReads = false;
+      await t.retryGuard();
+      expect((await ecol().doc('e1').get()).exists, isTrue,
+          reason: 'the held bundle replays');
+    });
+
     test('a push queued before dispose does not write after it', () async {
       // Pushes run one at a time, so a push accepted while the transport was
       // alive can reach the front of the queue long after it was disposed. That
@@ -329,11 +375,21 @@ class _FailableReadTransport extends FirestoreSyncTransport {
 
   bool failReads = false;
 
+  /// Answer the read from the cache instead of failing it. Offline this is what
+  /// the SDK actually does — it falls back without throwing — and the guard
+  /// treats it as "learned nothing", not as an error.
+  bool answerFromCache = false;
+
+  /// The code the failing read reports, so a test can pick the class of
+  /// failure it wants to exercise.
+  String failureCode = 'unavailable';
+
   @override
   Future<QuerySnapshot<Map<String, Object?>>> readServerExercises() {
+    if (answerFromCache) return Future.value(_CachedQuerySnapshot());
     if (failReads) {
       return Future.error(
-        FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+        FirebaseException(plugin: 'cloud_firestore', code: failureCode),
       );
     }
     return super.readServerExercises();
@@ -356,4 +412,32 @@ class _FailableReadTransport extends FirestoreSyncTransport {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
   }
+}
+
+/// An empty snapshot flagged as cache-served, which is what `Source.server`
+/// returns while offline: the SDK falls back rather than throwing, so this is
+/// a non-answer and not a failure. The interface is wide and the guard reads
+/// two things off it, hence noSuchMethod for the rest.
+class _CachedQuerySnapshot implements QuerySnapshot<Map<String, Object?>> {
+  @override
+  List<QueryDocumentSnapshot<Map<String, Object?>>> get docs => const [];
+
+  @override
+  SnapshotMetadata get metadata => _CacheMetadata();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
+class _CacheMetadata implements SnapshotMetadata {
+  @override
+  bool get isFromCache => true;
+
+  @override
+  bool get hasPendingWrites => false;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
 }

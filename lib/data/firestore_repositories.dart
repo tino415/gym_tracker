@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
 
+import '../sync/firestore_retry.dart';
 import '../sync/health_upload_consent.dart';
 import '../sync/sync_codec.dart';
 import 'database.dart';
@@ -179,7 +180,7 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     // result for the same reason; this path has more at stake, because there is
     // no version guard behind it.
     if (existing.metadata.isFromCache) {
-      throw StateError('catalogue seed needs a server read, got the cache');
+      throw const ServerReadUnavailable('catalogue seed');
     }
     final byId = {for (final d in existing.docs) d.id};
     final byName = {
