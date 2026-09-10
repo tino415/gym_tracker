@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../sync/auth_service.dart';
@@ -85,15 +85,38 @@ final demoSeedProvider = FutureProvider<void>((ref) async {
 /// Self-gates on the uid: reading a repository while signed out throws on the
 /// Firestore-direct web build. Because the provider watches the uid it re-runs
 /// on sign-in, which is when a brand-new account's empty library appears.
+/// Retried, because on the web the seed is a network write that fails closed.
+/// It reads the server explicitly and aborts rather than write a catalogue over
+/// a library it could not see, so a flaky connection at sign-up leaves an empty
+/// library with nothing on screen to say so and nothing to try again until the
+/// app is restarted. The transport arms a retry for the same failure; this path
+/// had none. Bounded rather than indefinite: past a few attempts the connection
+/// is not flaky, and the next launch re-runs it anyway.
 final starterExerciseSeedProvider = FutureProvider<void>((ref) async {
   if (!seedStarterEnabled) return;
   if (ref.watch(firestoreDirectProvider) &&
       ref.watch(currentUidProvider) == null) {
     return;
   }
-  await seedStarterExercises(
-    exercises: ref.read(exerciseRepositoryProvider),
-  );
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
+
+  const attempts = 3;
+  for (var attempt = 1; attempt <= attempts; attempt++) {
+    if (disposed) return;
+    try {
+      await seedStarterExercises(exercises: ref.read(exerciseRepositoryProvider));
+      return;
+    } catch (e, st) {
+      if (attempt == attempts) {
+        // Give up loudly. Nothing renders this, but the library being empty is
+        // visible on its own, and a silent swallow would leave no trace of why.
+        debugPrint('starter seed failed after $attempts attempts: $e\n$st');
+        rethrow;
+      }
+      await Future<void>.delayed(Duration(seconds: attempt * 5));
+    }
+  }
 });
 
 /// One-off data migration: routines whose embedded exercise names predate the
