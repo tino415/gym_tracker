@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: .local-install
+      dockerfile: Containerfile
+    image: localhost/gym_tracker_app
+    command: sleep infinity
+    working_dir: /workspace
+    init: true
+    hostname: gym-tracker
+    # The container keeps its own loopback, so its adb server on 5037 never
+    # meets the host's. -T forwards the emulator ports from that loopback to the
+    # host's, which keeps the serials 127.0.0.1:5555 / 127.0.0.1:5557 the same
+    # inside and out.
+    network_mode: "pasta:-T,5555,-T,5557"
+    ports:
+      - "127.0.0.1:4116:4116"
+      - "127.0.0.1:4117:4117"
+      - "127.0.0.1:4118:4118"
+      - "127.0.0.1:4119:4119"
+      - "127.0.0.1:4120:4120"
+    environment:
+      # process-compose would otherwise pick this compose.yaml over its own file.
+      PC_CONFIG_FILES: process-compose.yaml
+      GYM_WEAR_DEVICE: "127.0.0.1:5555"
+      GYM_PHONE_DEVICE: "127.0.0.1:5557"
+    volumes:
+      - .:/workspace:Z
+      # `--web-hostname dev.local` must listen on every address, or the published
+      # ports never reach it.
+      - ./.local-install/hosts:/etc/hosts:ro,Z
+      - pub-cache:/cache/pub
+      - gradle:/cache/gradle
+      - android-user:/cache/android
+volumes:
+  pub-cache: {}
+  gradle: {}
+  android-user: {}
