@@ -48,16 +48,18 @@ void main() {
     // Auth succeeds → the app swaps in; a fresh account has no routines.
     await pumpUntil(tester, find.text('No routines yet'));
 
-    // Create a routine — this writes to the Firestore emulator.
-    await tester.tap(find.byType(FloatingActionButton));
+    // The driver's browser is desktop-sized, so this is the master-detail
+    // view: the editor opens in a pane beside the list, not as a route.
+    await tester.tap(find.byTooltip('New routine'));
     await pumpUntil(tester, find.text('New routine'));
     await tester.enterText(find.byType(TextField).first, 'Push Day');
     await tester.pump();
+    // Saving writes to the Firestore emulator; the list reads it back.
     await tester.tap(find.byTooltip('Save'));
     await pumpUntil(tester, find.text('Edit routine'));
 
-    await tester.pageBack();
-    await pumpUntil(tester, find.text('Push Day'));
-    expect(find.text('Push Day'), findsOneWidget);
+    final listed = find.widgetWithText(ListTile, 'Push Day');
+    await pumpUntil(tester, listed);
+    expect(listed, findsOneWidget);
   });
 }
