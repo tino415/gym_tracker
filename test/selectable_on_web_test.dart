@@ -36,6 +36,20 @@ void main() {
     expect(find.byType(SelectionArea), findsOneWidget);
   }, skip: !kIsWeb);
 
+  testWidgets('it can wrap the Navigator, as PhoneApp does', (tester) async {
+    // MaterialApp.builder sits above the Navigator, so nothing up there
+    // provides the Overlay a SelectionArea needs.
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => SelectableOnWeb(child: child!),
+        home: const Text('Bench press'),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Bench press'), findsOneWidget);
+  });
+
   testWidgets('the child renders either way', (tester) async {
     // The wrapper is transparent: gating it must never cost a widget its place
     // in the tree, since it wraps every route in the app.
