@@ -5,6 +5,7 @@ ARG ANDROID_CMDLINE_TOOLS=13114758
 ARG ANDROID_PLATFORM=android-36
 ARG ANDROID_BUILD_TOOLS=35.0.0
 ARG ANDROID_NDK=28.2.13676358
+ARG ANDROID_CMAKE=3.22.1
 ARG PROCESS_COMPOSE_VERSION=v1.122.0
 ARG FIREBASE_TOOLS_VERSION=15.32.1
 
@@ -62,7 +63,7 @@ ENV PUB_CACHE=/cache/pub \
     GRADLE_USER_HOME=/cache/gradle \
     ANDROID_USER_HOME=/cache/android
 
-RUN sdkmanager --install "ndk;${ANDROID_NDK}"
+RUN sdkmanager --install "ndk;${ANDROID_NDK}" "cmake;${ANDROID_CMAKE}"
 
 RUN dpkg --add-architecture amd64 \
  && apt-get update \
