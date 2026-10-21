@@ -184,6 +184,184 @@ void main() {
     });
   });
 
+  group('Watch run page — edits during rest', () {
+    Future<FullRoutine> seedSquats(AppDatabase db) => _seedRoutine(
+          db,
+          name: 'Legs',
+          restSeconds: 60,
+          exercises: const [
+            _ExerciseFixture(
+              name: 'Squat',
+              sets: [
+                _SetFixture(reps: 10, weight: 80),
+                _SetFixture(reps: 10, weight: 80),
+                _SetFixture(reps: 10, weight: 80),
+              ],
+            ),
+          ],
+        );
+
+    Future<List<SetCompletion>> completionsOf(AppDatabase db) =>
+        db.select(db.setCompletions).get();
+
+    testWidgets('the upcoming set is editable while the rest keeps running',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _pumpRun(tester, db: db, routine: await seedSquats(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      expect(find.text('60s'), findsOneWidget);
+
+      await tester.tap(find.text('Up next: Squat'));
+      await tester.pump();
+      expect(find.text('2/3'), findsOneWidget);
+      expect(find.text('Rest 60s'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('82.5'), findsOneWidget);
+      expect(find.text('Rest 58s'), findsOneWidget);
+
+      await tester.tap(find.text('Rest 58s'));
+      await tester.pump();
+      expect(find.text('58s'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 58));
+      await tester.pump();
+      expect(find.text('Rest'), findsNothing);
+      expect(find.text('2/3'), findsOneWidget);
+      expect(find.text('82.5'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      final weights = [for (final c in await completionsOf(db)) c.actualWeightKg];
+      expect(weights, unorderedEquals([80.0, 82.5]));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the rest pill leaves the reps steppers clear of Done',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _pumpRun(tester, db: db, routine: await seedSquats(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      await tester.tap(find.text('Up next: Squat'));
+      await tester.pump();
+      expect(find.text('Rest 60s'), findsOneWidget);
+
+      final repsLabel = tester.getRect(find.text('reps'));
+      final done = tester.getRect(find.widgetWithText(FilledButton, 'Done'));
+      expect(repsLabel.bottom, lessThanOrEqualTo(done.top));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('correcting the finished set during rest saves it in place',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _pumpRun(tester, db: db, routine: await seedSquats(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump(const Duration(seconds: 5));
+
+      await tester.tap(find.text('Up next: Squat'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Previous set'));
+      await tester.pump();
+      expect(find.text('1/3'), findsOneWidget);
+      expect(find.text('Done ✓'), findsOneWidget);
+      expect(find.text('Rest 55s'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add).last);
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('11'), findsOneWidget);
+      expect(find.text('Done ✓'), findsOneWidget);
+      expect(find.text('Rest 54s'), findsOneWidget);
+      final reps = [for (final c in await completionsOf(db)) c.actualReps];
+      expect(reps, [11]);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('skipping a set during rest keeps the rest running',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _pumpRun(tester, db: db, routine: await seedSquats(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump(const Duration(seconds: 3));
+
+      await tester.tap(find.text('Up next: Squat'));
+      await tester.pump();
+      final skipSet = find.widgetWithText(OutlinedButton, 'Skip set');
+      await tester.ensureVisible(skipSet);
+      await tester.pump();
+      await tester.tap(skipSet);
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('3/3'), findsOneWidget);
+      expect(find.text('Rest 56s'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('switching exercise from the list during rest keeps the rest',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Legs',
+        restSeconds: 60,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Squat',
+            sets: [
+              _SetFixture(reps: 10, weight: 80),
+              _SetFixture(reps: 10, weight: 80),
+            ],
+          ),
+          _ExerciseFixture(
+            name: 'Lunge',
+            sets: [_SetFixture(reps: 12, weight: 20)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+
+      await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Lunge'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Switch to this'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Lunge'), findsOneWidget);
+      expect(find.text('1/1'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^Rest \d+s$')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   group('Watch run page — circuit alternation', () {
     testWidgets('zero rest on A: A.set0 → B.set0 straight through, then rest',
         (tester) async {

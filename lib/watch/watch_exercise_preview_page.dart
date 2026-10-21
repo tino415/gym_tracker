@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/database.dart';
 import 'set_target_format.dart';
+import 'widgets/countdown_pill.dart';
 import 'widgets/round_safe_area.dart';
 
 /// Read-only preview of a single exercise on the watch: its name, kind, rest
@@ -341,45 +342,14 @@ class _RestPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return ValueListenableBuilder<int>(
       valueListenable: countdown,
       builder: (context, seconds, _) {
         if (seconds <= 0) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-          child: Material(
-            color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: onTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.hourglass_bottom,
-                      size: 12,
-                      color: scheme.onPrimaryContainer,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Rest ${seconds}s',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: scheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        return CountdownPill(
+          label: 'Rest ${seconds}s',
+          icon: Icons.hourglass_bottom,
+          onTap: onTap,
         );
       },
     );
