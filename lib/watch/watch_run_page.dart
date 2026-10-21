@@ -17,6 +17,7 @@ import 'circuit_nav.dart';
 import 'watch_alternative_picker_page.dart';
 import 'watch_exercise_preview_page.dart';
 import 'watch_workout_done_page.dart';
+import 'widgets/countdown_pill.dart';
 import 'widgets/discard_dialog.dart';
 import 'widgets/round_safe_area.dart';
 import 'widgets/stepper_button.dart';
@@ -74,8 +75,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   // elapsed = startTarget - timeRemaining on Done.
   int _timeStartTarget = 0;
 
+  // Which face the run pane shows. The rest itself runs while `_restEndTime`
+  // is set, whichever face is up: the set face stays editable during rest.
   _Phase _phase = _Phase.logSet;
   int _restSecondsLeft = 0;
+  ({int eIdx, int sIdx})? _restNext;
   // Mirror of `_restSecondsLeft` exposed to off-route observers (the exercise
   // preview pushed on top reads this so its rest pill ticks down without us
   // rebuilding the whole run page from a parent route).
@@ -241,7 +245,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       });
     });
     // The first set's work interval opens here; every later one opens in
-    // _goTo / _advanceAfterRest.
+    // _goTo / _closeRest.
     _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
     setState(() => _workoutId = workoutId);
     _pageController.animateToPage(
@@ -276,7 +280,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     // complete now (native already vibrated while we were paused).
     if (state != AppLifecycleState.resumed) return;
     final now = clock.now();
-    if (_phase == _Phase.rest && _restEndTime != null) {
+    if (_resting) {
       if (now.isAfter(_restEndTime!)) {
         _onRestElapsed();
       } else {
@@ -465,11 +469,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   }
 
   void _loadCurrentSetTargets() {
-    _timer?.cancel();
-    // Leaving the current set cancels any running countdown — drop the native
-    // vibration too so a stale buzz can't fire on the next set.
-    _cancelNativeCountdown();
-    _timeRunning = false;
+    _stopHold();
     unawaited(_refreshLastCompletion());
     final kind = _currentKind();
     final completion = _currentCompletion();
@@ -506,9 +506,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   }
 
   void _goTo(int eIdx, int sIdx) {
-    _timer?.cancel();
-    _restSecondsLeftVN.value = 0;
     _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
+    if (_resting && !_isDoneForNav(eIdx, sIdx)) _restNext = (eIdx: eIdx, sIdx: sIdx);
     setState(() {
       _exerciseIdx = eIdx;
       _setIdx = sIdx;
@@ -516,6 +515,16 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       _loadCurrentSetTargets();
     });
   }
+
+  void _showSet(({int eIdx, int sIdx}) pos) {
+    if (pos.eIdx == _exerciseIdx && pos.sIdx == _setIdx) {
+      setState(() => _phase = _Phase.logSet);
+    } else {
+      _goTo(pos.eIdx, pos.sIdx);
+    }
+  }
+
+  void _showRestFace() => setState(() => _phase = _Phase.rest);
 
   // --- Reps & time mark/unmark -------------------------------------------
 
@@ -549,10 +558,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final kind = _currentKind();
     if (kind == exerciseKindTime) {
       final elapsed = max(0, _timeStartTarget - _timeRemaining);
-      _timer?.cancel();
-      _timeRunning = false;
-      // Done pressed mid-hold (or in overtime): cancel the pending native fire.
-      _cancelNativeCountdown();
+      _stopHold();
       await db.upsertSetCompletion(
         workoutId: workoutId,
         workoutSetId: wsId,
@@ -572,6 +578,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       );
     }
     HapticFeedback.heavyImpact();
+    if (_resting) _endRest();
     final next = _nextForCompletion();
     if (next != null) {
       // Every set is followed by its own exercise's rest. Zero means advance
@@ -581,11 +588,35 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       if (rest == 0) {
         _goTo(next.eIdx, next.sIdx);
       } else {
-        _startRest(rest);
+        _startRest(rest, next);
       }
       return;
     }
     // Workout is genuinely complete — stay on logSet so the user can Finish.
+  }
+
+  void _changeReps(int reps) {
+    setState(() => _reps = reps);
+    _saveCorrectionToCompletion();
+  }
+
+  void _changeWeight(double weightKg) {
+    setState(() => _weightKg = weightKg);
+    _saveCorrectionToCompletion();
+  }
+
+  void _saveCorrectionToCompletion() {
+    final completion = _currentCompletion();
+    if (completion == null) return;
+    final isTime = _currentKind() == exerciseKindTime;
+    unawaited(
+      ref.read(databaseProvider).updateCompletion(
+        id: completion.syncId,
+        actualReps: isTime ? completion.actualReps : _reps,
+        actualWeightKg: isTime && _weightKg == 0 ? null : _weightKg,
+        actualSeconds: completion.actualSeconds,
+      ),
+    );
   }
 
   // --- Skip (end sooner) --------------------------------------------------
@@ -649,7 +680,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   void _tickCountdown() {
     final now = clock.now();
-    if (_phase == _Phase.rest && _restEndTime != null) {
+    if (_resting) {
       final remaining =
           (_restEndTime!.difference(now).inMilliseconds / 1000).ceil();
       if (remaining <= 0) {
@@ -701,22 +732,18 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     });
   }
 
-  // Drop the active countdown's wall-clock anchor and recall its pending native
-  // vibration. Idempotent; safe to call when nothing is armed.
-  void _cancelNativeCountdown() {
-    if (_restEndTime == null && _timeEndTime == null && !_nativeTimerArmed) {
-      return;
-    }
-    _restEndTime = null;
-    _timeEndTime = null;
+  void _clearNativeTimer() {
     _nativeTimerArmed = false;
     unawaited(WorkoutBridge.instance.clearTimer());
   }
 
-  void _startRest(int seconds) {
+  bool get _resting => _restEndTime != null;
+
+  void _startRest(int seconds, ({int eIdx, int sIdx}) next) {
     _timer?.cancel();
     final end = clock.now().add(Duration(seconds: seconds));
     _restEndTime = end;
+    _restNext = next;
     setState(() {
       _phase = _Phase.rest;
       _restSecondsLeft = seconds;
@@ -733,19 +760,52 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   // anchor first makes this idempotent, so whichever of the Dart ticker /
   // native event / resume reconciliation arrives first wins.
   void _onRestElapsed() {
-    if (_phase != _Phase.rest || _restEndTime == null) return;
-    _restEndTime = null;
-    _timer?.cancel();
-    _restSecondsLeftVN.value = 0;
+    if (!_resting) return;
     if (!_nativeTimerArmed) HapticFeedback.heavyImpact();
-    _advanceAfterRest();
+    _nativeTimerArmed = false;
+    _closeRest();
   }
 
   void _skipRest() {
+    if (!_resting) return;
+    _clearNativeTimer();
+    _closeRest();
+  }
+
+  // Rest over: the rest face hands over to the set it announced, while a set
+  // face the user navigated to during rest stays where they put it.
+  void _closeRest() {
+    final next = _setAfterRest();
+    _endRestQuietly();
+    _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
+    if (_phase != _Phase.rest) {
+      setState(() {});
+    } else if (next == null) {
+      setState(() => _phase = _Phase.logSet);
+    } else {
+      _showSet(next);
+    }
+  }
+
+  void _endRest() {
+    _clearNativeTimer();
+    _endRestQuietly();
+  }
+
+  void _endRestQuietly() {
+    _restEndTime = null;
+    _restNext = null;
     _timer?.cancel();
     _restSecondsLeftVN.value = 0;
-    _cancelNativeCountdown();
-    _advanceAfterRest();
+  }
+
+  ({int eIdx, int sIdx})? _setAfterRest() {
+    final next = _restNext;
+    if (next != null && !_isDoneForNav(next.eIdx, next.sIdx)) return next;
+    if (!_isDoneForNav(_exerciseIdx, _setIdx)) {
+      return (eIdx: _exerciseIdx, sIdx: _setIdx);
+    }
+    return _nextForCompletion();
   }
 
   void _bumpRest(int delta) {
@@ -761,32 +821,16 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     _armNativeTimer(kTimerKindRest, end);
   }
 
-  void _advanceAfterRest() {
-    _restEndTime = null;
-    final next = _nextForCompletion();
-    if (next == null) {
-      setState(() => _phase = _Phase.logSet);
-      return;
-    }
-    _setWindowStartMs = DateTime.now().millisecondsSinceEpoch;
-    setState(() {
-      _exerciseIdx = next.eIdx;
-      _setIdx = next.sIdx;
-      _phase = _Phase.logSet;
-      _loadCurrentSetTargets();
-    });
-  }
-
   // --- Time-based set countdown ------------------------------------------
 
   void _toggleTimeRun() {
     if (_timeRunning) {
-      // Pause.
-      _timer?.cancel();
-      _cancelNativeCountdown();
-      setState(() => _timeRunning = false);
+      setState(_stopHold);
       return;
     }
+    // Only one countdown runs at a time, and starting the hold is the end of
+    // the rest anyway.
+    if (_resting) _endRest();
     final secs = _timeRemaining;
     final end = clock.now().add(Duration(seconds: secs));
     _timeEndTime = end;
@@ -796,6 +840,14 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     setState(() => _timeRunning = true);
     _armNativeTimer(kTimerKindTime, end, schedule: secs > 0);
     _startUiTicker();
+  }
+
+  void _stopHold() {
+    _timeRunning = false;
+    if (_timeEndTime == null) return;
+    _timeEndTime = null;
+    _timer?.cancel();
+    _clearNativeTimer();
   }
 
   // --- Discard ------------------------------------------------------------
@@ -908,9 +960,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     // switch active out of it), slide back to the run pane so the rest
     // countdown is in front of them again. _jumpToExercise has already
     // animated to page 1 in the switch-active case, so this is a no-op there.
-    if (_workoutId != null &&
-        _phase == _Phase.rest &&
-        _pageController.hasClients) {
+    if (_workoutId != null && _resting && _pageController.hasClients) {
       _pageController.animateToPage(
         1,
         duration: const Duration(milliseconds: 250),
@@ -949,7 +999,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   /// seconds), shown during rest so the user can see what's coming. Null when
   /// the current set is the last one.
   ({String name, String target})? _upNextDetail() {
-    final next = _nextForCompletion();
+    final next = _setAfterRest();
     if (next == null) return null;
     if (_snapshot != null) {
       final ex = _snapshot!.exercises[next.eIdx];
@@ -1095,8 +1145,26 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         onSkip: _skipRest,
         onAdd15: () => _bumpRest(15),
         onSub15: () => _bumpRest(-15),
+        onUpNext: () {
+          final next = _setAfterRest();
+          if (next != null) _showSet(next);
+        },
       );
     }
+    if (!_resting) return _buildSetFace(context);
+    return Column(
+      children: [
+        CountdownPill(
+          label: 'Rest ${_restSecondsLeft}s',
+          icon: Icons.hourglass_bottom,
+          onTap: _showRestFace,
+        ),
+        Expanded(child: _buildSetFace(context)),
+      ],
+    );
+  }
+
+  Widget _buildSetFace(BuildContext context) {
     final hasPrev = _prevBefore(_exerciseIdx, _setIdx) != null;
     final hasNext = _nextAfter(_exerciseIdx, _setIdx) != null;
     final bpm = _liveHeartRateBpm();
@@ -1113,7 +1181,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         hasNext: hasNext,
         heartRateBpm: bpm,
         lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindTime),
-        onWeightChanged: (v) => setState(() => _weightKg = v),
+        onWeightChanged: _changeWeight,
         onToggleRun: _toggleTimeRun,
         onToggleDone: _toggleDone,
         onPrev: () {
@@ -1140,8 +1208,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       hasNext: hasNext,
       heartRateBpm: bpm,
       lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindReps),
-      onRepsChanged: (v) => setState(() => _reps = v),
-      onWeightChanged: (v) => setState(() => _weightKg = v),
+      onRepsChanged: _changeReps,
+      onWeightChanged: _changeWeight,
       onToggleDone: _toggleDone,
       onPrev: () {
         final p = _prevBefore(_exerciseIdx, _setIdx);
@@ -1303,19 +1371,15 @@ class _RepsSetView extends StatelessWidget {
         setIndex: setIndex,
         totalSets: totalSets,
         heartRateBpm: heartRateBpm,
-        child: Stack(
+        child: Column(
           children: [
-            Align(
-              alignment: Alignment.topCenter,
-              child: _setHeader(
-                context,
-                exerciseName: exerciseName,
-                lastTimeText: lastTimeText,
-              ),
+            _setHeader(
+              context,
+              exerciseName: exerciseName,
+              lastTimeText: lastTimeText,
             ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            Expanded(
+              child: _ScaledControls(
                 children: [
                   StepperValue<double>(
                     value: weightKg,
@@ -1337,13 +1401,10 @@ class _RepsSetView extends StatelessWidget {
                 ],
               ),
             ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: _doneButton(
-                context: context,
-                completed: completed,
-                onTap: onToggleDone,
-              ),
+            _doneButton(
+              context: context,
+              completed: completed,
+              onTap: onToggleDone,
             ),
           ],
         ),
@@ -1420,11 +1481,6 @@ class _TimeSetView extends StatelessWidget {
         setIndex: setIndex,
         totalSets: totalSets,
         heartRateBpm: heartRateBpm,
-        // Column (not Stack) so the header, the centred controls and the Done
-        // button each get their own vertical band — the taller time-set
-        // content (countdown + weight + Start/Pause) can't slide under Done or
-        // up into the name. Only the big number scales to fit; the steppers and
-        // buttons need a bounded width, which Expanded/Center provide.
         child: Column(
           children: [
             _setHeader(
@@ -1433,57 +1489,40 @@ class _TimeSetView extends StatelessWidget {
               lastTimeText: lastTimeText,
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => Center(
-                  // scaleDown shrinks the whole control group to fit a short
-                  // band rather than overflowing into Done. The SizedBox pins
-                  // the width so the steppers/buttons still lay out against a
-                  // bounded width (a bare FittedBox gives unbounded width and
-                  // breaks them).
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: SizedBox(
-                      width: constraints.maxWidth,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${secondsRemaining}s',
-                            style: big,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          StepperValue<double>(
-                            value: weightKg,
-                            step: 2.5,
-                            min: 0,
-                            formatter: _formatWeight,
-                            suffix: 'kg',
-                            onChanged: onWeightChanged,
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: hInset),
-                            child: OutlinedButton.icon(
-                              onPressed: onToggleRun,
-                              icon: Icon(
-                                running ? Icons.pause : Icons.play_arrow,
-                                size: 16,
-                              ),
-                              label: Text(running ? 'Pause' : 'Start'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(26),
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            ),
-                          ),
-                        ],
+              child: _ScaledControls(
+                children: [
+                  Text(
+                    '${secondsRemaining}s',
+                    style: big,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  StepperValue<double>(
+                    value: weightKg,
+                    step: 2.5,
+                    min: 0,
+                    formatter: _formatWeight,
+                    suffix: 'kg',
+                    onChanged: onWeightChanged,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: hInset),
+                    child: OutlinedButton.icon(
+                      onPressed: onToggleRun,
+                      icon: Icon(
+                        running ? Icons.pause : Icons.play_arrow,
+                        size: 16,
+                      ),
+                      label: Text(running ? 'Pause' : 'Start'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(26),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
             _doneButton(
@@ -1492,6 +1531,31 @@ class _TimeSetView extends StatelessWidget {
               onTap: onToggleDone,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shrinks a set face's controls to fit the band between the header and
+/// Done instead of letting them overflow under Done. The SizedBox pins the
+/// width, since a bare FittedBox lays its child out at unbounded width and the
+/// steppers need a bounded one.
+class _ScaledControls extends StatelessWidget {
+  const _ScaledControls({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: constraints.maxWidth,
+            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+          ),
         ),
       ),
     );
@@ -1824,6 +1888,7 @@ class _RestView extends StatelessWidget {
     required this.onSkip,
     required this.onAdd15,
     required this.onSub15,
+    required this.onUpNext,
     this.heartRateBpm,
   });
 
@@ -1834,6 +1899,7 @@ class _RestView extends StatelessWidget {
   final VoidCallback onSkip;
   final VoidCallback onAdd15;
   final VoidCallback onSub15;
+  final VoidCallback onUpNext;
   final int? heartRateBpm;
 
   @override
@@ -1914,23 +1980,50 @@ class _RestView extends StatelessWidget {
             ),
           if (upNextName != null) ...[
             const SizedBox(height: 8),
-            Text(
-              'Up next: $upNextName',
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (upNextTarget != null && upNextTarget != '—')
-              Text(
-                upNextTarget!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+            InkWell(
+              onTap: ambient ? null : onUpNext,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Column(
+                  children: [
+                    Text(
+                      'Up next: $upNextName',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (upNextTarget != null && upNextTarget != '—')
+                          Flexible(
+                            child: Text(
+                              upNextTarget!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        if (!ambient) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.edit,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            ),
           ],
           const Spacer(),
           if (!ambient)
