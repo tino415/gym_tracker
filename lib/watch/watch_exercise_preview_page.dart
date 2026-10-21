@@ -19,7 +19,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
     required this.circuitGroup,
     required List<_PreviewSet> sets,
     required this.activeMode,
-    this.restCountdown,
+    this.countdown,
     this.onSwitchActive,
     List<_PreviewAlt> alternatives = const [],
   })  : _sets = sets,
@@ -53,7 +53,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
 
   factory WatchExercisePreviewPage.fromWorkout(
     FullWorkoutExercise we, {
-    ValueListenable<int>? restCountdown,
+    ValueListenable<CountdownBadge?>? countdown,
     VoidCallback? onSwitchActive,
   }) {
     return WatchExercisePreviewPage._(
@@ -72,7 +72,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
           ),
       ],
       activeMode: true,
-      restCountdown: restCountdown,
+      countdown: countdown,
       onSwitchActive: onSwitchActive,
     );
   }
@@ -84,7 +84,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
   final List<_PreviewSet> _sets;
   final List<_PreviewAlt> _alternatives;
   final bool activeMode;
-  final ValueListenable<int>? restCountdown;
+  final ValueListenable<CountdownBadge?>? countdown;
   final VoidCallback? onSwitchActive;
 
   @override
@@ -97,9 +97,9 @@ class WatchExercisePreviewPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (restCountdown != null)
-              _RestPill(
-                countdown: restCountdown!,
+            if (countdown != null)
+              _CountdownSlot(
+                countdown: countdown!,
                 onTap: () => Navigator.of(context).pop(),
               ),
             Expanded(
@@ -334,21 +334,21 @@ class _MetaChip extends StatelessWidget {
   }
 }
 
-class _RestPill extends StatelessWidget {
-  const _RestPill({required this.countdown, required this.onTap});
+class _CountdownSlot extends StatelessWidget {
+  const _CountdownSlot({required this.countdown, required this.onTap});
 
-  final ValueListenable<int> countdown;
+  final ValueListenable<CountdownBadge?> countdown;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
+    return ValueListenableBuilder<CountdownBadge?>(
       valueListenable: countdown,
-      builder: (context, seconds, _) {
-        if (seconds <= 0) return const SizedBox.shrink();
+      builder: (context, badge, _) {
+        if (badge == null) return const SizedBox.shrink();
         return CountdownPill(
-          label: 'Rest ${seconds}s',
-          icon: Icons.hourglass_bottom,
+          label: badge.label,
+          icon: badge.icon,
           onTap: onTap,
         );
       },

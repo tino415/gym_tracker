@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+typedef CountdownBadge = ({String label, IconData icon});
+
 class CountdownPill extends StatelessWidget {
   const CountdownPill({
     super.key,

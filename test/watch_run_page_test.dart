@@ -596,6 +596,85 @@ void main() {
     });
   });
 
+  group('Watch run page — hold survives navigation', () {
+    Future<FullRoutine> seedCore(AppDatabase db) => _seedRoutine(
+          db,
+          name: 'Core',
+          exercises: const [
+            _ExerciseFixture(
+              name: 'Plank',
+              kind: exerciseKindTime,
+              sets: [_SetFixture(seconds: 30), _SetFixture(seconds: 30)],
+            ),
+            _ExerciseFixture(
+              name: 'Lunge',
+              sets: [_SetFixture(reps: 12, weight: 20)],
+            ),
+          ],
+        );
+
+    Future<void> startHold(WidgetTester tester, AppDatabase db) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await _pumpRun(tester, db: db, routine: await seedCore(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+    }
+
+    // Takes three seconds of the fake clock.
+    Future<void> switchFromList(WidgetTester tester, String exercise) async {
+      await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text(exercise));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Switch to this'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('switching to the holding exercise keeps the hold running',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await startHold(tester, db);
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('28s'), findsOneWidget);
+
+      await switchFromList(tester, 'Plank');
+
+      expect(find.text('25s'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Pause'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('another exercise shows the running hold and leads back to it',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await startHold(tester, db);
+      await tester.pump(const Duration(seconds: 2));
+
+      await switchFromList(tester, 'Lunge');
+      expect(find.text('1/1'), findsOneWidget);
+      expect(find.text('Hold 25s'), findsOneWidget);
+
+      await tester.tap(find.text('Hold 25s'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Plank'), findsOneWidget);
+      expect(find.text('24s'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      final completions = await db.select(db.setCompletions).get();
+      expect(completions.single.actualSeconds, 6);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   group('Watch run page — skip-and-wrap', () {
     testWidgets('wraps to first unfinished after completing the last set',
         (tester) async {
