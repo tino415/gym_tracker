@@ -24,7 +24,9 @@ class SelectableOnWeb extends StatelessWidget {
 
   final Widget child;
 
+  // Its own Overlay: wrapping the whole app means sitting in
+  // MaterialApp.builder, above the Navigator's.
   @override
   Widget build(BuildContext context) =>
-      kIsWeb ? SelectionArea(child: child) : child;
+      kIsWeb ? Overlay.wrap(child: SelectionArea(child: child)) : child;
 }
