@@ -67,23 +67,24 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   int _reps = 0;
   double _weightKg = 0;
 
-  // Time-kind input buffer. _timeRemaining is the displayed countdown; once
-  // _timeRunning is true the periodic timer ticks it down (negative is fine).
+  // Time-kind input buffer: the current set's countdown while no hold runs on
+  // it. elapsed = startTarget - remaining on Done.
   int _timeRemaining = 0;
-  bool _timeRunning = false;
-  // Captures the target the timer was started against so we can compute
-  // elapsed = startTarget - timeRemaining on Done.
   int _timeStartTarget = 0;
+  // A running hold belongs to its set rather than to the face, so it keeps
+  // counting (negative is overtime) while the user looks at other sets.
+  String? _holdSetId;
+  int _holdSecondsLeft = 0;
 
   // Which face the run pane shows. The rest itself runs while `_restEndTime`
   // is set, whichever face is up: the set face stays editable during rest.
   _Phase _phase = _Phase.logSet;
   int _restSecondsLeft = 0;
   ({int eIdx, int sIdx})? _restNext;
-  // Mirror of `_restSecondsLeft` exposed to off-route observers (the exercise
-  // preview pushed on top reads this so its rest pill ticks down without us
-  // rebuilding the whole run page from a parent route).
-  final ValueNotifier<int> _restSecondsLeftVN = ValueNotifier<int>(0);
+  // The running countdown for off-route observers: the exercise preview pushed
+  // on top shows it without us rebuilding the run page from a parent route.
+  final ValueNotifier<CountdownBadge?> _countdownVN =
+      ValueNotifier<CountdownBadge?>(null);
   // `_timer` is now a display-only ticker that recomputes the countdown from a
   // wall-clock anchor each second. The authoritative completion + vibration is
   // scheduled natively (survives screen-off); these anchors hold the absolute
@@ -268,7 +269,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     // clearTimer after stop would startService a fresh, orphaned instance.
     if (!_serviceStopped) unawaited(WorkoutBridge.instance.clearTimer());
     _pageController.dispose();
-    _restSecondsLeftVN.dispose();
+    _countdownVN.dispose();
     super.dispose();
   }
 
@@ -287,7 +288,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         _startUiTicker();
         _tickCountdown();
       }
-    } else if (_timeRunning && _timeEndTime != null) {
+    } else if (_holding) {
       // Overtime keeps counting into negative; just re-sync the display. The
       // native buzz at the target already fired while we were paused.
       _startUiTicker();
@@ -469,7 +470,6 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   }
 
   void _loadCurrentSetTargets() {
-    _stopHold();
     unawaited(_refreshLastCompletion());
     final kind = _currentKind();
     final completion = _currentCompletion();
@@ -526,6 +526,19 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   void _showRestFace() => setState(() => _phase = _Phase.rest);
 
+  ({int eIdx, int sIdx})? _positionOfSet(String? workoutSetId) {
+    final exercises = _snapshot?.exercises ?? const <FullWorkoutExercise>[];
+    for (var e = 0; e < exercises.length; e++) {
+      final sets = exercises[e].sets;
+      for (var s = 0; s < sets.length; s++) {
+        if (sets[s].workoutSet.syncId == workoutSetId) {
+          return (eIdx: e, sIdx: s);
+        }
+      }
+    }
+    return null;
+  }
+
   // --- Reps & time mark/unmark -------------------------------------------
 
   Future<void> _toggleDone() async {
@@ -556,9 +569,10 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       }
     }
     final kind = _currentKind();
+    final elapsed = max(0, _timeStartTarget - _shownTimeRemaining);
+    // One countdown at a time: the rest that follows needs the native slot.
+    _stopHold();
     if (kind == exerciseKindTime) {
-      final elapsed = max(0, _timeStartTarget - _timeRemaining);
-      _stopHold();
       await db.upsertSetCompletion(
         workoutId: workoutId,
         workoutSetId: wsId,
@@ -687,9 +701,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         _onRestElapsed();
       } else {
         setState(() => _restSecondsLeft = remaining);
-        _restSecondsLeftVN.value = remaining;
+        _publishCountdown();
       }
-    } else if (_timeRunning && _timeEndTime != null) {
+    } else if (_holding) {
       // Counts past 0 into negative (overtime) so a hold kept past target logs
       // the extra seconds (`_toggleDone` does startTarget - remaining). ceil
       // matches the rest display and shows the target for its full first
@@ -697,7 +711,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       // armed, buzz here at the 0 crossing instead.
       final remaining =
           (_timeEndTime!.difference(now).inMilliseconds / 1000).ceil();
-      setState(() => _timeRemaining = remaining);
+      setState(() => _holdSecondsLeft = remaining);
+      _publishCountdown();
       if (remaining <= 0 && !_timeTargetBuzzed) {
         _timeTargetBuzzed = true;
         if (!_nativeTimerArmed) HapticFeedback.mediumImpact();
@@ -748,7 +763,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       _phase = _Phase.rest;
       _restSecondsLeft = seconds;
     });
-    _restSecondsLeftVN.value = seconds;
+    _publishCountdown();
     // A zero-length rest has no future instant to schedule — completion (and
     // its fallback buzz) is handled by the immediate Dart tick.
     _armNativeTimer(kTimerKindRest, end, schedule: seconds > 0);
@@ -796,7 +811,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     _restEndTime = null;
     _restNext = null;
     _timer?.cancel();
-    _restSecondsLeftVN.value = 0;
+    _publishCountdown();
   }
 
   ({int eIdx, int sIdx})? _setAfterRest() {
@@ -817,38 +832,76 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final remaining =
         (end.difference(clock.now()).inMilliseconds / 1000).ceil();
     setState(() => _restSecondsLeft = remaining);
-    _restSecondsLeftVN.value = remaining;
+    _publishCountdown();
     _armNativeTimer(kTimerKindRest, end);
   }
 
   // --- Time-based set countdown ------------------------------------------
 
+  bool get _holding => _timeEndTime != null;
+
+  bool get _holdingHere => _holding && _holdSetId == _currentWorkoutSetId();
+
+  int get _shownTimeRemaining =>
+      _holdingHere ? _holdSecondsLeft : _timeRemaining;
+
   void _toggleTimeRun() {
-    if (_timeRunning) {
-      setState(_stopHold);
+    final setId = _currentWorkoutSetId();
+    if (setId == null) return;
+    if (_holdingHere) {
+      setState(() {
+        _timeRemaining = _holdSecondsLeft;
+        _stopHold();
+      });
       return;
     }
     // Only one countdown runs at a time, and starting the hold is the end of
     // the rest anyway.
     if (_resting) _endRest();
+    _stopHold();
     final secs = _timeRemaining;
     final end = clock.now().add(Duration(seconds: secs));
     _timeEndTime = end;
+    _holdSetId = setId;
+    _holdSecondsLeft = secs;
     // Already at/past the target (re-running an over-completed set): the buzz
     // point is behind us, so don't schedule a native fire or a fallback buzz.
     _timeTargetBuzzed = secs <= 0;
-    setState(() => _timeRunning = true);
+    setState(() {});
+    _publishCountdown();
     _armNativeTimer(kTimerKindTime, end, schedule: secs > 0);
     _startUiTicker();
   }
 
   void _stopHold() {
-    _timeRunning = false;
-    if (_timeEndTime == null) return;
+    if (!_holding) return;
     _timeEndTime = null;
+    _holdSetId = null;
     _timer?.cancel();
     _clearNativeTimer();
+    _publishCountdown();
   }
+
+  void _showHoldSet() {
+    final pos = _positionOfSet(_holdSetId);
+    if (pos == null) {
+      setState(_stopHold);
+    } else {
+      _showSet(pos);
+    }
+  }
+
+  CountdownBadge? get _countdownBadge {
+    if (_resting) {
+      return (label: 'Rest ${_restSecondsLeft}s', icon: Icons.hourglass_bottom);
+    }
+    if (_holding) {
+      return (label: 'Hold ${_holdSecondsLeft}s', icon: Icons.timer_outlined);
+    }
+    return null;
+  }
+
+  void _publishCountdown() => _countdownVN.value = _countdownBadge;
 
   // --- Discard ------------------------------------------------------------
 
@@ -943,7 +996,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     if (_snapshot != null) {
       page = WatchExercisePreviewPage.fromWorkout(
         _snapshot!.exercises[eIdx],
-        restCountdown: _restSecondsLeftVN,
+        countdown: _countdownVN,
         onSwitchActive: () {
           navigator.pop();
           _jumpToExercise(eIdx);
@@ -956,11 +1009,12 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     }
     await navigator.push(MaterialPageRoute(builder: (_) => page));
     if (!mounted) return;
-    // If we were resting when the user opened the preview (and they didn't
-    // switch active out of it), slide back to the run pane so the rest
-    // countdown is in front of them again. _jumpToExercise has already
-    // animated to page 1 in the switch-active case, so this is a no-op there.
-    if (_workoutId != null && _resting && _pageController.hasClients) {
+    // A running rest or hold belongs in front of the user: slide back to the
+    // run pane. _jumpToExercise has already animated to page 1 in the
+    // switch-active case, so this is a no-op there.
+    if (_workoutId != null &&
+        _countdownBadge != null &&
+        _pageController.hasClients) {
       _pageController.animateToPage(
         1,
         duration: const Duration(milliseconds: 250),
@@ -1113,7 +1167,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final muted = Colors.white70;
     String value;
     if (kind == exerciseKindTime) {
-      value = '${_timeRemaining}s';
+      value = '${_shownTimeRemaining}s';
     } else {
       final w = _weightKg;
       final wStr = w == w.roundToDouble()
@@ -1151,13 +1205,14 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         },
       );
     }
-    if (!_resting) return _buildSetFace(context);
+    final badge = _countdownBadge;
+    if (badge == null || _holdingHere) return _buildSetFace(context);
     return Column(
       children: [
         CountdownPill(
-          label: 'Rest ${_restSecondsLeft}s',
-          icon: Icons.hourglass_bottom,
-          onTap: _showRestFace,
+          label: badge.label,
+          icon: badge.icon,
+          onTap: _resting ? _showRestFace : _showHoldSet,
         ),
         Expanded(child: _buildSetFace(context)),
       ],
@@ -1173,8 +1228,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         exerciseName: _currentExerciseName(),
         setIndex: _setIdx,
         totalSets: _setCount(_exerciseIdx),
-        secondsRemaining: _timeRemaining,
-        running: _timeRunning,
+        secondsRemaining: _shownTimeRemaining,
+        running: _holdingHere,
         weightKg: _weightKg,
         completed: _currentIsCompleted,
         hasPrev: hasPrev,

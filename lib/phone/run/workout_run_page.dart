@@ -67,8 +67,11 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
 
   int _timeStartTarget = 0;
   int _timeRemaining = 0;
-  bool _timeRunning = false;
   DateTime? _timeEndTime;
+  // A running hold belongs to its set rather than to the one on screen, so it
+  // keeps counting while the user looks at other sets.
+  String? _holdSetId;
+  int _holdSecondsLeft = 0;
   bool _timeTargetBuzzed = false;
 
   int _restSecondsLeft = 0;
@@ -127,7 +130,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         _startUiTicker();
         _tickCountdown();
       }
-    } else if (_timeRunning && _timeEndTime != null) {
+    } else if (_holding) {
       _startUiTicker();
       _tickCountdown();
     }
@@ -262,10 +265,6 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   // --- Targets & last-time reference --------------------------------------
 
   void _loadCurrentSetTargets() {
-    _timer?.cancel();
-    _cancelNativeCountdown();
-    _timeRunning = false;
-    _timeTargetBuzzed = false;
     unawaited(_refreshLastCompletion());
 
     final set = _currentSet;
@@ -306,7 +305,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   }
 
   void _goTo(int eIdx, int sIdx) {
-    _timer?.cancel();
+    _endRest();
     setState(() {
       _exerciseIdx = eIdx;
       _setIdx = sIdx;
@@ -330,11 +329,10 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       return;
     }
 
+    final elapsed = (_timeStartTarget - _shownTimeRemaining).clamp(0, 1 << 30);
+    // One countdown at a time: the rest that follows needs the native slot.
+    _stopHold();
     if (_currentKind() == exerciseKindTime) {
-      final elapsed = (_timeStartTarget - _timeRemaining).clamp(0, 1 << 30);
-      _timer?.cancel();
-      _timeRunning = false;
-      _cancelNativeCountdown();
       await repo.upsertSetCompletion(
         workoutId: workoutId,
         workoutSetId: set.workoutSet.syncId,
@@ -390,12 +388,12 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       } else {
         setState(() => _restSecondsLeft = remaining);
       }
-    } else if (_timeRunning && _timeEndTime != null) {
+    } else if (_holding) {
       // Runs past zero into overtime so a hold kept longer logs the extra
       // seconds (`_toggleDone` computes startTarget - remaining).
       final remaining =
           (_timeEndTime!.difference(now).inMilliseconds / 1000).ceil();
-      setState(() => _timeRemaining = remaining);
+      setState(() => _holdSecondsLeft = remaining);
       if (remaining <= 0 && !_timeTargetBuzzed) {
         _timeTargetBuzzed = true;
         if (!_nativeTimerArmed) unawaited(HapticFeedback.mediumImpact());
@@ -425,14 +423,16 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     });
   }
 
-  void _cancelNativeCountdown() {
-    if (_restEndTime == null && _timeEndTime == null && !_nativeTimerArmed) {
-      return;
-    }
-    _restEndTime = null;
-    _timeEndTime = null;
+  void _clearNativeTimer() {
     _nativeTimerArmed = false;
     unawaited(WorkoutBridge.instance.clearTimer());
+  }
+
+  void _endRest() {
+    if (_restEndTime == null) return;
+    _restEndTime = null;
+    _timer?.cancel();
+    _clearNativeTimer();
   }
 
   void _startRest(int seconds) {
@@ -456,12 +456,12 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     _restEndTime = null;
     _timer?.cancel();
     if (!_nativeTimerArmed) unawaited(HapticFeedback.heavyImpact());
+    _nativeTimerArmed = false;
     _advanceAfterRest();
   }
 
   void _skipRest() {
-    _timer?.cancel();
-    _cancelNativeCountdown();
+    _endRest();
     _advanceAfterRest();
   }
 
@@ -494,19 +494,62 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     });
   }
 
+  bool get _holding => _timeEndTime != null;
+
+  bool get _holdingHere =>
+      _holding && _holdSetId == _currentSet?.workoutSet.syncId;
+
+  int get _shownTimeRemaining =>
+      _holdingHere ? _holdSecondsLeft : _timeRemaining;
+
   void _toggleTimeRun() {
-    if (_timeRunning) {
-      _timer?.cancel();
-      _cancelNativeCountdown();
-      setState(() => _timeRunning = false);
+    final setId = _currentSet?.workoutSet.syncId;
+    if (setId == null) return;
+    if (_holdingHere) {
+      setState(() {
+        _timeRemaining = _holdSecondsLeft;
+        _stopHold();
+      });
       return;
     }
+    _stopHold();
     final end = clock.now().add(Duration(seconds: _timeRemaining));
     _timeEndTime = end;
+    _holdSetId = setId;
+    _holdSecondsLeft = _timeRemaining;
     _timeTargetBuzzed = false;
-    setState(() => _timeRunning = true);
+    setState(() {});
     _armNativeTimer(kTimerKindTime, end, schedule: _timeRemaining > 0);
     _startUiTicker();
+  }
+
+  void _stopHold() {
+    if (!_holding) return;
+    _timeEndTime = null;
+    _holdSetId = null;
+    _timer?.cancel();
+    _clearNativeTimer();
+  }
+
+  void _showHoldSet() {
+    final pos = _positionOfSet(_holdSetId);
+    if (pos == null) {
+      setState(_stopHold);
+    } else {
+      _goTo(pos.eIdx, pos.sIdx);
+    }
+  }
+
+  ({int eIdx, int sIdx})? _positionOfSet(String? workoutSetId) {
+    for (var e = 0; e < _exerciseCount(); e++) {
+      final sets = _snapshot!.exercises[e].sets;
+      for (var s = 0; s < sets.length; s++) {
+        if (sets[s].workoutSet.syncId == workoutSetId) {
+          return (eIdx: e, sIdx: s);
+        }
+      }
+    }
+    return null;
   }
 
   // --- Finish / discard ---------------------------------------------------
@@ -535,8 +578,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       );
       if (!ok || !mounted) return;
     }
-    _timer?.cancel();
-    _cancelNativeCountdown();
+    _endRest();
+    _stopHold();
     await ref.read(workoutRepositoryProvider).updateWorkoutTimes(
           workoutId: workoutId,
           startedAt: snap.workout.startedAt,
@@ -563,8 +606,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       destructive: true,
     );
     if (!ok || !mounted) return;
-    _timer?.cancel();
-    _cancelNativeCountdown();
+    _endRest();
+    _stopHold();
     await ref.read(workoutRepositoryProvider).deleteWorkout(workoutId);
     _stopService();
     if (!mounted) return;
@@ -670,6 +713,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       children: [
+        if (_holding && !_holdingHere) _buildHoldElsewhereChip(),
         Text(
           ex.workoutExercise.exerciseName,
           // Keyed so tests can tell the current-exercise heading apart from
@@ -728,6 +772,21 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     );
   }
 
+  Widget _buildHoldElsewhereChip() {
+    final pos = _positionOfSet(_holdSetId);
+    final name = pos == null
+        ? 'Hold'
+        : '${_snapshot!.exercises[pos.eIdx].workoutExercise.exerciseName} hold';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ActionChip(
+        avatar: const Icon(Icons.timer_outlined),
+        label: Text('$name ${_formatSeconds(_holdSecondsLeft)}'),
+        onPressed: _showHoldSet,
+      ),
+    );
+  }
+
   Widget _buildLastTime(String kind) {
     final last = _lastCompletion;
     if (last == null) return const SizedBox.shrink();
@@ -768,10 +827,10 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   List<Widget> _buildTimeControls() => [
         Center(
           child: Text(
-            _formatSeconds(_timeRemaining),
+            _formatSeconds(_shownTimeRemaining),
             style: Theme.of(context).textTheme.displayMedium?.copyWith(
                   fontFeatures: const [FontFeature.tabularFigures()],
-                  color: _timeRemaining < 0
+                  color: _shownTimeRemaining < 0
                       ? Theme.of(context).colorScheme.error
                       : null,
                 ),
@@ -781,8 +840,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         Center(
           child: OutlinedButton.icon(
             onPressed: _toggleTimeRun,
-            icon: Icon(_timeRunning ? Icons.pause : Icons.play_arrow),
-            label: Text(_timeRunning ? 'Pause' : 'Start hold'),
+            icon: Icon(_holdingHere ? Icons.pause : Icons.play_arrow),
+            label: Text(_holdingHere ? 'Pause' : 'Start hold'),
           ),
         ),
         const SizedBox(height: 12),

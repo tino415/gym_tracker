@@ -291,6 +291,50 @@ void main() {
     await disposeTree(tester);
   });
 
+  testWidgets('a running hold keeps counting while other sets are open',
+      (tester) async {
+    final routine = await db.createRoutine('Core');
+    final plank = await db.addExerciseToRoutine(
+      routineId: routine.syncId,
+      exerciseId: (await db.createExercise('Plank', kind: exerciseKindTime))
+          .syncId,
+    );
+    await db.addPlannedSet(routineExerciseId: plank.syncId, targetSeconds: 45);
+    await db.addPlannedSet(routineExerciseId: plank.syncId, targetSeconds: 45);
+    final raise = await db.addExerciseToRoutine(
+      routineId: routine.syncId,
+      exerciseId: (await db.createExercise('Leg Raise')).syncId,
+    );
+    await db.addPlannedSet(routineExerciseId: raise.syncId, targetReps: 10);
+    await pumpRun(tester, routineId: routine.syncId);
+
+    await tester.tap(find.text('Start hold'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('0:42'), findsOneWidget);
+
+    await tester.tap(find.text('1').first);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('0:41'), findsOneWidget);
+    expect(find.text('Pause'), findsOneWidget);
+
+    await tester.tap(find.text('1').last);
+    await tester.pump(const Duration(seconds: 2));
+    expect(currentExercise(tester), 'Leg Raise');
+    expect(find.text('Plank hold 0:39'), findsOneWidget);
+
+    await tester.tap(find.text('Plank hold 0:39'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(currentExercise(tester), 'Plank');
+    expect(find.text('0:38'), findsOneWidget);
+
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    final w = await onlyWorkout(tester);
+    expect((await completionsOf(w.syncId)).single.actualSeconds, 7);
+
+    await disposeTree(tester);
+  });
+
   testWidgets('resume picks up at the first incomplete set', (tester) async {
     final r = await seedRoutine(
       name: 'Push',
