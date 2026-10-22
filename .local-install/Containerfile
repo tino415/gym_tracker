@@ -59,6 +59,15 @@ RUN git config --system --add safe.directory '*' \
  && flutter precache --android --web --no-ios --no-linux --no-macos --no-windows --no-fuchsia \
  && flutter --version
 
+# Release builds need the AOT compiler gen_snapshot, which Flutter ships only
+# for linux-x64 and looks for under linux-arm64 on this host. The x64 binary
+# runs through binfmt qemu like adb and aapt2.
+RUN for engine in android-arm-release android-arm64-release; do \
+      dir="$FLUTTER_ROOT/bin/cache/artifacts/engine/$engine"; \
+      mkdir -p "$dir/linux-arm64" \
+      && cp "$dir/linux-x64/gen_snapshot" "$dir/linux-arm64/gen_snapshot" || exit 1; \
+    done
+
 ENV PUB_CACHE=/cache/pub \
     GRADLE_USER_HOME=/cache/gradle \
     ANDROID_USER_HOME=/cache/android

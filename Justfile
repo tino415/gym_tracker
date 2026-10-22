@@ -12,10 +12,13 @@
 # Override any of these on the command line, e.g. `just PHONE_ABIS=android-x64
 # phone-apk` — no env plumbing needed.
 
-# A release build needs gen_snapshot, which Flutter ships only for x86_64 Linux
-# hosts; on an aarch64 host `flutter build apk --release` dies for lack of it.
-# Debug (JIT) APKs are fine for on-device testing.
-APK_MODE := if arch() == "aarch64" { "--debug" } else { "--release" }
+# Release (AOT) by default. A release build needs gen_snapshot, which Flutter
+# ships only for x86_64 Linux hosts; the dev container copies that binary where
+# an aarch64 host looks for it and runs it through qemu. Both build types sign
+# with the debug key and stay debuggable, so either installs over the other
+# with its data. `just APK_MODE=--debug phone-apk` builds JIT for a host
+# without that copy.
+APK_MODE := "--release"
 
 # "debug" / "release" — flutter names its output app-<variant>.apk.
 APK_VARIANT := trim_start_match(APK_MODE, "--")
@@ -150,9 +153,9 @@ phone-apk-demo:
 
 # Install a built APK. Push + `pm install` rather than `adb install`: streamed
 # install fails on some Wear devices. The remote path is per-target so two
-# installs can run at once, and the staged copy is deleted afterwards — these
-# are 130-160 MB debug APKs, and a watch fills up fast. The rm runs even when
-# the install fails, so a bad build doesn't strand one either.
+# installs can run at once, and the staged copy is deleted afterwards — an APK
+# is 25-45 MB release and 130-160 MB debug, and a watch fills up fast. The rm
+# runs even when the install fails, so a bad build doesn't strand one either.
 # `device` takes an adb serial, or the alias `watch` / `phone` to pick the one
 # connected device of that form factor (see tool/adb-device.sh) — handy because
 # a wireless-adb serial changes port on every reconnect. Both installs announce
@@ -377,8 +380,8 @@ fs-get path:
 #                      Firestore export, but the documents are all in there.
 #
 # `run-as` is what makes this work without root, and it needs a *debuggable*
-# build — on an aarch64 host APK_MODE is --debug, so that holds. Against a
-# release APK it fails with "package not debuggable".
+# build. Release and debug APKs both are (android/app/src/release declares
+# it); against one that isn't, it fails with "package not debuggable".
 [doc('Back up a device app database into backups/')]
 backup-device device=PHONE_DEVICE:
     #!/usr/bin/env bash
