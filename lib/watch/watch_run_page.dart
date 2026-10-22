@@ -1305,11 +1305,16 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       ),
     );
     if (swapped != true) return;
-    if (!mounted) return;
-    // Snapshot has been re-emitted by the stream; pull fresh targets for the
-    // active set since the listener skips target reloads for safety (rest /
-    // countdown timers).
-    setState(_loadCurrentSetTargets);
+    final swappedSnapshot = await ref
+        .read(databaseProvider)
+        .loadFullWorkout(we.workoutId);
+    if (!mounted || swappedSnapshot == null) return;
+    // The stream listener skips target reloads (rest / countdown timers), and
+    // its re-emission of the swap may not have landed yet.
+    setState(() {
+      _snapshot = swappedSnapshot;
+      _loadCurrentSetTargets();
+    });
   }
 
   List<_ExerciseListItem> _exerciseListItems() {
