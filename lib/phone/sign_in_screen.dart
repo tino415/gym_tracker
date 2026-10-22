@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../l10n/language_picker.dart';
 import '../privacy_policy.dart';
 import '../sync/auth_service.dart';
 import '../sync/health_upload_consent.dart';
@@ -90,6 +91,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: [
+              const Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(width: 180, child: LanguagePicker()),
+              ),
               Icon(Icons.fitness_center, size: 48, color: theme.colorScheme.primary),
               const SizedBox(height: 16),
               Text(

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../build_info.dart';
 import '../../data/firestore_repositories.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/language_picker.dart';
 import '../../privacy_policy.dart';
 import '../../sync/account_deletion.dart';
 import '../../sync/auth_service.dart';
@@ -729,6 +731,12 @@ class _AppearanceSection extends StatelessWidget {
       children: [
         Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
+        Text(
+          context.l10n.language,
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+        ),
+        const LanguagePicker(),
+        const SizedBox(height: 12),
         Text(
           'Theme',
           style: TextStyle(color: Theme.of(context).colorScheme.outline),

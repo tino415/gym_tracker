@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wear_plus/wear_plus.dart';
 
 import 'data/demo_seed.dart';
+import 'l10n/l10n.dart';
+import 'l10n/locale_controller.dart';
 import 'data/providers.dart';
 import 'phone/phone_app.dart';
 import 'phone/settings/health_connect_controller.dart';
@@ -42,9 +44,11 @@ void main() async {
   // Seeded here too, so a workout finished before the account screen is ever
   // opened still publishes for a user who has opted in.
   var healthConnectEnabled = false;
+  Locale? initialLocale;
   try {
     final prefs = await SharedPreferences.getInstance();
     initialTheme = themeModeFromPrefs(prefs);
+    initialLocale = localeFromPrefs(prefs);
     healthConnectEnabled = healthConnectEnabledFromPrefs(prefs);
   } catch (e, st) {
     debugPrint('theme prefs read failed, using system theme: $e\n$st');
@@ -54,6 +58,7 @@ void main() async {
       overrides: [
         isWatchProvider.overrideWithValue(isWatch),
         initialThemeModeProvider.overrideWithValue(initialTheme),
+        initialLocaleProvider.overrideWithValue(initialLocale),
         initialHealthConnectEnabledProvider.overrideWithValue(
           healthConnectEnabled,
         ),
@@ -125,9 +130,12 @@ class _FirestoreDirectApp extends ConsumerWidget {
         }
         final user = ref.watch(authStateProvider).valueOrNull;
         if (user == null) {
-          return const MaterialApp(
+          return MaterialApp(
             title: 'GymTracker',
-            home: SelectableOnWeb(child: SignInScreen()),
+            locale: ref.watch(localeProvider),
+            localizationsDelegates: appLocalizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const SelectableOnWeb(child: SignInScreen()),
           );
         }
         return const PhoneApp();
@@ -136,14 +144,17 @@ class _FirestoreDirectApp extends ConsumerWidget {
   }
 }
 
-class _BootScreen extends StatelessWidget {
+class _BootScreen extends ConsumerWidget {
   const _BootScreen({this.message});
   final String? message;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'GymTracker',
+      locale: ref.watch(localeProvider),
+      localizationsDelegates: appLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       // Selectable so a backend error can be copied out of a screen that
       // offers nothing else — it is the only thing here worth reporting.
       home: SelectableOnWeb(
