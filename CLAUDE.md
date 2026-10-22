@@ -12,7 +12,7 @@ before a web build), and a recipe carries them for you.
 `just` with no argument lists every recipe with its parameters and a one-line
 description; that listing is the reference, so there is no need to open the
 `Justfile` to find out what exists. Values that vary by machine or device — adb
-serials, the debug/release APK mode (derived from `arch()`), the target ABIs —
+serials, the release/debug APK mode, the target ABIs —
 are variables, printed with their resolved values by `just --evaluate`. Override
 any of them inline: `just PHONE_ABIS=android-x64 phone-apk`. The dev stack
 (`just up`) is described in `process-compose.yaml`.
