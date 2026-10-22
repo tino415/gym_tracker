@@ -1,0 +1,27 @@
+# Layered last over compose.yaml for a stack started from a worktree, so it
+# runs beside the main checkout's. Copy compose.override.yaml in from the main
+# checkout first (it is untracked, and carries the /nix/store mount), then:
+#
+#   export GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)
+#   podman compose -p "$(basename "$PWD")" \
+#     -f compose.yaml -f compose.override.yaml -f compose.worktree.yaml up -d
+#
+# and the same variable, -p and -f for `down`. dev-run finds the stack by
+# its directory, so it works from the worktree as from the main checkout.
+services:
+  app:
+    # The main checkout's stack already holds 4116-4120 on the host.
+    ports: !reset []
+    volumes:
+      # A worktree's .git is a file pointing into the main checkout's .git, by
+      # host path. Mounted at that same path, git works in here and builds get
+      # a real BUILD_ID instead of `nogit`.
+      - ${GIT_COMMON_DIR:?export it as the header of compose.worktree.yaml shows}:${GIT_COMMON_DIR}
+
+volumes:
+  # The main checkout's own volume: it holds the debug keystore, so a
+  # worktree's APKs install over the apps already on the devices, and the adb
+  # key the emulators already trust.
+  android-user:
+    external: true
+    name: gym_tracker_android-user
