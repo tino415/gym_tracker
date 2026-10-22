@@ -9,6 +9,7 @@ import '../../data/providers.dart';
 import '../../l10n/l10n.dart';
 import '../routines/exercise_picker.dart';
 import '../circuit_units.dart';
+import '../number_format.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({
@@ -757,7 +758,7 @@ class _SetRow extends StatelessWidget {
         final w = completion.actualWeightKg;
         descActual = w == null || w == 0
             ? l10n.historySecondsActual(s)
-            : l10n.historySecondsWeightActual(s, _weightText(context, w));
+            : l10n.historySecondsWeightActual(s, formatKg(context, w));
       }
       final ts = set.workoutSet.targetSeconds;
       final tw = set.workoutSet.targetWeightKg;
@@ -767,7 +768,7 @@ class _SetRow extends StatelessWidget {
         descTarget = l10n.historySecondsTarget(ts);
       } else {
         descTarget =
-            l10n.historySecondsWeightTarget(ts, _weightText(context, tw));
+            l10n.historySecondsWeightTarget(ts, formatKg(context, tw));
       }
     } else {
       // Bodyweight sets carry reps and no weight. Both halves below drop the
@@ -780,7 +781,7 @@ class _SetRow extends StatelessWidget {
         final reps = completion.actualReps ?? 0;
         descActual = (w == null || w == 0)
             ? l10n.historyRepsActual(reps)
-            : l10n.historyWeightRepsActual(_weightText(context, w), reps);
+            : l10n.historyWeightRepsActual(formatKg(context, w), reps);
       }
       final tw = set.workoutSet.targetWeightKg;
       final tr = set.workoutSet.targetReps;
@@ -790,7 +791,7 @@ class _SetRow extends StatelessWidget {
         descTarget = l10n.historyRepsTarget(tr);
       } else {
         descTarget =
-            l10n.historyWeightRepsTarget(_weightText(context, tw), tr);
+            l10n.historyWeightRepsTarget(formatKg(context, tw), tr);
       }
     }
     return InkWell(
@@ -1038,11 +1039,11 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
   if (kind == exerciseKindTime) {
     final s = int.tryParse(secondsController.text.trim());
     if (s == null) return null;
-    final w = double.tryParse(weightController.text.trim());
+    final w = parseDecimal(weightController.text);
     return (null, w, s);
   }
   final r = int.tryParse(repsController.text.trim());
-  final w = double.tryParse(weightController.text.trim());
+  final w = parseDecimal(weightController.text);
   if (r == null || w == null) return null;
   return (r, w, null);
 }
@@ -1219,10 +1220,6 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
   }
 
   static String _fmtWeight(BuildContext context, double? w) =>
-      w == null ? '—' : _weightText(context, w);
+      w == null ? '—' : formatKg(context, w);
 }
 
-String _weightText(BuildContext context, double w) => NumberFormat(
-      w == w.roundToDouble() ? '0' : '0.0',
-      Localizations.localeOf(context).toString(),
-    ).format(w);
