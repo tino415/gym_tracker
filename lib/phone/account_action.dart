@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/l10n.dart';
 import '../sync/auth_service.dart';
 
 /// Account entry point for the top-level section headers (Routines / Exercises
@@ -20,7 +21,7 @@ class AccountAction extends ConsumerWidget {
       authStateProvider.select((v) => v.valueOrNull != null),
     );
     return IconButton(
-      tooltip: 'Account',
+      tooltip: context.l10n.shellAccount,
       icon: Icon(
         signedIn ? Icons.account_circle : Icons.account_circle_outlined,
       ),

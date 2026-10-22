@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 class WatchWorkoutDonePage extends StatelessWidget {
   const WatchWorkoutDonePage({
     super.key,
@@ -29,9 +31,9 @@ class WatchWorkoutDonePage extends StatelessWidget {
                 color: scheme.primary,
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Workout complete',
-                style: TextStyle(fontWeight: FontWeight.w500),
+              Text(
+                context.l10n.watchWorkoutComplete,
+                style: const TextStyle(fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
@@ -54,7 +56,7 @@ class WatchWorkoutDonePage extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      _hrLine(avgHeartRate, maxHeartRate),
+                      _hrLine(context, avgHeartRate, maxHeartRate),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -67,7 +69,7 @@ class WatchWorkoutDonePage extends StatelessWidget {
                   onPressed: () {
                     Navigator.of(context).popUntil((route) => route.isFirst);
                   },
-                  child: const Text('Home'),
+                  child: Text(context.l10n.watchHome),
                 ),
               ),
             ],
@@ -77,9 +79,10 @@ class WatchWorkoutDonePage extends StatelessWidget {
     );
   }
 
-  static String _hrLine(int? avg, int? max) {
-    if (avg != null && max != null) return 'avg $avg · max $max bpm';
-    if (avg != null) return 'avg $avg bpm';
-    return 'max $max bpm';
+  static String _hrLine(BuildContext context, int? avg, int? max) {
+    final l10n = context.l10n;
+    if (avg != null && max != null) return l10n.watchHrAvgMax(avg, max);
+    if (avg != null) return l10n.watchHrAvg(avg);
+    return l10n.watchHrMax(max!);
   }
 }

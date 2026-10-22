@@ -1,5 +1,1009 @@
 {
   "@@locale": "en",
   "languageDevice": "Follow device",
-  "language": "Language"
+  "language": "Language",
+  "watchWorkoutComplete": "Workout complete",
+  "watchHome": "Home",
+  "watchHrAvgMax": "avg {avg} · max {max} bpm",
+  "@watchHrAvgMax": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "watchHrAvg": "avg {avg} bpm",
+  "@watchHrAvg": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      }
+    }
+  },
+  "watchHrMax": "max {max} bpm",
+  "@watchHrMax": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "watchKindTime": "Time",
+  "watchKindReps": "Reps",
+  "watchNoAlternatives": "No alternatives.\nAdd some in the routine on the phone.",
+  "watchDiscardTitle": "Discard?",
+  "watchError": "Error: {error}",
+  "@watchError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "watchSync": "Sync",
+  "watchExerciseCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@watchExerciseCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "watchWorkoutFallbackName": "Workout",
+  "watchRoutineNoExercises": "Routine has no exercises",
+  "watchRoutineNoPlannedSets": "Routine has no planned sets",
+  "watchSyncPushed": "Sync pushed",
+  "watchResume": "Resume",
+  "watchLongPressToDiscard": "long-press to discard",
+  "watchNoRoutines": "No routines.\nCreate one on the phone.",
+  "watchOk": "OK",
+  "watchSecondsShort": "{seconds}s",
+  "@watchSecondsShort": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "watchTargetSecondsWeight": "{seconds}s • {weight} kg",
+  "@watchTargetSecondsWeight": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "watchTargetReps": "{reps} reps",
+  "@watchTargetReps": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "watchTargetRepsWeight": "{reps} × {weight} kg",
+  "@watchTargetRepsWeight": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "watchSkipExerciseTitle": "Skip exercise?",
+  "watchSkipExerciseSubtitle": "Remaining sets will be skipped.",
+  "watchRestBadge": "Rest {seconds}s",
+  "@watchRestBadge": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "watchTimerBadge": "Timer {seconds}s",
+  "@watchTimerBadge": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "watchNoPlannedSets": "No planned sets.",
+  "watchAmbientWeightReps": "{weight}kg × {reps}",
+  "@watchAmbientWeightReps": {
+    "placeholders": {
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "watchLastSeconds": "Last: {seconds}s",
+  "@watchLastSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "watchLastReps": "Last: {reps} reps",
+  "@watchLastReps": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "watchLastRepsWeight": "Last: {reps} × {weight} kg",
+  "@watchLastRepsWeight": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "watchUnitKg": "kg",
+  "watchUnitReps": "reps",
+  "watchUnitSec": "sec",
+  "watchPause": "Pause",
+  "watchStart": "Start",
+  "watchPreviousSet": "Previous set",
+  "watchNextSet": "Next set",
+  "watchSwapExercise": "Swap exercise",
+  "watchSkipSet": "Skip set",
+  "watchSkipExercise": "Skip exercise",
+  "watchDone": "Done",
+  "watchDoneChecked": "Done ✓",
+  "watchRest": "Rest",
+  "watchMinus15": "-15s",
+  "watchPlus15": "+15s",
+  "watchUpNext": "Up next: {name}",
+  "@watchUpNext": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "watchSkip": "Skip",
+  "watchFinish": "Finish",
+  "watchDiscard": "Discard",
+  "watchSetCount": "{count, plural, other{{count} sets}}",
+  "@watchSetCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "watchRestChip": "rest {seconds}s",
+  "@watchRestChip": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "watchCircuit": "circuit",
+  "watchAlternatives": "Alternatives",
+  "watchSwitchToThis": "Switch to this",
+  "accountTitle": "Account",
+  "accountError": "Error: {error}",
+  "@accountError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "accountSignedOutIntro": "Sign in to sync your routines and history across devices. The app stays fully usable without an account.",
+  "accountSignedIn": "Signed in",
+  "accountSignOut": "Sign out",
+  "accountDeleted": "Account deleted.",
+  "accountClaimTitle": "Use this account here?",
+  "accountClaimBody": "This starts syncing the data currently on this device to the signed-in account. If the device was previously used by another account, that account's routines and history may be uploaded too. Nothing is deleted.",
+  "accountCancel": "Cancel",
+  "accountClaimConfirm": "Use this account",
+  "accountBuild": "Build {commit}",
+  "@accountBuild": {
+    "placeholders": {
+      "commit": {
+        "type": "String"
+      }
+    }
+  },
+  "accountBuildWithDate": "Build {commit}\n{when}",
+  "@accountBuildWithDate": {
+    "placeholders": {
+      "commit": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "accountHealthConnect": "Health Connect",
+  "accountHealthConnectTitle": "Write workouts to Health Connect",
+  "accountHealthConnectHint": "Finished workouts appear in Health Connect, with heart rate when a watch recorded it. Nothing is ever read back.",
+  "accountHeartRate": "Heart rate",
+  "accountHeartRateHint": "Heart rate is health data. Off, your workouts still sync but their readings stay on your devices. On, the readings are stored with each workout so they appear on your other devices. Turning it off again deletes the readings already stored.",
+  "accountDeleteAccount": "Delete account",
+  "accountDeleteWarning": "Permanently deletes your account and everything synced to it. This cannot be undone.",
+  "accountDeleteDialogTitle": "Delete account?",
+  "accountDeleteDialogBody": "This deletes {who} and every routine, workout and exercise synced to it. It cannot be undone.",
+  "@accountDeleteDialogBody": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      }
+    }
+  },
+  "accountYourAccount": "your account",
+  "accountConfirmPassword": "Confirm your password to continue.",
+  "accountReauthNotice": "You will be asked to sign in again to confirm.",
+  "accountEraseLocal": "Also erase data on this device",
+  "accountEraseLocalHint": "Otherwise your routines and history stay here and the app keeps working offline.",
+  "accountSyncPaused": "Cloud sync is paused",
+  "accountSyncPausedBody": "This device's data belongs to a different account, so nothing syncs while you're signed in here. Use this account on this device to start syncing.",
+  "accountUseHere": "Use this account on this device",
+  "accountAppearance": "Appearance",
+  "accountTheme": "Theme",
+  "accountThemeSystem": "System",
+  "accountThemeLight": "Light",
+  "accountThemeDark": "Dark",
+  "accountSyncDisabled": "Cloud sync is not enabled in this build.",
+  "bootBackendError": "Cloud backend error: {error}",
+  "@bootBackendError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "bootBackendUnavailable": "Cloud backend unavailable.",
+  "historyDetailTitle": "Workout",
+  "historyDeleteWorkout": "Delete workout",
+  "historyNotFound": "Workout not found",
+  "historyDeleteTitle": "Delete workout?",
+  "historyDeleteBody": "This removes the workout and its completions.",
+  "historyCancel": "Cancel",
+  "historyDelete": "Delete",
+  "historyStarted": "Started",
+  "historyEnded": "Ended",
+  "historyInProgressSetEnd": "In progress — set end",
+  "historyRoutine": "Routine",
+  "historyHeartRate": "Heart rate",
+  "historyDone": "Done",
+  "historyReorder": "Reorder",
+  "historyAddExercise": "Add exercise",
+  "historyAddCompletedSet": "Add completed set",
+  "historyAddSet": "Add set",
+  "historyRemoveExerciseTitle": "Remove exercise?",
+  "historyRemoveExerciseBody": "Remove \"{name}\" from this workout?",
+  "@historyRemoveExerciseBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "historyRemove": "Remove",
+  "historyAddCompletion": "Add completion",
+  "historyEditCompletion": "Edit completion",
+  "historyInThisWorkout": "In this workout",
+  "historyHrAvgMax": "avg {avg} · max {max} bpm",
+  "@historyHrAvgMax": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHrAvg": "avg {avg} bpm",
+  "@historyHrAvg": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHrMax": "max {max} bpm",
+  "@historyHrMax": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "historyCircuit": "Circuit",
+  "historySwapExercise": "Swap exercise",
+  "historyRemoveExercise": "Remove exercise",
+  "historyRemoveCompletion": "Remove completion",
+  "historyRemoveSet": "Remove set",
+  "historySetHrAvgMax": "HR avg {avg} · max {max}",
+  "@historySetHrAvgMax": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "historySetHrAvg": "HR avg {avg}",
+  "@historySetHrAvg": {
+    "placeholders": {
+      "avg": {
+        "type": "int"
+      }
+    }
+  },
+  "historySetHrMax": "HR max {max}",
+  "@historySetHrMax": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "historyDatePattern": "yyyy-MM-dd",
+  "historyChangeDate": "Change date",
+  "historyChangeTime": "Change time",
+  "historySeconds": "Seconds",
+  "historyWeightOptional": "Weight (optional)",
+  "historyWeight": "Weight",
+  "historyReps": "Reps",
+  "historySave": "Save",
+  "historyImprovementsHeadline": "{count, plural, =1{1 set exceeded their target} other{{count} sets exceeded their target}}",
+  "@historyImprovementsHeadline": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyAndMore": "…and {extra} more",
+  "@historyAndMore": {
+    "placeholders": {
+      "extra": {
+        "type": "int"
+      }
+    }
+  },
+  "historyDismiss": "Dismiss",
+  "historyApply": "Apply",
+  "historyImprovementTime": "{name} · set {set} · {oldSeconds}s → {newSeconds}s",
+  "@historyImprovementTime": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "set": {
+        "type": "int"
+      },
+      "oldSeconds": {
+        "type": "String"
+      },
+      "newSeconds": {
+        "type": "String"
+      }
+    }
+  },
+  "historyImprovementReps": "{name} · set {set} · {oldReps}×{oldWeight} → {newReps}×{newWeight}",
+  "@historyImprovementReps": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "set": {
+        "type": "int"
+      },
+      "oldReps": {
+        "type": "String"
+      },
+      "oldWeight": {
+        "type": "String"
+      },
+      "newReps": {
+        "type": "String"
+      },
+      "newWeight": {
+        "type": "String"
+      }
+    }
+  },
+  "historySecondsActual": "{seconds} s",
+  "@historySecondsActual": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "historySecondsWeightActual": "{seconds} s @ {weight} kg",
+  "@historySecondsWeightActual": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "historySecondsTarget": "target {seconds}s",
+  "@historySecondsTarget": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "historySecondsWeightTarget": "target {seconds}s @ {weight} kg",
+  "@historySecondsWeightTarget": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "historyRepsActual": "{reps, plural, other{{reps} reps}}",
+  "@historyRepsActual": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "historyWeightRepsActual": "{weight} kg × {reps}",
+  "@historyWeightRepsActual": {
+    "placeholders": {
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "historyRepsTarget": "{reps, plural, other{target {reps} reps}}",
+  "@historyRepsTarget": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "historyWeightRepsTarget": "target {weight} kg × {reps}",
+  "@historyWeightRepsTarget": {
+    "placeholders": {
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "historyTitle": "Workouts",
+  "historyLogWorkout": "Log workout",
+  "historySelectPrompt": "Select a workout to view or edit.",
+  "historyError": "Error: {error}",
+  "@historyError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "historyEmptyTitle": "No workouts yet",
+  "historyEmptyHint": "Completed workouts will appear here.",
+  "historyWorkoutFallback": "Workout",
+  "historyLogPastTitle": "Log a past workout",
+  "historyEmptyWorkout": "Empty workout",
+  "historyEmptyWorkoutHint": "Add exercises yourself",
+  "historyExerciseCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@historyExerciseCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyInProgress": "In progress",
+  "historyLessThanMinute": "<1 min",
+  "historyMinutes": "{minutes} min",
+  "@historyMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHours": "{hours}h",
+  "@historyHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHoursMinutes": "{hours}h {minutes}m",
+  "@historyHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "historyDateTimePattern": "yyyy-MM-dd HH:mm",
+  "shellTabRoutines": "Routines",
+  "shellTabExercises": "Exercises",
+  "shellTabWorkouts": "Workouts",
+  "shellAccount": "Account",
+  "signInFailed": "Failed: {error}",
+  "@signInFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "signInSubtitle": "Sign in to manage your routines and history.",
+  "signInEmail": "Email",
+  "signInEmailRequired": "Email is required",
+  "signInEmailInvalid": "Enter a valid email",
+  "signInPassword": "Password",
+  "signInPasswordTooShort": "At least 6 characters",
+  "signInStoreHeartRate": "Store heart rate in my account",
+  "signInStoreHeartRateHint": "Heart rate is health data. Leave this off and your workouts still sync — their readings just stay on your devices. You can change it any time on the Account screen.",
+  "signInButton": "Sign in",
+  "signInCreateAccount": "Create account",
+  "signInOr": "or",
+  "signInWithGoogle": "Continue with Google",
+  "privacyPolicyFallback": "Privacy policy: {url}",
+  "@privacyPolicyFallback": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "privacyReadPolicy": "Read the privacy policy",
+  "syncGoogleNoIdToken": "Google sign-in returned no ID token.",
+  "syncNoEmailCredential": "This account has no email/password credential to confirm.",
+  "syncNotSignedIn": "Not signed in.",
+  "commonMuscleChest": "Chest",
+  "commonMuscleBack": "Back",
+  "commonMuscleShoulders": "Shoulders",
+  "commonMuscleBiceps": "Biceps",
+  "commonMuscleTriceps": "Triceps",
+  "commonMuscleForearms": "Forearms",
+  "commonMuscleAbs": "Abs",
+  "commonMuscleQuads": "Quads",
+  "commonMuscleHamstrings": "Hamstrings",
+  "commonMuscleGlutes": "Glutes",
+  "commonMuscleCalves": "Calves",
+  "exerciseMusclesLoadError": "Could not load muscles: {error}",
+  "@exerciseMusclesLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseMusclesTitle": "Muscles",
+  "exercisesTitle": "Exercises",
+  "exerciseNew": "New exercise",
+  "exerciseEdit": "Edit exercise",
+  "exercisesSelectPrompt": "Select an exercise, or + to create one.",
+  "commonError": "Error: {error}",
+  "@commonError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "exercisesEmptyTitle": "No exercises yet",
+  "exercisesEmptyLine": "Tap + to add your first one.",
+  "exercisesSearchHint": "Search exercises",
+  "commonClear": "Clear",
+  "exercisesNoMatchTitle": "No exercises match",
+  "exercisesNoMatchLine": "Nothing named “{query}”.",
+  "@exercisesNoMatchLine": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseSaveError": "Could not save: {error}",
+  "@exerciseSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseDeleteError": "Could not delete: {error}",
+  "@exerciseDeleteError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "exerciseDeleteTitle": "Delete exercise?",
+  "exerciseDeleteBody": "Delete \"{name}\"? Workouts that reference it will need to be edited.",
+  "@exerciseDeleteBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "commonCancel": "Cancel",
+  "commonDelete": "Delete",
+  "commonName": "Name",
+  "commonNameRequired": "Name is required",
+  "commonReps": "Reps",
+  "commonTime": "Time",
+  "commonSave": "Save",
+  "routinesTitle": "Routines",
+  "routineNew": "New routine",
+  "routinesSelectPrompt": "Select a routine, or + to create one.",
+  "routineSelectExercisePrompt": "Select an exercise to edit its sets.",
+  "routineSwipeStart": "Start",
+  "routineWorkoutInProgress": "Workout in progress",
+  "routineAdHocWorkout": "Ad-hoc workout",
+  "routineResume": "Resume",
+  "routinesEmptyTitle": "No routines yet",
+  "routinesEmptyLine1": "Tap + to design your first routine.",
+  "routinesEmptyLine2": "Pull down to sync with the watch.",
+  "routineExerciseCount": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@routineExerciseCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commonSecondsValue": "{seconds} s",
+  "@commonSecondsValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "commonSecondsAtWeight": "{seconds} s @ {weight} kg",
+  "@commonSecondsAtWeight": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "commonWeightTimesReps": "{weight} kg × {reps}",
+  "@commonWeightTimesReps": {
+    "placeholders": {
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
+    }
+  },
+  "routineRemoveSet": "Remove set",
+  "routineSetEditorFailed": "Failed: {error}",
+  "@routineSetEditorFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "routineSetEditTitle": "Edit set",
+  "routineSetNewTitle": "New set",
+  "routineSetNewTitleAdded": "New set · {count} added",
+  "@routineSetNewTitleAdded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commonSeconds": "Seconds",
+  "commonUnitSeconds": "s",
+  "commonUnitKg": "kg",
+  "commonUnitMinutes": "min",
+  "commonWeight": "Weight",
+  "routineSetWeightOptional": "Weight (optional)",
+  "commonDone": "Done",
+  "routineSetSaveAndAdd": "Save & add",
+  "commonWeightKg": "{weight} kg",
+  "@commonWeightKg": {
+    "placeholders": {
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "commonErrorShort": "Error",
+  "commonAdd": "Add",
+  "commonRemove": "Remove",
+  "commonCreate": "Create",
+  "exerciseCreateError": "Could not create: {error}",
+  "@exerciseCreateError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "exercisePickerTitle": "Add exercise",
+  "exercisePickerCreateNew": "Create new exercise",
+  "exercisePickerNoneAvailable": "No exercises available.",
+  "exercisePickerNoMatch": "No exercises match.",
+  "exercisePickerAlreadyAdded": "Already added",
+  "routineDeleteTitle": "Delete routine?",
+  "routineDeleteBody": "Delete \"{name}\"? Past workouts will keep their own copy and remain in History.",
+  "@routineDeleteBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "routineNameFirst": "Give the routine a name first",
+  "routineInThisRoutine": "In this routine",
+  "routineEdit": "Edit routine",
+  "routineAddExercise": "Add exercise",
+  "routineReorder": "Reorder",
+  "routineDelete": "Delete routine",
+  "routineNameHelperDraft": "Press Enter (or ✓) to save and start adding exercises",
+  "routineNameHelperEdit": "Press Enter (or ✓) to save changes",
+  "routineStartWorkout": "Start workout",
+  "routineSaveFirst": "Save the routine first to add exercises.",
+  "routineNoExercises": "No exercises in this routine yet.",
+  "routineCircuit": "Circuit",
+  "routineRemoveFromRoutine": "Remove from routine",
+  "routineNoSetsSummary": "No sets · tap to edit",
+  "routineNoRest": "no rest",
+  "routineRestSeconds": "{seconds}s rest",
+  "@routineRestSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "routineExerciseSummary": "{sets} · last {last} · {rest}",
+  "@routineExerciseSummary": {
+    "placeholders": {
+      "sets": {
+        "type": "String"
+      },
+      "last": {
+        "type": "String"
+      },
+      "rest": {
+        "type": "String"
+      }
+    }
+  },
+  "routineSetCount": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@routineSetCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "routineTapToEdit": "tap to edit",
+  "routineSecondsWithWeight": "{seconds}s · {weight} kg",
+  "@routineSecondsWithWeight": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "routineSecondsShort": "{seconds}s",
+  "@routineSecondsShort": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "routineRepsCount": "{count, plural, =1{1 rep} other{{count} reps}}",
+  "@routineRepsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "routineRepsTimesWeight": "{reps} × {weight} kg",
+  "@routineRepsTimesWeight": {
+    "placeholders": {
+      "reps": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      }
+    }
+  },
+  "routineBackToRoutine": "Back to routine",
+  "routineCircuitWithPrevious": "Circuit with previous",
+  "routineSets": "Sets",
+  "routineAddSet": "Add set",
+  "routineNoSetsYet": "No sets yet — tap Add set to start.",
+  "routineAlternatives": "Alternatives",
+  "routineAlternativesHint": "Swap targets at workout time.",
+  "routineRemoveExerciseTitle": "Remove exercise?",
+  "routineRemoveExerciseBody": "Remove {name} from this routine? Past workouts keep their copy.",
+  "@routineRemoveExerciseBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "routineRestAfterTitle": "Rest after this exercise",
+  "routineSecondsSuffix": "seconds",
+  "routineUsesPrimaryTargets": "uses primary targets",
+  "routineRemoveAlternative": "Remove alternative",
+  "runWorkoutDefaultName": "Workout",
+  "runFinishTitle": "Finish workout?",
+  "runUnloggedSets": "{count, plural, =1{1 set is still unlogged.} other{{count} sets are still unlogged.}}",
+  "@runUnloggedSets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "runFinish": "Finish",
+  "runDiscardTitle": "Discard workout?",
+  "runDiscardBody": "Everything logged in this session is deleted.",
+  "runDiscard": "Discard",
+  "runDiscardMenu": "Discard workout",
+  "runStartError": "Couldn't start the workout.\n\n{error}",
+  "@runStartError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "runNothingToDo": "Nothing to do in this workout.",
+  "runSetOfTotal": "Set {number} of {total}",
+  "@runSetOfTotal": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "runSetOfTotalCircuit": "Set {number} of {total} • circuit",
+  "@runSetOfTotalCircuit": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "runTarget": "Target  {target}",
+  "@runTarget": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "runLastTime": "Last time  {value}",
+  "@runLastTime": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "runUndoSet": "Undo set",
+  "runPrevious": "Previous",
+  "runNext": "Next",
+  "runTimerChip": "Timer",
+  "runExerciseTimer": "{name} timer",
+  "@runExerciseTimer": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "runPause": "Pause",
+  "runStartTimer": "Start timer",
+  "runUpNextLine": "{name} • set {number} • {target}",
+  "@runUpNextLine": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "number": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "runRest": "Rest",
+  "runUpNext": "Up next  {line}",
+  "@runUpNext": {
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "runRestMinus": "−15s",
+  "runRestPlus": "+15s",
+  "runSkipRest": "Skip rest",
+  "runDecrease": "Decrease {label}",
+  "@runDecrease": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "runIncrease": "Increase {label}",
+  "@runIncrease": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  }
 }

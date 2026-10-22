@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/providers.dart';
+import '../l10n/l10n.dart';
 import '../l10n/language_picker.dart';
 import '../privacy_policy.dart';
+import '../sync/auth_error_text.dart';
 import '../sync/auth_service.dart';
 import '../sync/health_upload_consent.dart';
 
@@ -54,12 +56,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? e.code)));
+      ).showSnackBar(SnackBar(content: Text(authErrorText(context, e))));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.signInFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -104,7 +106,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Sign in to manage your routines and history.',
+                context.l10n.signInSubtitle,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: theme.colorScheme.outline),
               ),
@@ -122,14 +124,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         keyboardType: TextInputType.emailAddress,
                         textInputAction: TextInputAction.next,
                         autofillHints: const [AutofillHints.email],
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
+                        decoration: InputDecoration(
+                          labelText: context.l10n.signInEmail,
                           border: OutlineInputBorder(),
                         ),
                         validator: (v) {
                           final value = v?.trim() ?? '';
-                          if (value.isEmpty) return 'Email is required';
-                          if (!value.contains('@')) return 'Enter a valid email';
+                          if (value.isEmpty) return context.l10n.signInEmailRequired;
+                          if (!value.contains('@')) return context.l10n.signInEmailInvalid;
                           return null;
                         },
                       ),
@@ -139,12 +141,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         obscureText: true,
                         textInputAction: TextInputAction.done,
                         autofillHints: const [AutofillHints.password],
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
+                        decoration: InputDecoration(
+                          labelText: context.l10n.signInPassword,
                           border: OutlineInputBorder(),
                         ),
                         validator: (v) =>
-                            (v ?? '').length < 6 ? 'At least 6 characters' : null,
+                            (v ?? '').length < 6 ? context.l10n.signInPasswordTooShort : null,
                         // Enter submits sign-in (keyboard-first desktop), guarded
                         // by the busy flag so it can't double-fire.
                         onFieldSubmitted: (_) {
@@ -168,11 +170,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 onChanged: _busy
                     ? null
                     : (v) => setState(() => _storeHeartRate = v ?? false),
-                title: const Text('Store heart rate in my account'),
+                title: Text(context.l10n.signInStoreHeartRate),
                 subtitle: Text(
-                  'Heart rate is health data. Leave this off and your workouts '
-                  'still sync — their readings just stay on your devices. You '
-                  'can change it any time on the Account screen.',
+                  context.l10n.signInStoreHeartRateHint,
                   style: TextStyle(color: theme.colorScheme.outline),
                 ),
               ),
@@ -193,7 +193,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Sign in'),
+                    : Text(context.l10n.signInButton),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -203,7 +203,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           _emailController.text.trim(),
                           _passwordController.text,
                         )),
-                child: const Text('Create account'),
+                child: Text(context.l10n.signInCreateAccount),
               ),
               if (googleSignInSupported) ...[
                 const SizedBox(height: 16),
@@ -213,7 +213,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
-                        'or',
+                        context.l10n.signInOr,
                         style: TextStyle(color: theme.colorScheme.outline),
                       ),
                     ),
@@ -226,7 +226,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       ? null
                       : () => _run(auth.signInWithGoogle, validate: false),
                   icon: const Icon(Icons.login),
-                  label: const Text('Continue with Google'),
+                  label: Text(context.l10n.signInWithGoogle),
                 ),
               ],
             ],

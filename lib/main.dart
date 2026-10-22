@@ -123,10 +123,10 @@ class _FirestoreDirectApp extends ConsumerWidget {
     final ready = ref.watch(firebaseReadyProvider);
     return ready.when(
       loading: () => const _BootScreen(),
-      error: (e, _) => _BootScreen(message: 'Cloud backend error: $e'),
+      error: (e, _) => _BootScreen(message: (l10n) => l10n.bootBackendError('$e')),
       data: (ok) {
         if (!ok) {
-          return const _BootScreen(message: 'Cloud backend unavailable.');
+          return _BootScreen(message: (l10n) => l10n.bootBackendUnavailable);
         }
         final user = ref.watch(authStateProvider).valueOrNull;
         if (user == null) {
@@ -146,7 +146,7 @@ class _FirestoreDirectApp extends ConsumerWidget {
 
 class _BootScreen extends ConsumerWidget {
   const _BootScreen({this.message});
-  final String? message;
+  final String Function(AppLocalizations l10n)? message;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -158,14 +158,19 @@ class _BootScreen extends ConsumerWidget {
       // Selectable so a backend error can be copied out of a screen that
       // offers nothing else — it is the only thing here worth reporting.
       home: SelectableOnWeb(
-        child: Scaffold(
-          body: Center(
-            child: message == null
-                ? const CircularProgressIndicator()
-                : Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(message!, textAlign: TextAlign.center),
-                  ),
+        child: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: message == null
+                  ? const CircularProgressIndicator()
+                  : Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        message!(context.l10n),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+            ),
           ),
         ),
       ),

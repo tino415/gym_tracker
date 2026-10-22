@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
+import '../number_format.dart';
 import 'exercise_picker.dart';
 import 'planned_set_row.dart';
 import 'set_editor_dialog.dart';
@@ -57,13 +59,13 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
         leading: (embedded && showBack)
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back to routine',
+                tooltip: context.l10n.routineBackToRoutine,
                 onPressed: onClose,
               )
             : null,
         title: fullAsync.when(
           loading: () => const Text('…'),
-          error: (_, _) => const Text('Error'),
+          error: (_, _) => Text(context.l10n.commonErrorShort),
           data: (full) {
             final re = _find(full);
             return Text(re?.exercise.name ?? '');
@@ -72,7 +74,7 @@ class RoutineExerciseDetailPage extends ConsumerWidget {
       ),
       body: fullAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(context.l10n.commonError('$e'))),
         data: (full) {
           final re = _find(full);
           if (re == null || full == null) {
@@ -139,7 +141,9 @@ class _Body extends ConsumerWidget {
             const SizedBox(width: 8),
             Chip(
               label: Text(
-                re.kind == exerciseKindTime ? 'Time' : 'Reps',
+                re.kind == exerciseKindTime
+                    ? context.l10n.commonTime
+                    : context.l10n.commonReps,
               ),
               visualDensity: VisualDensity.compact,
             ),
@@ -149,8 +153,10 @@ class _Body extends ConsumerWidget {
               icon: const Icon(Icons.timer_outlined, size: 18),
               label: Text(
                 re.routineExercise.restSeconds == 0
-                    ? 'no rest'
-                    : '${re.routineExercise.restSeconds}s rest',
+                    ? context.l10n.routineNoRest
+                    : context.l10n.routineRestSeconds(
+                        re.routineExercise.restSeconds,
+                      ),
               ),
             ),
           ],
@@ -163,7 +169,7 @@ class _Body extends ConsumerWidget {
               selected: groupedWithPrev,
               onSelected: (_) =>
                   _toggleCircuit(ref, full, re, idx),
-              label: const Text('Circuit with previous'),
+              label: Text(context.l10n.routineCircuitWithPrevious),
               avatar: Icon(
                 groupedWithPrev ? Icons.link : Icons.link_off,
                 size: 16,
@@ -173,12 +179,12 @@ class _Body extends ConsumerWidget {
         const Divider(height: 24),
         Row(
           children: [
-            Text('Sets', style: theme.textTheme.titleMedium),
+            Text(context.l10n.routineSets, style: theme.textTheme.titleMedium),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _editSetDialog(context, ref, re: re),
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add set'),
+              label: Text(context.l10n.routineAddSet),
             ),
           ],
         ),
@@ -186,7 +192,7 @@ class _Body extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              'No sets yet — tap Add set to start.',
+              context.l10n.routineNoSetsYet,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.outline,
               ),
@@ -214,12 +220,12 @@ class _Body extends ConsumerWidget {
           children: [
             Icon(Icons.swap_horiz, size: 18, color: theme.colorScheme.outline),
             const SizedBox(width: 4),
-            Text('Alternatives', style: theme.textTheme.titleMedium),
+            Text(context.l10n.routineAlternatives, style: theme.textTheme.titleMedium),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _addAlternative(context, ref, re),
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add'),
+              label: Text(context.l10n.commonAdd),
             ),
           ],
         ),
@@ -227,7 +233,7 @@ class _Body extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
             child: Text(
-              'Swap targets at workout time.',
+              context.l10n.routineAlternativesHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.outline,
               ),
@@ -253,7 +259,7 @@ class _Body extends ConsumerWidget {
           onPressed: () =>
               confirmRemoveRoutineExercise(context, ref, re, onRemoved: onRemoved),
           icon: const Icon(Icons.delete_outline),
-          label: const Text('Remove from routine'),
+          label: Text(context.l10n.routineRemoveFromRoutine),
           style: OutlinedButton.styleFrom(
             foregroundColor: theme.colorScheme.error,
           ),
@@ -278,21 +284,19 @@ Future<void> confirmRemoveRoutineExercise(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Remove exercise?'),
+      title: Text(ctx.l10n.routineRemoveExerciseTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: routineDialogMaxWidth),
-        child: Text(
-          'Remove ${re.exercise.name} from this routine? Past workouts keep their copy.',
-        ),
+        child: Text(ctx.l10n.routineRemoveExerciseBody(re.exercise.name)),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
+          child: Text(ctx.l10n.commonCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Remove'),
+          child: Text(ctx.l10n.commonRemove),
         ),
       ],
     ),
@@ -318,24 +322,24 @@ Future<void> _editRest(
     builder: (ctx) => AlertDialog(
       // Names the exercise, not "between sets": in a circuit this is the pause
       // before the *next member*, and 0 makes the next set follow immediately.
-      title: const Text('Rest after this exercise'),
+      title: Text(ctx.l10n.routineRestAfterTitle),
       content: TextField(
         controller: controller,
         autofocus: true,
         keyboardType: TextInputType.number,
-        decoration: const InputDecoration(suffixText: 'seconds'),
+        decoration: InputDecoration(suffixText: ctx.l10n.routineSecondsSuffix),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Cancel'),
+          child: Text(ctx.l10n.commonCancel),
         ),
         FilledButton(
           onPressed: () {
             final parsed = int.tryParse(controller.text.trim());
             Navigator.of(ctx).pop(parsed);
           },
-          child: const Text('Save'),
+          child: Text(ctx.l10n.commonSave),
         ),
       ],
     ),
@@ -491,10 +495,8 @@ class _AlternativeTile extends StatelessWidget {
     final ex = alternative.exercise;
     final ps = alternative.plannedSets;
     final hint = ps.isEmpty
-        ? 'uses primary targets'
-        : ps.length == 1
-            ? '1 set'
-            : '${ps.length} sets';
+        ? context.l10n.routineUsesPrimaryTargets
+        : context.l10n.routineSetCount(ps.length);
     return Theme(
       data: theme.copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -513,7 +515,7 @@ class _AlternativeTile extends StatelessWidget {
         trailing: IconButton(
           onPressed: onDelete,
           icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: 'Remove alternative',
+          tooltip: context.l10n.routineRemoveAlternative,
         ),
         childrenPadding: const EdgeInsets.only(left: 12, right: 4, bottom: 8),
         children: [
@@ -530,7 +532,7 @@ class _AlternativeTile extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onAddSet,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add set'),
+              label: Text(context.l10n.routineAddSet),
             ),
           ),
         ],
@@ -554,27 +556,25 @@ class _AlternativePlannedSetRow extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  String _describe() {
+  String _describe(BuildContext context) {
+    final l10n = context.l10n;
     if (kind == exerciseKindTime) {
       final s = set.targetSeconds;
       final w = set.targetWeightKg;
       if (s == null && w == null) return '—';
       final parts = <String>[];
-      if (s != null) parts.add('${s}s');
-      if (w != null && w > 0) parts.add('${_fmt(w)} kg');
+      if (s != null) parts.add(l10n.routineSecondsShort(s));
+      if (w != null && w > 0) parts.add(l10n.commonWeightKg(formatKg(context, w)));
       return parts.join(' · ');
     }
     final r = set.targetReps;
     final w = set.targetWeightKg;
     if (r == null && w == null) return '—';
     final parts = <String>[];
-    if (r != null) parts.add('$r reps');
-    if (w != null) parts.add('${_fmt(w)} kg');
+    if (r != null) parts.add(l10n.routineRepsCount(r));
+    if (w != null) parts.add(l10n.commonWeightKg(formatKg(context, w)));
     return parts.join(' · ');
   }
-
-  String _fmt(double w) =>
-      w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {
@@ -593,11 +593,11 @@ class _AlternativePlannedSetRow extends StatelessWidget {
                     ),
               ),
             ),
-            Expanded(child: Text(_describe())),
+            Expanded(child: Text(_describe(context))),
             IconButton(
               onPressed: onDelete,
               icon: const Icon(Icons.close, size: 16),
-              tooltip: 'Remove set',
+              tooltip: context.l10n.routineRemoveSet,
               visualDensity: VisualDensity.compact,
             ),
           ],

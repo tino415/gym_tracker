@@ -9,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../../l10n/language_picker.dart';
 import '../../privacy_policy.dart';
 import '../../sync/account_deletion.dart';
+import '../../sync/auth_error_text.dart';
 import '../../sync/auth_service.dart';
 import '../../sync/health_connect_bridge.dart';
 import '../../sync/health_upload_consent.dart';
@@ -55,12 +56,12 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? e.code)));
+      ).showSnackBar(SnackBar(content: Text(authErrorText(context, e))));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.signInFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -72,7 +73,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final userAsync = ref.watch(authStateProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
+      appBar: AppBar(title: Text(context.l10n.accountTitle)),
       // Single scroll view: the Appearance section is always shown (it isn't
       // gated on sync being enabled or the user being signed in); the account /
       // sync content follows below it.
@@ -114,7 +115,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   child: Center(child: CircularProgressIndicator()),
                 ),
               ],
-              error: (e, _) => [Center(child: Text('Error: $e'))],
+              error: (e, _) => [Center(child: Text(context.l10n.accountError('$e')))],
               data: (user) =>
                   user == null ? _signedOutChildren() : _signedInChildren(user),
             ),
@@ -131,8 +132,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final auth = ref.read(authServiceProvider);
     return [
         Text(
-          'Sign in to sync your routines and history across devices. '
-          'The app stays fully usable without an account.',
+          context.l10n.accountSignedOutIntro,
           style: TextStyle(color: Theme.of(context).colorScheme.outline),
         ),
         const SizedBox(height: 16),
@@ -144,14 +144,14 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const [AutofillHints.email],
-                decoration: const InputDecoration(
-                  labelText: 'Email',
+                decoration: InputDecoration(
+                  labelText: context.l10n.signInEmail,
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) {
                   final value = v?.trim() ?? '';
-                  if (value.isEmpty) return 'Email is required';
-                  if (!value.contains('@')) return 'Enter a valid email';
+                  if (value.isEmpty) return context.l10n.signInEmailRequired;
+                  if (!value.contains('@')) return context.l10n.signInEmailInvalid;
                   return null;
                 },
               ),
@@ -160,13 +160,13 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                 controller: _passwordController,
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: context.l10n.signInPassword,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (v) {
                   if ((v ?? '').length < 6) {
-                    return 'At least 6 characters';
+                    return context.l10n.signInPasswordTooShort;
                   }
                   return null;
                 },
@@ -184,7 +184,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     _passwordController.text,
                   ),
                 ),
-          child: const Text('Sign in'),
+          child: Text(context.l10n.signInButton),
         ),
         const SizedBox(height: 8),
         OutlinedButton(
@@ -196,7 +196,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     _passwordController.text,
                   ),
                 ),
-          child: const Text('Create account'),
+          child: Text(context.l10n.signInCreateAccount),
         ),
         if (googleSignInSupported) ...[
           const SizedBox(height: 16),
@@ -206,7 +206,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
-                  'or',
+                  context.l10n.signInOr,
                   style: TextStyle(color: Theme.of(context).colorScheme.outline),
                 ),
               ),
@@ -219,7 +219,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                 ? null
                 : () => _run(auth.signInWithGoogle, validate: false),
             icon: const Icon(Icons.login),
-            label: const Text('Continue with Google'),
+            label: Text(context.l10n.signInWithGoogle),
           ),
         ],
     ];
@@ -238,7 +238,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     return [
         ListTile(
           leading: const Icon(Icons.account_circle),
-          title: Text(user.email ?? 'Signed in'),
+          title: Text(user.email ?? context.l10n.accountSignedIn),
           subtitle: SelectableText(user.uid),
         ),
         if (paused) ...[
@@ -264,7 +264,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         const SizedBox(height: 16),
         FilledButton(
           onPressed: _busy ? null : () => _run(auth.signOut, validate: false),
-          child: const Text('Sign out'),
+          child: Text(context.l10n.accountSignOut),
         ),
         const Divider(height: 32),
         _DeleteAccountSection(
@@ -352,7 +352,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account deleted.')),
+        SnackBar(content: Text(context.l10n.accountDeleted)),
       );
     }, validate: false);
   }
@@ -365,21 +365,16 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Use this account here?'),
-        content: const Text(
-          'This starts syncing the data currently on this device to the '
-          'signed-in account. If the device was previously used by another '
-          'account, that account\'s routines and history may be uploaded too. '
-          'Nothing is deleted.',
-        ),
+        title: Text(context.l10n.accountClaimTitle),
+        content: Text(context.l10n.accountClaimBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.accountCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Use this account'),
+            child: Text(context.l10n.accountClaimConfirm),
           ),
         ],
       ),
@@ -427,8 +422,11 @@ class _BuildStamp extends StatelessWidget {
           // of the id where it read as part of the commit.
           child: SelectableText(
             parsed.when == null
-                ? 'Build ${parsed.commit}'
-                : 'Build ${parsed.commit}\n${parsed.when}',
+                ? context.l10n.accountBuild(parsed.commit)
+                : context.l10n.accountBuildWithDate(
+                    parsed.commit,
+                    parsed.when!,
+                  ),
             style: style,
           ),
         ),
@@ -454,17 +452,14 @@ class _HealthConnectSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Health Connect', style: Theme.of(context).textTheme.titleMedium),
+        Text(context.l10n.accountHealthConnect, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: enabled,
           onChanged: onChanged,
-          title: const Text('Write workouts to Health Connect'),
-          subtitle: const Text(
-            'Finished workouts appear in Health Connect, with heart rate when '
-            'a watch recorded it. Nothing is ever read back.',
-          ),
+          title: Text(context.l10n.accountHealthConnectTitle),
+          subtitle: Text(context.l10n.accountHealthConnectHint),
         ),
       ],
     );
@@ -492,19 +487,14 @@ class _HealthUploadConsentSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Heart rate', style: Theme.of(context).textTheme.titleMedium),
+        Text(context.l10n.accountHeartRate, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: granted,
           onChanged: onChanged,
-          title: const Text('Store heart rate in my account'),
-          subtitle: const Text(
-            'Heart rate is health data. Off, your workouts still sync but '
-            'their readings stay on your devices. On, the readings are stored '
-            'with each workout so they appear on your other devices. Turning '
-            'it off again deletes the readings already stored.',
-          ),
+          title: Text(context.l10n.signInStoreHeartRate),
+          subtitle: Text(context.l10n.accountHeartRateHint),
         ),
         // Consent to health data has to be informed, so the policy is
         // reachable from where the decision is made.
@@ -541,20 +531,19 @@ class _DeleteAccountSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Delete account',
+          context.l10n.accountDeleteAccount,
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
         Text(
-          'Permanently deletes your account and everything synced to it. '
-          'This cannot be undone.',
+          context.l10n.accountDeleteWarning,
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: onDelete,
           icon: const Icon(Icons.delete_forever),
-          label: const Text('Delete account'),
+          label: Text(context.l10n.accountDeleteAccount),
           style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
         ),
       ],
@@ -600,20 +589,21 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                 .currentProviderId ==
             'password';
     return AlertDialog(
-      title: const Text('Delete account?'),
+      title: Text(context.l10n.accountDeleteDialogTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This deletes ${widget.email ?? 'your account'} and every routine, '
-              'workout and exercise synced to it. It cannot be undone.',
+              context.l10n.accountDeleteDialogBody(
+                widget.email ?? context.l10n.accountYourAccount,
+              ),
             ),
             const SizedBox(height: 16),
             if (isPassword) ...[
               Text(
-                'Confirm your password to continue.',
+                context.l10n.accountConfirmPassword,
                 style: TextStyle(color: scheme.onSurfaceVariant),
               ),
               const SizedBox(height: 8),
@@ -621,14 +611,14 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                 controller: _passwordController,
                 obscureText: true,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: context.l10n.signInPassword,
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ] else
               Text(
-                'You will be asked to sign in again to confirm.',
+                context.l10n.accountReauthNotice,
                 style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             if (widget.offerLocalWipe) ...[
@@ -637,11 +627,8 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _wipeLocal,
                 onChanged: (v) => setState(() => _wipeLocal = v ?? false),
-                title: const Text('Also erase data on this device'),
-                subtitle: const Text(
-                  'Otherwise your routines and history stay here and the app '
-                  'keeps working offline.',
-                ),
+                title: Text(context.l10n.accountEraseLocal),
+                subtitle: Text(context.l10n.accountEraseLocalHint),
               ),
             ],
           ],
@@ -650,7 +637,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.accountCancel),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(
@@ -660,7 +647,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             ),
           ),
           style: TextButton.styleFrom(foregroundColor: scheme.error),
-          child: const Text('Delete account'),
+          child: Text(context.l10n.accountDeleteAccount),
         ),
       ],
     );
@@ -689,16 +676,14 @@ class _PausedSyncCard extends StatelessWidget {
                 Icon(Icons.sync_disabled, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 8),
                 Text(
-                  'Cloud sync is paused',
+                  context.l10n.accountSyncPaused,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'This device\'s data belongs to a different account, so nothing '
-              'syncs while you\'re signed in here. Use this account on this '
-              'device to start syncing.',
+              context.l10n.accountSyncPausedBody,
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
@@ -706,7 +691,7 @@ class _PausedSyncCard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: FilledButton.tonal(
                 onPressed: onClaim,
-                child: const Text('Use this account on this device'),
+                child: Text(context.l10n.accountUseHere),
               ),
             ),
           ],
@@ -729,7 +714,7 @@ class _AppearanceSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
+        Text(context.l10n.accountAppearance, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
           context.l10n.language,
@@ -738,17 +723,26 @@ class _AppearanceSection extends StatelessWidget {
         const LanguagePicker(),
         const SizedBox(height: 12),
         Text(
-          'Theme',
+          context.l10n.accountTheme,
           style: TextStyle(color: Theme.of(context).colorScheme.outline),
         ),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(value: ThemeMode.system, label: Text('System')),
-              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+            segments: [
+              ButtonSegment(
+                value: ThemeMode.system,
+                label: Text(context.l10n.accountThemeSystem),
+              ),
+              ButtonSegment(
+                value: ThemeMode.light,
+                label: Text(context.l10n.accountThemeLight),
+              ),
+              ButtonSegment(
+                value: ThemeMode.dark,
+                label: Text(context.l10n.accountThemeDark),
+              ),
             ],
             selected: {mode},
             showSelectedIcon: false,
@@ -769,7 +763,7 @@ class _DisabledNotice extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'Cloud sync is not enabled in this build.',
+          context.l10n.accountSyncDisabled,
           textAlign: TextAlign.center,
           style: TextStyle(color: Theme.of(context).colorScheme.outline),
         ),

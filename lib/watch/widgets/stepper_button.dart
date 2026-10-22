@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../l10n/l10n.dart';
 import 'round_safe_area.dart';
 
 class StepperValue<T extends num> extends StatelessWidget {
@@ -145,7 +147,7 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
   @override
   void initState() {
     super.initState();
-    _buffer = widget.initial;
+    _buffer = widget.initial.replaceAll(',', '.');
   }
 
   void _onDigit(String d) {
@@ -163,6 +165,11 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
     });
   }
 
+  String _decimalSeparator(BuildContext context) =>
+      NumberFormat.decimalPattern(
+        Localizations.localeOf(context).toString(),
+      ).symbols.DECIMAL_SEP;
+
   T? _parse() {
     if (_buffer.isEmpty) return null;
     if (widget.isInt) return int.tryParse(_buffer) as T?;
@@ -172,7 +179,10 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final shown = _buffer.isEmpty ? '0' : _buffer;
+    final decimalSeparator = _decimalSeparator(context);
+    final shown = _buffer.isEmpty
+        ? '0'
+        : _buffer.replaceAll('.', decimalSeparator);
     final display = widget.suffix == null ? shown : '$shown ${widget.suffix}';
     // The display row at the top and the OK button at the bottom need a
     // small chord inset on round watches so they don't bleed past the bezel.
@@ -200,7 +210,11 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
                 ),
               ),
               Expanded(
-                child: _Numpad(isInt: widget.isInt, onDigit: _onDigit),
+                child: _Numpad(
+                  isInt: widget.isInt,
+                  decimalSeparator: decimalSeparator,
+                  onDigit: _onDigit,
+                ),
               ),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: bottomInset),
@@ -214,7 +228,7 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
                       minimumSize: const Size.fromHeight(30),
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
-                    child: const Text('OK'),
+                    child: Text(context.l10n.watchOk),
                   ),
                 ),
               ),
@@ -227,9 +241,14 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
 }
 
 class _Numpad extends StatelessWidget {
-  const _Numpad({required this.isInt, required this.onDigit});
+  const _Numpad({
+    required this.isInt,
+    required this.decimalSeparator,
+    required this.onDigit,
+  });
 
   final bool isInt;
+  final String decimalSeparator;
   final void Function(String) onDigit;
 
   @override
@@ -256,7 +275,7 @@ class _Numpad extends StatelessWidget {
     Widget digit(String d) => key(d, onTap: () => onDigit(d));
     final dot = isInt
         ? const Expanded(child: SizedBox.shrink())
-        : key('.', onTap: () => onDigit('.'));
+        : key(decimalSeparator, onTap: () => onDigit('.'));
     // The keypad's top/bottom rows are the worst-clipped — pull them off the
     // bezel just enough that the corner keys (3, 9, `.`, blank) fit inside
     // the inscribed circle. The middle band needs less inset but applying a

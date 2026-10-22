@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
+import '../number_format.dart';
 import '../run/workout_run_page.dart';
 import '../circuit_units.dart';
 import 'exercise_picker.dart';
@@ -121,18 +123,16 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete routine?'),
-        content: Text(
-          'Delete "${_nameController.text}"? Past workouts will keep their own copy and remain in History.',
-        ),
+        title: Text(ctx.l10n.routineDeleteTitle),
+        content: Text(ctx.l10n.routineDeleteBody(_nameController.text)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.commonDelete),
           ),
         ],
       ),
@@ -152,7 +152,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
     if (routineId == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Give the routine a name first')),
+        SnackBar(content: Text(context.l10n.routineNameFirst)),
       );
       return;
     }
@@ -167,7 +167,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
         (current?.exercises ?? const <FullRoutineExercise>[])
             .map((e) => e.routineExercise.exerciseId),
       ),
-      markLabel: 'In this routine',
+      markLabel: context.l10n.routineInThisRoutine,
     );
     if (picked == null || _routineId == null || !mounted) return;
     await ref.read(routineRepositoryProvider).addExerciseToRoutine(
@@ -194,7 +194,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
         automaticallyImplyLeading: !widget.embedded,
         backgroundColor:
             _reorderMode ? theme.colorScheme.primaryContainer : null,
-        title: Text(isDraft ? 'New routine' : 'Edit routine'),
+        title: Text(isDraft ? context.l10n.routineNew : context.l10n.routineEdit),
         actions: [
           if (!_reorderMode) ...[
             // Embedded (wide master-detail) has no bottom FAB, so surface
@@ -203,30 +203,30 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
               IconButton(
                 onPressed: _pickExerciseToAdd,
                 icon: const Icon(Icons.add),
-                tooltip: 'Add exercise',
+                tooltip: context.l10n.routineAddExercise,
               ),
             IconButton(
               onPressed: _canSave ? _saveName : null,
               icon: const Icon(Icons.check),
-              tooltip: 'Save',
+              tooltip: context.l10n.commonSave,
             ),
             if (!isDraft)
               IconButton(
                 onPressed: () => setState(() => _reorderMode = true),
                 icon: const Icon(Icons.swap_vert),
-                tooltip: 'Reorder',
+                tooltip: context.l10n.routineReorder,
               ),
             if (!isDraft)
               IconButton(
                 onPressed: _delete,
                 icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete routine',
+                tooltip: context.l10n.routineDelete,
               ),
           ] else
             IconButton(
               onPressed: () => setState(() => _reorderMode = false),
               icon: const Icon(Icons.done),
-              tooltip: 'Done',
+              tooltip: context.l10n.commonDone,
             ),
         ],
       ),
@@ -237,11 +237,11 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
           : FloatingActionButton.extended(
               onPressed: _pickExerciseToAdd,
               icon: const Icon(Icons.add),
-              label: const Text('Add exercise'),
+              label: Text(context.l10n.routineAddExercise),
             ),
       body: fullAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(context.l10n.commonError('$e'))),
         data: (full) {
           final exercises = full?.exercises ?? const <FullRoutineExercise>[];
           final units = _buildUnits(exercises);
@@ -254,11 +254,11 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                 autofocus: isDraft,
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
-                  labelText: 'Name',
+                  labelText: context.l10n.commonName,
                   border: const OutlineInputBorder(),
                   helperText: isDraft
-                      ? 'Press Enter (or ✓) to save and start adding exercises'
-                      : 'Press Enter (or ✓) to save changes',
+                      ? context.l10n.routineNameHelperDraft
+                      : context.l10n.routineNameHelperEdit,
                 ),
                 onChanged: (_) => setState(() {}),
                 // Enter saves — creates the routine from a draft, or commits a
@@ -279,7 +279,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                 FilledButton.icon(
                   onPressed: () => context.push('/run/$_routineId'),
                   icon: const Icon(Icons.play_arrow),
-                  label: const Text('Start workout'),
+                  label: Text(context.l10n.routineStartWorkout),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                   ),
@@ -291,7 +291,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Center(
                     child: Text(
-                      'Save the routine first to add exercises.',
+                      context.l10n.routineSaveFirst,
                       style: TextStyle(
                         color: theme.colorScheme.outline,
                       ),
@@ -303,7 +303,7 @@ class _RoutineEditPageState extends ConsumerState<RoutineEditPage> {
                   padding: const EdgeInsets.symmetric(vertical: 32),
                   child: Center(
                     child: Text(
-                      'No exercises in this routine yet.',
+                      context.l10n.routineNoExercises,
                       style: TextStyle(
                         color: theme.colorScheme.outline,
                       ),
@@ -470,7 +470,7 @@ class _UnitTile extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                'Circuit',
+                context.l10n.routineCircuit,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.primary,
                 ),
@@ -548,37 +548,44 @@ class _ExerciseRow extends ConsumerWidget {
   /// detail pane stops pointing at a row that no longer exists.
   final VoidCallback? onExerciseRemoved;
 
-  String _summary() {
+    String _summary(BuildContext context) {
+    final l10n = context.l10n;
     final ps = fullExercise.plannedSets;
-    if (ps.isEmpty) return 'No sets · tap to edit';
+    if (ps.isEmpty) return l10n.routineNoSetsSummary;
     final last = ps.last;
     final rest = fullExercise.routineExercise.restSeconds;
     final core = fullExercise.kind == exerciseKindTime
-        ? _fmtTime(last)
-        : _fmtReps(last);
-    final restLabel = rest == 0 ? 'no rest' : '${rest}s rest';
-    return '${ps.length} ${ps.length == 1 ? 'set' : 'sets'} · last $core · $restLabel';
+        ? _fmtTime(context, last)
+        : _fmtReps(context, last);
+    final restLabel =
+        rest == 0 ? l10n.routineNoRest : l10n.routineRestSeconds(rest);
+    return l10n.routineExerciseSummary(
+      l10n.routineSetCount(ps.length),
+      core,
+      restLabel,
+    );
   }
 
-  String _fmtTime(PlannedSet s) {
+  String _fmtTime(BuildContext context, PlannedSet s) {
+    final l10n = context.l10n;
     final secs = s.targetSeconds;
     final w = s.targetWeightKg;
-    if (secs == null) return 'tap to edit';
-    if (w != null && w > 0) return '${secs}s · ${_fmtKg(w)} kg';
-    return '${secs}s';
+    if (secs == null) return l10n.routineTapToEdit;
+    if (w != null && w > 0) {
+      return l10n.routineSecondsWithWeight(secs, formatKg(context, w));
+    }
+    return l10n.routineSecondsShort(secs);
   }
 
-  String _fmtReps(PlannedSet s) {
+  String _fmtReps(BuildContext context, PlannedSet s) {
+    final l10n = context.l10n;
     final r = s.targetReps;
     final w = s.targetWeightKg;
-    if (r == null && w == null) return 'tap to edit';
-    if (r == null) return '${_fmtKg(w!)} kg';
-    if (w == null) return '$r reps';
-    return '$r × ${_fmtKg(w)} kg';
+    if (r == null && w == null) return l10n.routineTapToEdit;
+    if (r == null) return l10n.commonWeightKg(formatKg(context, w!));
+    if (w == null) return l10n.routineRepsCount(r);
+    return l10n.routineRepsTimesWeight(r, formatKg(context, w));
   }
-
-  String _fmtKg(double w) =>
-      w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -607,7 +614,7 @@ class _ExerciseRow extends ConsumerWidget {
         ex.kind == exerciseKindTime ? Icons.timer_outlined : Icons.repeat,
       ),
       title: Text(ex.name, overflow: TextOverflow.ellipsis),
-      subtitle: Text(_summary()),
+      subtitle: Text(_summary(context)),
       trailing: showDelete
           ? Row(
               mainAxisSize: MainAxisSize.min,
@@ -617,7 +624,7 @@ class _ExerciseRow extends ConsumerWidget {
                   const SizedBox(width: 8),
                 ],
                 IconButton(
-                  tooltip: 'Remove from routine',
+                  tooltip: context.l10n.routineRemoveFromRoutine,
                   icon: const Icon(Icons.delete_outline),
                   color: theme.colorScheme.error,
                   // Always non-null: a null onRemoved makes the helper pop,

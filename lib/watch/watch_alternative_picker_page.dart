@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/database.dart';
 import '../data/providers.dart';
+import '../l10n/l10n.dart';
 import 'widgets/round_safe_area.dart';
 
 /// Mid-workout exercise swap. Shows the routine slot's other variants —
@@ -81,7 +82,9 @@ class _WatchAlternativePickerPageState
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          ex.kind == exerciseKindTime ? 'Time' : 'Reps',
+                          ex.kind == exerciseKindTime
+                              ? context.l10n.watchKindTime
+                              : context.l10n.watchKindReps,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -106,7 +109,7 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'No alternatives.\nAdd some in the routine on the phone.',
+          context.l10n.watchNoAlternatives,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),

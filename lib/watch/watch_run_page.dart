@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/database.dart';
 import '../data/providers.dart';
+import '../l10n/l10n.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'heart_rate_thinning.dart';
@@ -140,6 +141,14 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   int? _setWindowStartMs;
 
   final _pageController = PageController();
+
+  late AppLocalizations _l10n;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _l10n = context.l10n;
+  }
 
   @override
   void initState() {
@@ -429,7 +438,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       _snapshot?.routine?.name ??
       widget.routine?.routine.name ??
       widget.resumeRoutineName ??
-      'Workout';
+      _l10n.watchWorkoutFallbackName;
 
   /// The current set's workoutSetId, if a snapshot has been taken.
   String? _currentWorkoutSetId() {
@@ -659,8 +668,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     if (_snapshot == null) return;
     final ok = await ConfirmDialog.show(
       context,
-      title: 'Skip exercise?',
-      subtitle: 'Remaining sets will be skipped.',
+      title: _l10n.watchSkipExerciseTitle,
+      subtitle: _l10n.watchSkipExerciseSubtitle,
     );
     if (!ok || !mounted) return;
     final sets = _snapshot!.exercises[_exerciseIdx].sets;
@@ -924,10 +933,16 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   CountdownBadge? get _countdownBadge {
     if (_resting) {
-      return (label: 'Rest ${_restSecondsLeft}s', icon: Icons.hourglass_bottom);
+      return (
+        label: _l10n.watchRestBadge(_restSecondsLeft),
+        icon: Icons.hourglass_bottom,
+      );
     }
     if (_holding) {
-      return (label: 'Timer ${_holdSecondsLeft}s', icon: Icons.timer_outlined);
+      return (
+        label: _l10n.watchTimerBadge(_holdSecondsLeft),
+        icon: Icons.timer_outlined,
+      );
     }
     return null;
   }
@@ -1092,6 +1107,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       return (
         name: ex.workoutExercise.exerciseName,
         target: formatSetTarget(
+          context,
           kind: ex.kind,
           reps: ws.targetReps,
           weightKg: ws.targetWeightKg,
@@ -1104,6 +1120,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     return (
       name: ex.exercise.name,
       target: formatSetTarget(
+        context,
         kind: ex.kind,
         reps: ps.targetReps,
         weightKg: ps.targetWeightKg,
@@ -1134,7 +1151,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              'No planned sets.',
+              context.l10n.watchNoPlannedSets,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -1198,13 +1215,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final muted = Colors.white70;
     String value;
     if (kind == exerciseKindTime) {
-      value = '${_shownTimeRemaining}s';
+      value = context.l10n.watchSecondsShort(_shownTimeRemaining);
     } else {
-      final w = _weightKg;
-      final wStr = w == w.roundToDouble()
-          ? w.toStringAsFixed(0)
-          : w.toStringAsFixed(1);
-      value = '${wStr}kg × $_reps';
+      final wStr = formatWeight(
+        _weightKg,
+        locale: Localizations.localeOf(context).toString(),
+      );
+      value = context.l10n.watchAmbientWeightReps(wStr, _reps);
     }
     return Center(
       child: Column(
@@ -1267,7 +1284,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         hasPrev: hasPrev,
         hasNext: hasNext,
         heartRateBpm: bpm,
-        lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindTime),
+        lastTimeText: _formatLastTimeText(context, _lastCompletion, exerciseKindTime),
         onTargetSecondsChanged: _changeTimeTarget,
         onWeightChanged: _changeWeight,
         onToggleRun: _toggleTimeRun,
@@ -1295,7 +1312,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       hasPrev: hasPrev,
       hasNext: hasNext,
       heartRateBpm: bpm,
-      lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindReps),
+      lastTimeText: _formatLastTimeText(context, _lastCompletion, exerciseKindReps),
       onRepsChanged: _changeReps,
       onWeightChanged: _changeWeight,
       onToggleDone: _toggleDone,
@@ -1313,20 +1330,26 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     );
   }
 
-  static String? _formatLastTimeText(SetCompletion? c, String kind) {
+  static String? _formatLastTimeText(
+    BuildContext context,
+    SetCompletion? c,
+    String kind,
+  ) {
     if (c == null) return null;
+    final l10n = context.l10n;
     if (kind == exerciseKindTime) {
       final s = c.actualSeconds;
-      return s == null ? null : 'Last: ${s}s';
+      return s == null ? null : l10n.watchLastSeconds(s);
     }
     final reps = c.actualReps;
     final w = c.actualWeightKg;
     if (reps == null) return null;
-    if (w == null) return 'Last: $reps reps';
-    final weightStr = w == w.roundToDouble()
-        ? w.toStringAsFixed(0)
-        : w.toStringAsFixed(1);
-    return 'Last: $reps × $weightStr kg';
+    if (w == null) return l10n.watchLastReps(reps);
+    final weightStr = formatWeight(
+      w,
+      locale: Localizations.localeOf(context).toString(),
+    );
+    return l10n.watchLastRepsWeight(reps, weightStr);
   }
 
   Future<void> _openSwapPicker() async {
@@ -1446,10 +1469,6 @@ class _RepsSetView extends StatelessWidget {
   final int? heartRateBpm;
   final String? lastTimeText;
 
-  String _formatWeight(double w) {
-    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     return _ScrollableSetView(
@@ -1478,8 +1497,11 @@ class _RepsSetView extends StatelessWidget {
                     value: weightKg,
                     step: 2.5,
                     min: 0,
-                    formatter: _formatWeight,
-                    suffix: 'kg',
+                    formatter: (w) => formatWeight(
+                      w,
+                      locale: Localizations.localeOf(context).toString(),
+                    ),
+                    suffix: context.l10n.watchUnitKg,
                     onChanged: onWeightChanged,
                   ),
                   const SizedBox(height: 8),
@@ -1488,7 +1510,7 @@ class _RepsSetView extends StatelessWidget {
                     step: 1,
                     min: 1,
                     formatter: (v) => v.toString(),
-                    suffix: 'reps',
+                    suffix: context.l10n.watchUnitReps,
                     onChanged: onRepsChanged,
                   ),
                 ],
@@ -1553,10 +1575,6 @@ class _TimeSetView extends StatelessWidget {
   final int? heartRateBpm;
   final String? lastTimeText;
 
-  String _formatWeight(double w) {
-    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1589,7 +1607,7 @@ class _TimeSetView extends StatelessWidget {
               child: _ScaledControls(
                 children: [
                   Text(
-                    '${secondsRemaining}s',
+                    context.l10n.watchSecondsShort(secondsRemaining),
                     style: big,
                     textAlign: TextAlign.center,
                   ),
@@ -1599,7 +1617,7 @@ class _TimeSetView extends StatelessWidget {
                     step: _timeTargetStep,
                     min: _timeTargetStep,
                     formatter: (v) => v.toString(),
-                    suffix: 'sec',
+                    suffix: context.l10n.watchUnitSec,
                     onChanged: onTargetSecondsChanged,
                   ),
                   const SizedBox(height: 8),
@@ -1607,8 +1625,11 @@ class _TimeSetView extends StatelessWidget {
                     value: weightKg,
                     step: 2.5,
                     min: 0,
-                    formatter: _formatWeight,
-                    suffix: 'kg',
+                    formatter: (w) => formatWeight(
+                      w,
+                      locale: Localizations.localeOf(context).toString(),
+                    ),
+                    suffix: context.l10n.watchUnitKg,
                     onChanged: onWeightChanged,
                   ),
                   const SizedBox(height: 8),
@@ -1620,7 +1641,11 @@ class _TimeSetView extends StatelessWidget {
                         running ? Icons.pause : Icons.play_arrow,
                         size: 16,
                       ),
-                      label: Text(running ? 'Pause' : 'Start'),
+                      label: Text(
+                        running
+                            ? context.l10n.watchPause
+                            : context.l10n.watchStart,
+                      ),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(26),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1731,7 +1756,7 @@ class _SetViewScaffold extends StatelessWidget {
                     icon: Icons.chevron_left,
                     enabled: prevEnabled,
                     onPressed: onPrev,
-                    tooltip: 'Previous set',
+                    tooltip: context.l10n.watchPreviousSet,
                   ),
                 ],
               ),
@@ -1771,7 +1796,7 @@ class _SetViewScaffold extends StatelessWidget {
                     icon: Icons.chevron_right,
                     enabled: nextEnabled,
                     onPressed: onNext,
-                    tooltip: 'Next set',
+                    tooltip: context.l10n.watchNextSet,
                   ),
                 ],
               ),
@@ -1854,19 +1879,19 @@ class _ScrollableSetView extends StatelessWidget {
                   children: [
                     _TrayButton(
                       icon: Icons.swap_horiz,
-                      label: 'Swap exercise',
+                      label: context.l10n.watchSwapExercise,
                       onPressed: onSwap,
                     ),
                     const SizedBox(height: 6),
                     _TrayButton(
                       icon: Icons.skip_next,
-                      label: 'Skip set',
+                      label: context.l10n.watchSkipSet,
                       onPressed: onSkipSet,
                     ),
                     const SizedBox(height: 6),
                     _TrayButton(
                       icon: Icons.done_all,
-                      label: 'Skip exercise',
+                      label: context.l10n.watchSkipExercise,
                       onPressed: onSkipExercise,
                     ),
                   ],
@@ -1974,12 +1999,12 @@ Widget _doneButton({
           ? FilledButton.tonal(
               onPressed: onTap,
               style: style,
-              child: const Text('Done ✓'),
+              child: Text(context.l10n.watchDoneChecked),
             )
           : FilledButton(
               onPressed: onTap,
               style: style,
-              child: const Text('Done'),
+              child: Text(context.l10n.watchDone),
             ),
     ),
   );
@@ -2026,7 +2051,7 @@ class _RestView extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Column(
         children: [
-          Text('Rest', style: Theme.of(context).textTheme.bodySmall),
+          Text(context.l10n.watchRest, style: Theme.of(context).textTheme.bodySmall),
           if (!ambient) ...[
             const SizedBox(height: 2),
             // Same always-rendered HR slot as the set-view rail, so the
@@ -2056,7 +2081,7 @@ class _RestView extends StatelessWidget {
           ],
           const Spacer(),
           if (ambient)
-            Text('${secondsLeft}s', style: big)
+            Text(context.l10n.watchSecondsShort(secondsLeft), style: big)
           else
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2065,14 +2090,14 @@ class _RestView extends StatelessWidget {
                   onPressed: onSub15,
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.remove, size: 18),
-                  tooltip: '-15s',
+                  tooltip: context.l10n.watchMinus15,
                 ),
                 Expanded(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Text('${secondsLeft}s', style: big),
+                      child: Text(context.l10n.watchSecondsShort(secondsLeft), style: big),
                     ),
                   ),
                 ),
@@ -2080,7 +2105,7 @@ class _RestView extends StatelessWidget {
                   onPressed: onAdd15,
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.add, size: 18),
-                  tooltip: '+15s',
+                  tooltip: context.l10n.watchPlus15,
                 ),
               ],
             ),
@@ -2094,7 +2119,7 @@ class _RestView extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      'Up next: $upNextName',
+                      context.l10n.watchUpNext(upNextName!),
                       style: Theme.of(context).textTheme.bodySmall,
                       textAlign: TextAlign.center,
                       maxLines: 2,
@@ -2139,7 +2164,7 @@ class _RestView extends StatelessWidget {
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: onSkip,
-                  child: const Text('Skip'),
+                  child: Text(context.l10n.watchSkip),
                 ),
               ),
             ),
@@ -2220,11 +2245,11 @@ class _ExerciseListView extends StatelessWidget {
                         started
                             ? FilledButton(
                                 onPressed: allDone ? onFinish : null,
-                                child: const Text('Finish'),
+                                child: Text(context.l10n.watchFinish),
                               )
                             : FilledButton(
                                 onPressed: onStart,
-                                child: const Text('Start'),
+                                child: Text(context.l10n.watchStart),
                               ),
                         if (started)
                           Padding(
@@ -2236,7 +2261,7 @@ class _ExerciseListView extends StatelessWidget {
                                 padding: EdgeInsets.zero,
                                 foregroundColor: theme.colorScheme.error,
                               ),
-                              child: const Text('Discard'),
+                              child: Text(context.l10n.watchDiscard),
                             ),
                           ),
                       ],
@@ -2289,7 +2314,7 @@ class _ExerciseListView extends StatelessWidget {
                         Text(
                           started
                               ? '${ex.doneSets}/${ex.totalSets}'
-                              : '${ex.totalSets} sets',
+                              : context.l10n.watchSetCount(ex.totalSets),
                           style: theme.textTheme.bodySmall,
                         ),
                       ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/l10n.dart';
 import 'account_action.dart';
 import 'breakpoints.dart';
 
@@ -13,12 +14,26 @@ class HomeShell extends StatelessWidget {
 
   final StatefulNavigationShell navigationShell;
 
-  static const _destinations =
-      <({IconData icon, IconData selected, String label})>[
-    (icon: Icons.fitness_center_outlined, selected: Icons.fitness_center, label: 'Routines'),
-    (icon: Icons.list_alt_outlined, selected: Icons.list_alt, label: 'Exercises'),
-    (icon: Icons.history_outlined, selected: Icons.history, label: 'Workouts'),
-  ];
+  static List<({IconData icon, IconData selected, String label})> _destinations(
+    BuildContext context,
+  ) =>
+      [
+        (
+          icon: Icons.fitness_center_outlined,
+          selected: Icons.fitness_center,
+          label: context.l10n.shellTabRoutines,
+        ),
+        (
+          icon: Icons.list_alt_outlined,
+          selected: Icons.list_alt,
+          label: context.l10n.shellTabExercises,
+        ),
+        (
+          icon: Icons.history_outlined,
+          selected: Icons.history,
+          label: context.l10n.shellTabWorkouts,
+        ),
+      ];
 
   void _goBranch(int i) => navigationShell.goBranch(
         i,
@@ -37,7 +52,7 @@ class HomeShell extends StatelessWidget {
           selectedIndex: navigationShell.currentIndex,
           onDestinationSelected: _goBranch,
           destinations: [
-            for (final d in _destinations)
+            for (final d in _destinations(context))
               NavigationDestination(
                 icon: Icon(d.icon),
                 selectedIcon: Icon(d.selected),
@@ -69,7 +84,7 @@ class HomeShell extends StatelessWidget {
               ),
             ),
             destinations: [
-              for (final d in _destinations)
+              for (final d in _destinations(context))
                 NavigationRailDestination(
                   icon: Icon(d.icon),
                   selectedIcon: Icon(d.selected),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'l10n/l10n.dart';
+
 /// Where the published privacy policy lives.
 ///
 /// Served as a static file from the app's Firebase Hosting site
@@ -22,6 +24,7 @@ const String privacyPolicyUrl =
 /// (which needs the `<queries>` entry in the manifest to be visible at all).
 Future<void> openPrivacyPolicy(BuildContext context) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final l10n = context.l10n;
   var opened = false;
   try {
     opened = await launchUrl(
@@ -33,9 +36,9 @@ Future<void> openPrivacyPolicy(BuildContext context) async {
   }
   if (opened) return;
   messenger?.showSnackBar(
-    const SnackBar(
-      content: Text('Privacy policy: $privacyPolicyUrl'),
-      duration: Duration(seconds: 8),
+    SnackBar(
+      content: Text(l10n.privacyPolicyFallback(privacyPolicyUrl)),
+      duration: const Duration(seconds: 8),
     ),
   );
 }
@@ -62,7 +65,7 @@ class PrivacyPolicyLink extends StatelessWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           onPressed: () => openPrivacyPolicy(context),
-          child: const Text('Read the privacy policy'),
+          child: Text(context.l10n.privacyReadPolicy),
         ),
       ),
     );

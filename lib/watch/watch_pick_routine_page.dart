@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/database.dart';
 import '../data/providers.dart';
+import '../l10n/l10n.dart';
 import '../sync/sync_service.dart';
 import '../sync/workout_bridge.dart';
 import 'watch_run_page.dart';
@@ -26,7 +27,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
           error: (e, _) => Center(
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Text('Error: $e', textAlign: TextAlign.center),
+              child: Text(context.l10n.watchError('$e'), textAlign: TextAlign.center),
             ),
           ),
           data: (summaries) {
@@ -45,6 +46,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
               itemBuilder: (context, i) {
                 if (inProgress != null && i == 0) {
                   final name = _routineNameFor(
+                    context,
                     summaries,
                     inProgress.routineId,
                   );
@@ -73,7 +75,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
                           const Icon(Icons.sync, size: 18),
                           const SizedBox(width: 6),
                           Text(
-                            'Sync',
+                            context.l10n.watchSync,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -101,9 +103,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          s.exerciseCount == 1
-                              ? '1 exercise'
-                              : '${s.exerciseCount} exercises',
+                          context.l10n.watchExerciseCount(s.exerciseCount),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -118,12 +118,17 @@ class WatchPickRoutinePage extends ConsumerWidget {
     );
   }
 
-  String _routineNameFor(List<RoutineSummary> summaries, String? routineId) {
-    if (routineId == null) return 'Workout';
+  String _routineNameFor(
+    BuildContext context,
+    List<RoutineSummary> summaries,
+    String? routineId,
+  ) {
+    final fallback = context.l10n.watchWorkoutFallbackName;
+    if (routineId == null) return fallback;
     for (final s in summaries) {
       if (s.routine.syncId == routineId) return s.routine.name;
     }
-    return 'Workout';
+    return fallback;
   }
 
   void _resume(BuildContext context, String workoutId) {
@@ -157,13 +162,13 @@ class WatchPickRoutinePage extends ConsumerWidget {
     final full = await db.loadFullRoutine(routine.syncId);
     if (full == null || full.exercises.isEmpty) {
       if (!context.mounted) return;
-      showWatchSnack(context, 'Routine has no exercises');
+      showWatchSnack(context, context.l10n.watchRoutineNoExercises);
       return;
     }
     final hasSets = full.exercises.any((e) => e.plannedSets.isNotEmpty);
     if (!hasSets) {
       if (!context.mounted) return;
-      showWatchSnack(context, 'Routine has no planned sets');
+      showWatchSnack(context, context.l10n.watchRoutineNoPlannedSets);
       return;
     }
     if (!context.mounted) return;
@@ -175,7 +180,7 @@ class WatchPickRoutinePage extends ConsumerWidget {
   Future<void> _sync(BuildContext context, WidgetRef ref) async {
     await ref.read(syncServiceProvider).pushAll();
     if (!context.mounted) return;
-    showWatchSnack(context, 'Sync pushed');
+    showWatchSnack(context, context.l10n.watchSyncPushed);
   }
 }
 
@@ -220,7 +225,7 @@ class _ResumeCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Resume',
+                      context.l10n.watchResume,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         color: scheme.onPrimaryContainer,
                       ),
@@ -239,7 +244,7 @@ class _ResumeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'long-press to discard',
+                  context.l10n.watchLongPressToDiscard,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onPrimaryContainer.withValues(alpha: 0.7),
                     fontSize: 10,
@@ -263,7 +268,7 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'No routines.\nCreate one on the phone.',
+          context.l10n.watchNoRoutines,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),

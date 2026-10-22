@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
 import '../breakpoints.dart';
+import '../exercises/muscle_label.dart';
 import '../exercises/muscle_selector.dart';
 
 /// Shared exercise picker — adding an exercise to a routine or a workout, and
@@ -44,7 +46,7 @@ Future<Exercise?> showExercisePicker(
   WidgetRef ref, {
   Set<String> excludeIds = const {},
   Map<String, int> markCounts = const {},
-  String markLabel = 'Already added',
+  String? markLabel,
   String? kind,
 }) async {
   final db = ref.read(exerciseRepositoryProvider);
@@ -63,7 +65,7 @@ Future<Exercise?> showExercisePicker(
     return showDialog<Exercise>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add exercise'),
+        title: Text(ctx.l10n.exercisePickerTitle),
         contentPadding: const EdgeInsets.symmetric(vertical: 8),
         content: SizedBox(
           width: exercisePickerDialogWidth,
@@ -112,7 +114,7 @@ class _ExercisePickerBody extends StatefulWidget {
   const _ExercisePickerBody({
     required this.exercises,
     this.markCounts = const {},
-    this.markLabel = 'Already added',
+    this.markLabel,
   });
 
   /// Available exercises (already filtered by the caller's `excludeIds`).
@@ -123,7 +125,7 @@ class _ExercisePickerBody extends StatefulWidget {
   /// legitimate, the user just wants to see that it's already in there — and
   /// how often.
   final Map<String, int> markCounts;
-  final String markLabel;
+  final String? markLabel;
 
   @override
   State<_ExercisePickerBody> createState() => _ExercisePickerBodyState();
@@ -183,11 +185,11 @@ class _ExercisePickerBodyState extends State<_ExercisePickerBody> {
           child: TextField(
             controller: _searchController,
             autofocus: true,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search exercises',
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: context.l10n.exercisesSearchHint,
               isDense: true,
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
             onChanged: (v) => setState(() => _query = v),
           ),
@@ -203,7 +205,7 @@ class _ExercisePickerBodyState extends State<_ExercisePickerBody> {
                 children: [
                   for (final m in muscles)
                     FilterChip(
-                      label: Text(m.name),
+                      label: Text(muscleLabel(context.l10n, m.name)),
                       selected: _selectedMuscleIds.contains(m.syncId),
                       onSelected: (_) => setState(() {
                         if (!_selectedMuscleIds.add(m.syncId)) {
@@ -218,7 +220,7 @@ class _ExercisePickerBodyState extends State<_ExercisePickerBody> {
         // -- "Create new exercise" (stays pinned above the scrolling list) --
         ListTile(
           leading: const Icon(Icons.add),
-          title: const Text('Create new exercise'),
+          title: Text(context.l10n.exercisePickerCreateNew),
           onTap: () async {
             final created = await showCreateExerciseDialog(context);
             if (created != null && context.mounted) {
@@ -249,13 +251,13 @@ class _ExerciseResultList extends StatelessWidget {
     required this.exercises,
     required this.total,
     this.markCounts = const {},
-    this.markLabel = 'Already added',
+    this.markLabel,
   });
 
   final List<ExerciseWithMuscles> exercises;
   final int total;
   final Map<String, int> markCounts;
-  final String markLabel;
+  final String? markLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +265,9 @@ class _ExerciseResultList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          total == 0 ? 'No exercises available.' : 'No exercises match.',
+          total == 0
+              ? context.l10n.exercisePickerNoneAvailable
+              : context.l10n.exercisePickerNoMatch,
           textAlign: TextAlign.center,
         ),
       );
@@ -284,7 +288,10 @@ class _ExerciseResultList extends StatelessWidget {
               Flexible(child: Text(e.exercise.name)),
               if (count > 0) ...[
                 const SizedBox(width: 8),
-                _AlreadyAddedTag(label: markLabel, count: count),
+                _AlreadyAddedTag(
+                  label: markLabel ?? context.l10n.exercisePickerAlreadyAdded,
+                  count: count,
+                ),
               ],
             ],
           ),
@@ -296,7 +303,7 @@ class _ExerciseResultList extends StatelessWidget {
                     spacing: 4,
                     runSpacing: 4,
                     children: [
-                      for (final m in e.muscles) _MuscleTag(name: m.name),
+                      for (final m in e.muscles) _MuscleTag(name: muscleLabel(context.l10n, m.name)),
                     ],
                   ),
                 ),
@@ -426,7 +433,7 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not create: $e')),
+        SnackBar(content: Text(context.l10n.exerciseCreateError('$e'))),
       );
     }
   }
@@ -434,7 +441,7 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('New exercise'),
+      title: Text(context.l10n.exerciseNew),
       // `double.maxFinite` here asked for every pixel available, which on a
       // desktop browser meant a name field and two rows of chips spread across
       // the whole window. A fixed width instead — SizedBox enforces the
@@ -450,14 +457,20 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
               TextField(
                 controller: _controller,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: context.l10n.commonName),
                 onSubmitted: (_) => _busy ? null : _create(),
               ),
               const SizedBox(height: 12),
               SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: exerciseKindReps, label: Text('Reps')),
-                  ButtonSegment(value: exerciseKindTime, label: Text('Time')),
+                segments: [
+                  ButtonSegment(
+                    value: exerciseKindReps,
+                    label: Text(context.l10n.commonReps),
+                  ),
+                  ButtonSegment(
+                    value: exerciseKindTime,
+                    label: Text(context.l10n.commonTime),
+                  ),
                 ],
                 selected: {_kind},
                 onSelectionChanged: (s) => setState(() => _kind = s.first),
@@ -478,11 +491,11 @@ class _NewExerciseDialogState extends ConsumerState<_NewExerciseDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _busy ? null : _create,
-          child: const Text('Create'),
+          child: Text(context.l10n.commonCreate),
         ),
       ],
     );

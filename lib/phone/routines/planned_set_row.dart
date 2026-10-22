@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
+import '../../l10n/l10n.dart';
+import '../number_format.dart';
 
 /// Read-only display of a planned set. Tapping opens an edit dialog managed
 /// by the parent; the row itself never writes to the DB so changes follow
@@ -21,20 +23,16 @@ class PlannedSetRow extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  String _formatWeight(double w) {
-    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
-  }
-
-  String _describe() {
+  String _describe(BuildContext context) {
     if (kind == exerciseKindTime) {
       final s = plannedSet.targetSeconds ?? 0;
       final w = plannedSet.targetWeightKg;
-      if (w == null || w == 0) return '$s s';
-      return '$s s @ ${_formatWeight(w)} kg';
+      if (w == null || w == 0) return context.l10n.commonSecondsValue(s);
+      return context.l10n.commonSecondsAtWeight(s, formatKg(context, w));
     }
     final reps = plannedSet.targetReps ?? 0;
     final kg = plannedSet.targetWeightKg ?? 0;
-    return '${_formatWeight(kg)} kg × $reps';
+    return context.l10n.commonWeightTimesReps(formatKg(context, kg), reps);
   }
 
   @override
@@ -54,14 +52,14 @@ class PlannedSetRow extends StatelessWidget {
             ),
             Expanded(
               child: Text(
-                _describe(),
+                _describe(context),
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
             IconButton(
               onPressed: onDelete,
               icon: const Icon(Icons.close),
-              tooltip: 'Remove set',
+              tooltip: context.l10n.routineRemoveSet,
             ),
           ],
         ),
