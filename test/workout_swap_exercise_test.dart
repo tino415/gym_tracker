@@ -74,6 +74,26 @@ void main() {
       expect(after.sets.first.completion?.actualWeightKg, 62.5);
     });
 
+    test('moves the slot\'s history to the new exercise', () async {
+      final (w, fwe) = await seedWorkout();
+      final bench = fwe.workoutExercise.exerciseId!;
+      final replacement = await db.createExercise('Dumbbell Press');
+
+      await db.changeWorkoutExercise(
+        workoutExerciseId: fwe.workoutExercise.syncId,
+        exerciseId: replacement.syncId,
+      );
+
+      Future<SetCompletion?> lastOf(String exerciseId) =>
+          db.lastCompletionForExerciseAtSetIndex(
+            exerciseId: exerciseId,
+            setIndex: 0,
+            excludeWorkoutId: 'another workout',
+          );
+      expect((await lastOf(replacement.syncId))?.workoutId, w.syncId);
+      expect(await lastOf(bench), null);
+    });
+
     test('adopts the new exercise kind', () async {
       final (w, fwe) = await seedWorkout();
       final hold = await db.createExercise('Plank', kind: exerciseKindTime);

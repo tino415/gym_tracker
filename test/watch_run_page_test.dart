@@ -926,4 +926,75 @@ void main() {
       expect(find.text('Rest'), findsNothing);
     });
   });
+
+  group('Watch run page — swap exercise', () {
+    testWidgets('"Last" after a swap is the substitute\'s history', (
+      tester,
+    ) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Push',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [_SetFixture(reps: 5, weight: 60)],
+          ),
+        ],
+      );
+      final dumbbell = await db.createExercise('Dumbbell press');
+      await db.addRoutineExerciseAlternative(
+        routineExerciseId: routine.exercises.single.routineExercise.syncId,
+        exerciseId: dumbbell.syncId,
+      );
+      await _finishPastWorkout(db, routine, reps: 5, weight: 60);
+      await _finishPastWorkout(
+        db,
+        routine,
+        swapTo: dumbbell.syncId,
+        reps: 8,
+        weight: 30,
+      );
+
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      expect(find.text('Last: 5 × 60 kg'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Swap exercise'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Swap exercise'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dumbbell press'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dumbbell press'), findsWidgets);
+      expect(find.text('Last: 8 × 30 kg'), findsOneWidget);
+    });
+  });
+}
+
+Future<void> _finishPastWorkout(
+  AppDatabase db,
+  FullRoutine routine, {
+  String? swapTo,
+  required int reps,
+  required double weight,
+}) async {
+  final workout = await db.startWorkout(routine.routine.syncId);
+  final slot = (await db.loadFullWorkout(workout.syncId))!.exercises.single;
+  if (swapTo != null) {
+    await db.swapWorkoutExercise(
+      workoutExerciseId: slot.workoutExercise.syncId,
+      newExerciseId: swapTo,
+    );
+  }
+  await db.upsertSetCompletion(
+    workoutId: workout.syncId,
+    workoutSetId: slot.sets.single.workoutSet.syncId,
+    actualReps: reps,
+    actualWeightKg: weight,
+  );
+  await db.finishWorkout(workout.syncId);
 }
