@@ -327,10 +327,84 @@ void main() {
     expect(currentExercise(tester), 'Plank');
     expect(find.text('0:38'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Done'));
+    await tester.pump();
     await tester.tap(find.text('Done'));
     await settle(tester);
     final w = await onlyWorkout(tester);
     expect((await completionsOf(w.syncId)).single.actualSeconds, 7);
+
+    await disposeTree(tester);
+  });
+
+  testWidgets('a time set adjusts its target seconds, running or not',
+      (tester) async {
+    final routine = await db.createRoutine('Core');
+    final plank = await db.addExerciseToRoutine(
+      routineId: routine.syncId,
+      exerciseId: (await db.createExercise('Plank', kind: exerciseKindTime))
+          .syncId,
+    );
+    await db.addPlannedSet(routineExerciseId: plank.syncId, targetSeconds: 45);
+    final raise = await db.addExerciseToRoutine(
+      routineId: routine.syncId,
+      exerciseId: (await db.createExercise('Leg Raise')).syncId,
+    );
+    await db.addPlannedSet(routineExerciseId: raise.syncId, targetReps: 10);
+    await pumpRun(tester, routineId: routine.syncId);
+
+    await tester.tap(find.byTooltip('Increase Time'));
+    await tester.pump();
+    expect(find.text('0:50'), findsNWidgets(2));
+
+    await tester.tap(find.text('Start timer'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('0:47'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Increase Time'));
+    await tester.pump();
+    expect(find.text('0:52'), findsOneWidget);
+    expect(find.text('0:55'), findsOneWidget);
+
+    await tester.tap(find.text('1').last);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Plank timer 0:50'), findsOneWidget);
+
+    await tester.tap(find.text('Plank timer 0:50'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('0:55'), findsOneWidget);
+    expect(find.text('0:49'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Done'));
+    await tester.pump();
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    final w = await onlyWorkout(tester);
+    expect((await completionsOf(w.syncId)).single.actualSeconds, 6);
+
+    await disposeTree(tester);
+  });
+
+  testWidgets('a time target cannot drop below one step', (tester) async {
+    final routine = await db.createRoutine('Core');
+    final plank = await db.addExerciseToRoutine(
+      routineId: routine.syncId,
+      exerciseId: (await db.createExercise('Plank', kind: exerciseKindTime))
+          .syncId,
+    );
+    await db.addPlannedSet(routineExerciseId: plank.syncId, targetSeconds: 10);
+    await pumpRun(tester, routineId: routine.syncId);
+
+    await tester.tap(find.byTooltip('Decrease Time'));
+    await tester.pump();
+    expect(find.text('0:05'), findsNWidgets(2));
+    final decrease = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byTooltip('Decrease Time'),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(decrease.onPressed, isNull);
 
     await disposeTree(tester);
   });
