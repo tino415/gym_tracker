@@ -308,7 +308,7 @@ void main() {
     await db.addPlannedSet(routineExerciseId: raise.syncId, targetReps: 10);
     await pumpRun(tester, routineId: routine.syncId);
 
-    await tester.tap(find.text('Start hold'));
+    await tester.tap(find.text('Start timer'));
     await tester.pump(const Duration(seconds: 3));
     expect(find.text('0:42'), findsOneWidget);
 
@@ -320,9 +320,9 @@ void main() {
     await tester.tap(find.text('1').last);
     await tester.pump(const Duration(seconds: 2));
     expect(currentExercise(tester), 'Leg Raise');
-    expect(find.text('Plank hold 0:39'), findsOneWidget);
+    expect(find.text('Plank timer 0:39'), findsOneWidget);
 
-    await tester.tap(find.text('Plank hold 0:39'));
+    await tester.tap(find.text('Plank timer 0:39'));
     await tester.pump(const Duration(seconds: 1));
     expect(currentExercise(tester), 'Plank');
     expect(find.text('0:38'), findsOneWidget);

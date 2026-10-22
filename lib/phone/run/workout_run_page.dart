@@ -775,8 +775,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   Widget _buildHoldElsewhereChip() {
     final pos = _positionOfSet(_holdSetId);
     final name = pos == null
-        ? 'Hold'
-        : '${_snapshot!.exercises[pos.eIdx].workoutExercise.exerciseName} hold';
+        ? 'Timer'
+        : '${_snapshot!.exercises[pos.eIdx].workoutExercise.exerciseName} timer';
     return Align(
       alignment: Alignment.centerLeft,
       child: ActionChip(
@@ -841,7 +841,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
           child: OutlinedButton.icon(
             onPressed: _toggleTimeRun,
             icon: Icon(_holdingHere ? Icons.pause : Icons.play_arrow),
-            label: Text(_holdingHere ? 'Pause' : 'Start hold'),
+            label: Text(_holdingHere ? 'Pause' : 'Start timer'),
           ),
         ),
         const SizedBox(height: 12),
