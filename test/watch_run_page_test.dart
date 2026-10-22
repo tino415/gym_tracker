@@ -594,6 +594,51 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('7s'), findsOneWidget);
     });
+
+    testWidgets('the seconds stepper moves the target, running or not',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Core',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Plank',
+            kind: exerciseKindTime,
+            sets: [_SetFixture(seconds: 10)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.pump();
+      expect(find.text('15s'), findsOneWidget);
+      expect(find.text('15'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('13s'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.remove).first);
+      await tester.pump();
+      expect(find.text('8s'), findsOneWidget);
+      expect(find.text('10'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.remove).first);
+      await tester.pump();
+      expect(find.text('3s'), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.remove).first);
+      await tester.pump();
+      expect(find.text('5'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   group('Watch run page — hold survives navigation', () {
@@ -666,6 +711,33 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Plank'), findsOneWidget);
       expect(find.text('24s'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+      final completions = await db.select(db.setCompletions).get();
+      expect(completions.single.actualSeconds, 6);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a target raised mid-hold still counts after leaving the set',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await startHold(tester, db);
+      await tester.pump(const Duration(seconds: 2));
+
+      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.pump();
+      expect(find.text('33s'), findsOneWidget);
+      expect(find.text('35'), findsOneWidget);
+
+      await switchFromList(tester, 'Lunge');
+      expect(find.text('Timer 30s'), findsOneWidget);
+
+      await tester.tap(find.text('Timer 30s'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('29s'), findsOneWidget);
+      expect(find.text('35'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pump();

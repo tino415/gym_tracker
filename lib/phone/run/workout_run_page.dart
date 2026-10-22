@@ -44,6 +44,8 @@ class WorkoutRunPage extends ConsumerStatefulWidget {
 
 enum _Phase { logSet, rest }
 
+const _timeTargetStep = 5;
+
 class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     with WidgetsBindingObserver {
   String? _workoutId;
@@ -66,6 +68,9 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   double _weightKg = 0;
 
   int _timeStartTarget = 0;
+  // A target changed on the run page outlives navigating away, so a hold
+  // still running on that set logs its elapsed time against the right start.
+  final Map<String, int> _timeTargetOverrides = {};
   int _timeRemaining = 0;
   DateTime? _timeEndTime;
   // A running hold belongs to its set rather than to the one on screen, so it
@@ -272,7 +277,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final ws = set.workoutSet;
     final completion = set.completion;
     if (_currentKind() == exerciseKindTime) {
-      _timeStartTarget = ws.targetSeconds ?? 30;
+      _timeStartTarget =
+          _timeTargetOverrides[ws.syncId] ?? ws.targetSeconds ?? 30;
       _timeRemaining = completion?.actualSeconds != null
           ? _timeStartTarget - completion!.actualSeconds!
           : _timeStartTarget;
@@ -521,6 +527,30 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     setState(() {});
     _armNativeTimer(kTimerKindTime, end, schedule: _timeRemaining > 0);
     _startUiTicker();
+  }
+
+  void _changeTimeTarget(int delta) {
+    final setId = _currentSet?.workoutSet.syncId;
+    final target = _timeStartTarget + delta;
+    if (setId == null || target < _timeTargetStep) return;
+    setState(() {
+      _timeStartTarget = target;
+      _timeTargetOverrides[setId] = target;
+      _timeRemaining += delta;
+      if (_holdingHere) _shiftHold(delta);
+    });
+  }
+
+  void _shiftHold(int delta) {
+    final end = _timeEndTime!.add(Duration(seconds: delta));
+    _timeEndTime = end;
+    _holdSecondsLeft += delta;
+    _timeTargetBuzzed = _holdSecondsLeft <= 0;
+    if (_holdSecondsLeft > 0) {
+      _armNativeTimer(kTimerKindTime, end);
+    } else {
+      _clearNativeTimer();
+    }
   }
 
   void _stopHold() {
@@ -843,6 +873,15 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
             icon: Icon(_holdingHere ? Icons.pause : Icons.play_arrow),
             label: Text(_holdingHere ? 'Pause' : 'Start timer'),
           ),
+        ),
+        const SizedBox(height: 12),
+        _Stepper(
+          label: 'Time',
+          value: _formatSeconds(_timeStartTarget),
+          onMinus: _timeStartTarget > _timeTargetStep
+              ? () => _changeTimeTarget(-_timeTargetStep)
+              : null,
+          onPlus: () => _changeTimeTarget(_timeTargetStep),
         ),
         const SizedBox(height: 12),
         _Stepper(

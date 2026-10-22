@@ -52,6 +52,8 @@ class WatchRunPage extends ConsumerStatefulWidget {
 
 enum _Phase { logSet, rest }
 
+const _timeTargetStep = 5;
+
 class _WatchRunPageState extends ConsumerState<WatchRunPage>
     with WidgetsBindingObserver {
   late int _exerciseIdx;
@@ -71,6 +73,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   // it. elapsed = startTarget - remaining on Done.
   int _timeRemaining = 0;
   int _timeStartTarget = 0;
+  // A target changed on the run page outlives navigating away, so a hold
+  // still running on that set logs its elapsed time against the right start.
+  final Map<String, int> _timeTargetOverrides = {};
   // A running hold belongs to its set rather than to the face, so it keeps
   // counting (negative is overtime) while the user looks at other sets.
   String? _holdSetId;
@@ -476,7 +481,8 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     if (_snapshot != null) {
       final ws = _snapshot!.exercises[_exerciseIdx].sets[_setIdx].workoutSet;
       if (kind == exerciseKindTime) {
-        _timeStartTarget = ws.targetSeconds ?? 30;
+        _timeStartTarget =
+            _timeTargetOverrides[ws.syncId] ?? ws.targetSeconds ?? 30;
         if (completion?.actualSeconds != null) {
           // Reflect a past completion as a "completed" timer state.
           _timeRemaining = _timeStartTarget - completion!.actualSeconds!;
@@ -873,6 +879,31 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     _startUiTicker();
   }
 
+  void _changeTimeTarget(int target) {
+    if (target < _timeTargetStep) return;
+    final delta = target - _timeStartTarget;
+    final setId = _currentWorkoutSetId();
+    setState(() {
+      _timeStartTarget = target;
+      if (setId != null) _timeTargetOverrides[setId] = target;
+      _timeRemaining += delta;
+      if (_holdingHere) _shiftHold(delta);
+    });
+  }
+
+  void _shiftHold(int delta) {
+    final end = _timeEndTime!.add(Duration(seconds: delta));
+    _timeEndTime = end;
+    _holdSecondsLeft += delta;
+    _timeTargetBuzzed = _holdSecondsLeft <= 0;
+    if (_holdSecondsLeft > 0) {
+      _armNativeTimer(kTimerKindTime, end);
+    } else {
+      _clearNativeTimer();
+    }
+    _publishCountdown();
+  }
+
   void _stopHold() {
     if (!_holding) return;
     _timeEndTime = null;
@@ -1229,6 +1260,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         setIndex: _setIdx,
         totalSets: _setCount(_exerciseIdx),
         secondsRemaining: _shownTimeRemaining,
+        targetSeconds: _timeStartTarget,
         running: _holdingHere,
         weightKg: _weightKg,
         completed: _currentIsCompleted,
@@ -1236,6 +1268,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         hasNext: hasNext,
         heartRateBpm: bpm,
         lastTimeText: _formatLastTimeText(_lastCompletion, exerciseKindTime),
+        onTargetSecondsChanged: _changeTimeTarget,
         onWeightChanged: _changeWeight,
         onToggleRun: _toggleTimeRun,
         onToggleDone: _toggleDone,
@@ -1479,11 +1512,13 @@ class _TimeSetView extends StatelessWidget {
     required this.setIndex,
     required this.totalSets,
     required this.secondsRemaining,
+    required this.targetSeconds,
     required this.running,
     required this.weightKg,
     required this.completed,
     required this.hasPrev,
     required this.hasNext,
+    required this.onTargetSecondsChanged,
     required this.onWeightChanged,
     required this.onToggleRun,
     required this.onToggleDone,
@@ -1500,11 +1535,13 @@ class _TimeSetView extends StatelessWidget {
   final int setIndex;
   final int totalSets;
   final int secondsRemaining;
+  final int targetSeconds;
   final bool running;
   final double weightKg;
   final bool completed;
   final bool hasPrev;
   final bool hasNext;
+  final ValueChanged<int> onTargetSecondsChanged;
   final ValueChanged<double> onWeightChanged;
   final VoidCallback onToggleRun;
   final VoidCallback onToggleDone;
@@ -1555,6 +1592,15 @@ class _TimeSetView extends StatelessWidget {
                     '${secondsRemaining}s',
                     style: big,
                     textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  StepperValue<int>(
+                    value: targetSeconds,
+                    step: _timeTargetStep,
+                    min: _timeTargetStep,
+                    formatter: (v) => v.toString(),
+                    suffix: 'sec',
+                    onChanged: onTargetSecondsChanged,
                   ),
                   const SizedBox(height: 8),
                   StepperValue<double>(
