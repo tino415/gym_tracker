@@ -896,7 +896,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       return (label: 'Rest ${_restSecondsLeft}s', icon: Icons.hourglass_bottom);
     }
     if (_holding) {
-      return (label: 'Hold ${_holdSecondsLeft}s', icon: Icons.timer_outlined);
+      return (label: 'Timer ${_holdSecondsLeft}s', icon: Icons.timer_outlined);
     }
     return null;
   }

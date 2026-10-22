@@ -660,9 +660,9 @@ void main() {
 
       await switchFromList(tester, 'Lunge');
       expect(find.text('1/1'), findsOneWidget);
-      expect(find.text('Hold 25s'), findsOneWidget);
+      expect(find.text('Timer 25s'), findsOneWidget);
 
-      await tester.tap(find.text('Hold 25s'));
+      await tester.tap(find.text('Timer 25s'));
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Plank'), findsOneWidget);
       expect(find.text('24s'), findsOneWidget);
