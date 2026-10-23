@@ -177,7 +177,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
               children: [
               SizedBox(
                 height: 200,
-                child: MuscleMap(highlighted: _selectedMuscleIds),
+                child: Center(child: MuscleMap(highlighted: _selectedMuscleIds)),
               ),
               const SizedBox(height: 16),
               TextFormField(

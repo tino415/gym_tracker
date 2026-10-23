@@ -152,9 +152,7 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
                         final e = filtered[i];
                         return ListTile(
                           selected: e.exercise.syncId == widget.selectedId,
-                          leading: ExerciseThumbnail(
-                            muscleSyncIds: {for (final m in e.muscles) m.syncId},
-                          ),
+                          leading: ExerciseThumbnail(muscles: e.muscles),
                           title: Text(e.exercise.name),
                           subtitle: e.muscles.isEmpty
                               ? null

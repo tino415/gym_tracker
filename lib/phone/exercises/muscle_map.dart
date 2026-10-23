@@ -1,4 +1,9 @@
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../data/database.dart';
 
 import 'body_regions.dart';
 
@@ -39,9 +44,12 @@ class MuscleMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = size.height / bodyViewSize.height;
-    final contentWidth = bodyViewSize.width * BodyView.values.length * scale;
-    canvas.translate((size.width - contentWidth) / 2, 0);
+    final content = Size(bodyViewSize.width * BodyView.values.length, bodyViewSize.height);
+    final scale = min(size.width / content.width, size.height / content.height);
+    canvas.translate(
+      (size.width - content.width * scale) / 2,
+      (size.height - content.height * scale) / 2,
+    );
     canvas.scale(scale);
     for (final view in BodyView.values) {
       canvas.save();
@@ -52,38 +60,35 @@ class MuscleMapPainter extends CustomPainter {
   }
 
   void _paintView(Canvas canvas, BodyView view) {
-    _fill(canvas, silhouette, bodyColor);
+    for (final shape in silhouette) {
+      _fill(canvas, shape, bodyColor);
+    }
     for (final region in BodyRegion.values.where((r) => r.view == view)) {
-      _fill(canvas, [region.shape], lit.contains(region) ? litColor : unlitColor);
+      _fill(canvas, region.shape, lit.contains(region) ? litColor : unlitColor);
     }
   }
 
-  void _fill(Canvas canvas, List<RegionShape> shapes, Color color) {
+  void _fill(Canvas canvas, RegionShape shape, Color color) {
     final paint = Paint()..color = color;
-    for (final shape in shapes) {
-      for (final rect in shape.rects()) {
-        canvas.drawRRect(rect, paint);
-      }
+    for (final rect in shape.rects()) {
+      canvas.drawRRect(rect, paint);
     }
   }
 
   @override
   bool shouldRepaint(MuscleMapPainter old) =>
-      !_sameRegions(old.lit, lit) ||
+      !setEquals(old.lit, lit) ||
       old.bodyColor != bodyColor ||
       old.unlitColor != unlitColor ||
       old.litColor != litColor;
-
-  bool _sameRegions(Set<BodyRegion> a, Set<BodyRegion> b) =>
-      a.length == b.length && a.containsAll(b);
 }
 
 class ExerciseThumbnail extends StatelessWidget {
-  const ExerciseThumbnail({super.key, required this.muscleSyncIds});
+  const ExerciseThumbnail({super.key, required this.muscles});
 
   static const size = 44.0;
 
-  final Set<String> muscleSyncIds;
+  final List<Muscle> muscles;
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +101,7 @@ class ExerciseThumbnail extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(3),
-          child: Center(child: MuscleMap(highlighted: muscleSyncIds)),
+          child: Center(child: MuscleMap(highlighted: {for (final m in muscles) m.syncId})),
         ),
       ),
     );

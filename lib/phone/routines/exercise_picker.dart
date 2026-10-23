@@ -279,9 +279,7 @@ class _ExerciseResultList extends StatelessWidget {
         final e = exercises[i];
         final count = markCounts[e.exercise.syncId] ?? 0;
         return ListTile(
-          leading: ExerciseThumbnail(
-            muscleSyncIds: {for (final m in e.muscles) m.syncId},
-          ),
+          leading: ExerciseThumbnail(muscles: e.muscles),
           trailing: Icon(
             e.exercise.kind == exerciseKindTime
                 ? Icons.timer_outlined

@@ -18,6 +18,12 @@ void main() {
       }
     });
 
+    test('every region names a seeded muscle', () {
+      for (final region in BodyRegion.values) {
+        expect(muscleSeeds, contains(region.muscleName), reason: region.name);
+      }
+    });
+
     test('Back is lats, traps and lower back', () {
       expect(
         regionsOf({muscleSyncId('Back')}),

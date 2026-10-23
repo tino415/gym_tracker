@@ -66,11 +66,16 @@ enum BodyRegion {
   final BodyView view;
   final String muscleName;
   final RegionShape shape;
-
-  String get muscleSyncId => seeds.muscleSyncId(muscleName);
 }
 
-Set<BodyRegion> regionsOf(Set<String> muscleSyncIds) => {
+final Map<String, List<BodyRegion>> _regionsByMuscle = {
+  for (final name in BodyRegion.values.map((r) => r.muscleName).toSet())
+    seeds.muscleSyncId(name): [
       for (final region in BodyRegion.values)
-        if (muscleSyncIds.contains(region.muscleSyncId)) region,
+        if (region.muscleName == name) region,
+    ],
+};
+
+Set<BodyRegion> regionsOf(Set<String> muscleSyncIds) => {
+      for (final id in muscleSyncIds) ...?_regionsByMuscle[id],
     };
