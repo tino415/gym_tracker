@@ -10,6 +10,7 @@ import '../list_empty_state.dart';
 import '../wide_master_detail.dart';
 import 'exercise_edit_page.dart';
 import 'muscle_label.dart';
+import 'muscle_map.dart';
 
 /// Exercises home. Narrow: single-pane list that pushes the editor. Wide:
 /// master-detail split with the editor inline (see [masterDetailBreakpoint]).
@@ -151,6 +152,9 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
                         final e = filtered[i];
                         return ListTile(
                           selected: e.exercise.syncId == widget.selectedId,
+                          leading: ExerciseThumbnail(
+                            muscleSyncIds: {for (final m in e.muscles) m.syncId},
+                          ),
                           title: Text(e.exercise.name),
                           subtitle: e.muscles.isEmpty
                               ? null
