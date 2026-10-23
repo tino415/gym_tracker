@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../l10n/l10n.dart';
 import 'set_target_format.dart';
 import 'widgets/countdown_pill.dart';
 import 'widgets/round_safe_area.dart';
@@ -129,16 +130,18 @@ class WatchExercisePreviewPage extends StatelessWidget {
                         icon: kind == exerciseKindTime
                             ? Icons.timer_outlined
                             : Icons.repeat,
-                        label: kind == exerciseKindTime ? 'Time' : 'Reps',
+                        label: kind == exerciseKindTime
+                            ? context.l10n.watchKindTime
+                            : context.l10n.watchKindReps,
                       ),
                       _MetaChip(
                         icon: Icons.hourglass_bottom,
-                        label: 'rest ${restSeconds}s',
+                        label: context.l10n.watchRestChip(restSeconds),
                       ),
                       if (circuitGroup != null)
                         _MetaChip(
                           icon: Icons.link,
-                          label: 'circuit',
+                          label: context.l10n.watchCircuit,
                           color: theme.colorScheme.primary,
                         ),
                     ],
@@ -148,7 +151,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(
-                        'No planned sets.',
+                        context.l10n.watchNoPlannedSets,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.outline,
@@ -168,7 +171,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
                   if (_alternatives.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(
-                      'Alternatives',
+                      context.l10n.watchAlternatives,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.outline,
@@ -214,7 +217,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onSwitchActive,
                     icon: const Icon(Icons.play_arrow, size: 16),
-                    label: const Text('Switch to this'),
+                    label: Text(context.l10n.watchSwitchToThis),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(32),
                       visualDensity: VisualDensity.compact,
@@ -286,7 +289,7 @@ class _SetLine extends StatelessWidget {
         const SizedBox(width: 4),
         Expanded(
           child: Text(
-            _formatTarget(set, kind),
+            _formatTarget(context, set, kind),
             style: theme.textTheme.bodyMedium?.copyWith(color: color),
           ),
         ),
@@ -294,7 +297,12 @@ class _SetLine extends StatelessWidget {
     );
   }
 
-  static String _formatTarget(_PreviewSet s, String kind) => formatSetTarget(
+  static String _formatTarget(
+    BuildContext context,
+    _PreviewSet s,
+    String kind,
+  ) => formatSetTarget(
+        context,
         kind: kind,
         reps: s.targetReps,
         weightKg: s.targetWeightKg,

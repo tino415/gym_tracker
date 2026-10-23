@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart' show exerciseKindTime;
+import '../../l10n/l10n.dart';
+import '../number_format.dart';
 
 /// Values entered for a planned set. reps + weight for reps-kind; seconds +
 /// optional weight for time-kind.
@@ -71,7 +73,7 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
 
   /// Parse the fields, or null if invalid (leaves the dialog open).
   SetValues? _read() {
-    final weight = double.tryParse(_weight.text.trim());
+    final weight = parseDecimal(_weight.text);
     if (_isTime) {
       final s = int.tryParse(_seconds.text.trim());
       if (s == null || s <= 0) return null;
@@ -110,7 +112,7 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed: $e')));
+          .showSnackBar(SnackBar(content: Text(context.l10n.routineSetEditorFailed('$e'))));
     }
   }
 
@@ -136,10 +138,10 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
   @override
   Widget build(BuildContext context) {
     final title = _isEdit
-        ? 'Edit set'
+        ? context.l10n.routineSetEditTitle
         : _added == 0
-            ? 'New set'
-            : 'New set · $_added added';
+            ? context.l10n.routineSetNewTitle
+            : context.l10n.routineSetNewTitleAdded(_added);
     return AlertDialog(
       title: Text(title),
       content: Column(
@@ -147,40 +149,40 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
         children: _isTime
             ? [
                 _field(_seconds,
-                    label: 'Seconds', suffix: 's', autofocus: true),
+                    label: context.l10n.commonSeconds, suffix: context.l10n.commonUnitSeconds, autofocus: true),
                 const SizedBox(height: 8),
                 _field(_weight,
-                    label: 'Weight (optional)', suffix: 'kg', decimal: true),
+                    label: context.l10n.routineSetWeightOptional, suffix: context.l10n.commonUnitKg, decimal: true),
               ]
             : [
                 _field(_weight,
-                    label: 'Weight',
-                    suffix: 'kg',
+                    label: context.l10n.commonWeight,
+                    suffix: context.l10n.commonUnitKg,
                     decimal: true,
                     autofocus: true),
                 const SizedBox(height: 8),
-                _field(_reps, label: 'Reps'),
+                _field(_reps, label: context.l10n.commonReps),
               ],
       ),
       actions: _isEdit
           ? [
               TextButton(
                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: Text(context.l10n.commonCancel),
               ),
               FilledButton(
                 onPressed: _busy ? null : () => _save(another: false),
-                child: const Text('Save'),
+                child: Text(context.l10n.commonSave),
               ),
             ]
           : [
               TextButton(
                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                child: const Text('Done'),
+                child: Text(context.l10n.commonDone),
               ),
               FilledButton(
                 onPressed: _busy ? null : () => _save(another: true),
-                child: const Text('Save & add'),
+                child: Text(context.l10n.routineSetSaveAndAdd),
               ),
             ],
     );

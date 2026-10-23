@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/database.dart';
+import '../../l10n/l10n.dart';
 import '../../data/providers.dart';
 import '../../sync/sync_service.dart';
 import '../account_action.dart';
@@ -22,8 +24,8 @@ class HistoryListPage extends ConsumerWidget {
     final wide = MediaQuery.sizeOf(context).width >= masterDetailBreakpoint;
     if (wide) {
       return WideMasterDetail(
-        title: 'Workouts',
-        addTooltip: 'Log workout',
+        title: context.l10n.historyTitle,
+        addTooltip: context.l10n.historyLogWorkout,
         onAdd: (api) async {
           final id = await logPastWorkout(context, ref);
           if (id != null) api.select(id);
@@ -36,16 +38,16 @@ class HistoryListPage extends ConsumerWidget {
           embedded: true,
           onDeleted: onDeleted,
         ),
-        placeholder: const MasterDetailPlaceholder(
+        placeholder: MasterDetailPlaceholder(
           icon: Icons.history,
-          label: 'Select a workout to view or edit.',
+          label: context.l10n.historySelectPrompt,
         ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Workouts'),
+        title: Text(context.l10n.historyTitle),
         actions: const [AccountAction()],
       ),
       body: RefreshIndicator(
@@ -65,7 +67,7 @@ class HistoryListPage extends ConsumerWidget {
           if (id != null && context.mounted) context.push('/history/$id');
         },
         icon: const Icon(Icons.add),
-        label: const Text('Log workout'),
+        label: Text(context.l10n.historyLogWorkout),
       ),
     );
   }
@@ -96,16 +98,16 @@ class WorkoutsListView extends ConsumerWidget {
     return workoutsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) =>
-          ListView(physics: physics, children: [Center(child: Text('Error: $e'))]),
+          ListView(physics: physics, children: [Center(child: Text(context.l10n.historyError('$e')))]),
       data: (workouts) {
         if (workouts.isEmpty) {
           return CustomScrollView(
             physics: physics,
             slivers: [
-              const ListEmptyState(
+              ListEmptyState(
                 icon: Icons.history,
-                title: 'No workouts yet',
-                lines: ['Completed workouts will appear here.'],
+                title: context.l10n.historyEmptyTitle,
+                lines: [context.l10n.historyEmptyHint],
               ).asSliver(),
             ],
           );
@@ -118,8 +120,8 @@ class WorkoutsListView extends ConsumerWidget {
             final w = workouts[i];
             return ListTile(
               selected: w.syncId == selectedId,
-              title: Text(w.routineName ?? 'Workout'),
-              subtitle: Text(_subtitle(w)),
+              title: Text(w.routineName ?? context.l10n.historyWorkoutFallback),
+              subtitle: Text(_subtitle(context, w)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onSelect(w.syncId),
             );
@@ -149,14 +151,14 @@ Future<String?> logPastWorkout(BuildContext context, WidgetRef ref) async {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Text(
-              'Log a past workout',
+              ctx.l10n.historyLogPastTitle,
               style: Theme.of(ctx).textTheme.titleMedium,
             ),
           ),
           ListTile(
             leading: const Icon(Icons.note_add_outlined),
-            title: const Text('Empty workout'),
-            subtitle: const Text('Add exercises yourself'),
+            title: Text(ctx.l10n.historyEmptyWorkout),
+            subtitle: Text(ctx.l10n.historyEmptyWorkoutHint),
             onTap: () =>
                 Navigator.of(ctx).pop(const _BackfillChoice(routineId: null)),
           ),
@@ -166,9 +168,7 @@ Future<String?> logPastWorkout(BuildContext context, WidgetRef ref) async {
               leading: const Icon(Icons.fitness_center),
               title: Text(s.routine.name),
               subtitle: Text(
-                s.exerciseCount == 1
-                    ? '1 exercise'
-                    : '${s.exerciseCount} exercises',
+                ctx.l10n.historyExerciseCount(s.exerciseCount),
               ),
               onTap: () => Navigator.of(ctx)
                   .pop(_BackfillChoice(routineId: s.routine.syncId)),
@@ -208,27 +208,23 @@ class _BackfillChoice {
 
 /// Date + status/duration, e.g. "2026-07-25 12:25 · 48 min" or
 /// "2026-07-25 12:25 · In progress".
-String _subtitle(Workout w) {
-  final date = _formatDate(w.startedAt);
-  if (w.endedAt == null) return '$date · In progress';
-  return '$date · ${_duration(w.startedAt, w.endedAt!)}';
+String _subtitle(BuildContext context, Workout w) {
+  final date = _formatDate(context, w.startedAt);
+  if (w.endedAt == null) return '$date · ${context.l10n.historyInProgress}';
+  return '$date · ${_duration(context, w.startedAt, w.endedAt!)}';
 }
 
-String _duration(DateTime start, DateTime end) {
+String _duration(BuildContext context, DateTime start, DateTime end) {
+  final l10n = context.l10n;
   final mins = end.difference(start).inMinutes;
-  if (mins < 1) return '<1 min';
-  if (mins < 60) return '$mins min';
+  if (mins < 1) return l10n.historyLessThanMinute;
+  if (mins < 60) return l10n.historyMinutes(mins);
   final h = mins ~/ 60;
   final m = mins % 60;
-  return m == 0 ? '${h}h' : '${h}h ${m}m';
+  return m == 0 ? l10n.historyHours(h) : l10n.historyHoursMinutes(h, m);
 }
 
-String _formatDate(DateTime dt) {
-  final y = dt.year;
-  final m = dt.month.toString().padLeft(2, '0');
-  final d = dt.day.toString().padLeft(2, '0');
-  final hh = dt.hour.toString().padLeft(2, '0');
-  final mm = dt.minute.toString().padLeft(2, '0');
-  return '$y-$m-$d $hh:$mm';
-}
-
+String _formatDate(BuildContext context, DateTime dt) => DateFormat(
+      context.l10n.historyDateTimePattern,
+      Localizations.localeOf(context).toString(),
+    ).format(dt);

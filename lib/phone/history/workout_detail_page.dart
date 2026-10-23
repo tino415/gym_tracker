@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
-import '../../watch/set_target_format.dart' show formatWeight;
+import '../../l10n/l10n.dart';
 import '../routines/exercise_picker.dart';
 import '../circuit_units.dart';
+import '../number_format.dart';
 
 class WorkoutDetailPage extends ConsumerStatefulWidget {
   const WorkoutDetailPage({
@@ -37,21 +39,21 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !widget.embedded,
-        title: const Text('Workout'),
+        title: Text(context.l10n.historyDetailTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            tooltip: 'Delete workout',
+            tooltip: context.l10n.historyDeleteWorkout,
             onPressed: () => _deleteWorkout(context),
           ),
         ],
       ),
       body: asyncSnap.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(context.l10n.historyError('$e'))),
         data: (snap) {
           if (snap == null) {
-            return const Center(child: Text('Workout not found'));
+            return Center(child: Text(context.l10n.historyNotFound));
           }
           return _Body(snap: snap);
         },
@@ -64,16 +66,16 @@ class _WorkoutDetailPageState extends ConsumerState<WorkoutDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete workout?'),
-        content: const Text('This removes the workout and its completions.'),
+        title: Text(ctx.l10n.historyDeleteTitle),
+        content: Text(ctx.l10n.historyDeleteBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.historyCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.historyDelete),
           ),
         ],
       ),
@@ -125,7 +127,7 @@ class _BodyState extends ConsumerState<_Body> {
             children: [
               ListTile(
                 leading: const Icon(Icons.play_arrow_outlined),
-                title: const Text('Started'),
+                title: Text(context.l10n.historyStarted),
                 subtitle: _StampRow(
                   value: snap.workout.startedAt,
                   onEditDate: () => _editStamp(context, ref, isStart: true, date: true),
@@ -135,7 +137,7 @@ class _BodyState extends ConsumerState<_Body> {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.stop_outlined),
-                title: const Text('Ended'),
+                title: Text(context.l10n.historyEnded),
                 subtitle: snap.workout.endedAt == null
                     // No timestamp to split yet, so offer the full flow.
                     ? Align(
@@ -143,7 +145,7 @@ class _BodyState extends ConsumerState<_Body> {
                         child: TextButton(
                           onPressed: () =>
                               _editStamp(context, ref, isStart: false, date: true, thenTime: true),
-                          child: const Text('In progress — set end'),
+                          child: Text(context.l10n.historyInProgressSetEnd),
                         ),
                       )
                     : _StampRow(
@@ -155,7 +157,7 @@ class _BodyState extends ConsumerState<_Body> {
               if (snap.routine != null)
                 ListTile(
                   leading: const Icon(Icons.fitness_center),
-                  title: const Text('Routine'),
+                  title: Text(context.l10n.historyRoutine),
                   subtitle: Text(snap.routine!.name),
                 ),
               if (snap.workout.avgHeartRate != null ||
@@ -163,9 +165,10 @@ class _BodyState extends ConsumerState<_Body> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.favorite, color: Colors.redAccent),
-                  title: const Text('Heart rate'),
+                  title: Text(context.l10n.historyHeartRate),
                   subtitle: Text(
                     _hrLine(
+                      context,
                       snap.workout.avgHeartRate,
                       snap.workout.maxHeartRate,
                     ),
@@ -182,7 +185,11 @@ class _BodyState extends ConsumerState<_Body> {
             child: TextButton.icon(
               onPressed: () => setState(() => _reorderMode = !_reorderMode),
               icon: Icon(_reorderMode ? Icons.check : Icons.swap_vert),
-              label: Text(_reorderMode ? 'Done' : 'Reorder'),
+              label: Text(
+                _reorderMode
+                    ? context.l10n.historyDone
+                    : context.l10n.historyReorder,
+              ),
             ),
           ),
         if (_reorderMode)
@@ -221,7 +228,7 @@ class _BodyState extends ConsumerState<_Body> {
             child: TextButton.icon(
               onPressed: () => _addExercise(context, ref),
               icon: const Icon(Icons.add),
-              label: const Text('Add exercise'),
+              label: Text(context.l10n.historyAddExercise),
             ),
           ),
       ],
@@ -337,7 +344,9 @@ class _BodyState extends ConsumerState<_Body> {
       reps: null,
       weightKg: null,
       seconds: null,
-      title: finished ? 'Add completed set' : 'Add set',
+      title: finished
+          ? context.l10n.historyAddCompletedSet
+          : context.l10n.historyAddSet,
     );
     if (values == null) return;
     final db = ref.read(workoutRepositoryProvider);
@@ -365,18 +374,18 @@ class _BodyState extends ConsumerState<_Body> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove exercise?'),
+        title: Text(ctx.l10n.historyRemoveExerciseTitle),
         content: Text(
-          'Remove "${ex.workoutExercise.exerciseName}" from this workout?',
+          ctx.l10n.historyRemoveExerciseBody(ex.workoutExercise.exerciseName),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.historyCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove'),
+            child: Text(ctx.l10n.historyRemove),
           ),
         ],
       ),
@@ -398,7 +407,9 @@ class _BodyState extends ConsumerState<_Body> {
       reps: c?.actualReps ?? set.workoutSet.targetReps,
       weightKg: c?.actualWeightKg ?? set.workoutSet.targetWeightKg,
       seconds: c?.actualSeconds ?? set.workoutSet.targetSeconds,
-      title: c == null ? 'Add completion' : 'Edit completion',
+      title: c == null
+          ? context.l10n.historyAddCompletion
+          : context.l10n.historyEditCompletion,
     );
     if (values == null) return;
     final db = ref.read(workoutRepositoryProvider);
@@ -439,7 +450,7 @@ class _BodyState extends ConsumerState<_Body> {
       markCounts: countExerciseIds(
         snap.exercises.map((e) => e.workoutExercise.exerciseId),
       ),
-      markLabel: 'In this workout',
+      markLabel: context.l10n.historyInThisWorkout,
     );
     if (picked == null) return;
     await ref.read(workoutRepositoryProvider).changeWorkoutExercise(
@@ -460,7 +471,7 @@ class _BodyState extends ConsumerState<_Body> {
       markCounts: countExerciseIds(
         snap.exercises.map((e) => e.workoutExercise.exerciseId),
       ),
-      markLabel: 'In this workout',
+      markLabel: context.l10n.historyInThisWorkout,
     );
     if (picked == null) return;
     await workouts.addWorkoutExercise(
@@ -469,10 +480,11 @@ class _BodyState extends ConsumerState<_Body> {
     );
   }
 
-  static String _hrLine(int? avg, int? max) {
-    if (avg != null && max != null) return 'avg $avg · max $max bpm';
-    if (avg != null) return 'avg $avg bpm';
-    return 'max $max bpm';
+  static String _hrLine(BuildContext context, int? avg, int? max) {
+    final l10n = context.l10n;
+    if (avg != null && max != null) return l10n.historyHrAvgMax(avg, max);
+    if (avg != null) return l10n.historyHrAvg(avg);
+    return l10n.historyHrMax(max!);
   }
 }
 
@@ -491,7 +503,7 @@ class _CircuitHeader extends StatelessWidget {
           Icon(Icons.link, size: 14, color: theme.colorScheme.primary),
           const SizedBox(width: 4),
           Text(
-            'Circuit',
+            context.l10n.historyCircuit,
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.primary,
             ),
@@ -630,12 +642,12 @@ class _ExerciseSection extends ConsumerWidget {
                 IconButton(
                   onPressed: onSwapExercise,
                   icon: const Icon(Icons.swap_horiz),
-                  tooltip: 'Swap exercise',
+                  tooltip: context.l10n.historySwapExercise,
                 ),
                 IconButton(
                   onPressed: onRemoveExercise,
                   icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove exercise',
+                  tooltip: context.l10n.historyRemoveExercise,
                 ),
               ],
             ),
@@ -658,7 +670,7 @@ class _ExerciseSection extends ConsumerWidget {
               child: TextButton.icon(
                 onPressed: onAddSet,
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add set'),
+                label: Text(context.l10n.historyAddSet),
               ),
             ),
           ],
@@ -735,6 +747,7 @@ class _SetRow extends StatelessWidget {
     final completion = set.completion;
     final missing = completion == null;
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     String descActual;
     String descTarget;
     if (kind == exerciseKindTime) {
@@ -744,18 +757,18 @@ class _SetRow extends StatelessWidget {
         final s = completion!.actualSeconds!;
         final w = completion.actualWeightKg;
         descActual = w == null || w == 0
-            ? '$s s'
-            : '$s s @ ${w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1)} kg';
+            ? l10n.historySecondsActual(s)
+            : l10n.historySecondsWeightActual(s, formatKg(context, w));
       }
       final ts = set.workoutSet.targetSeconds;
       final tw = set.workoutSet.targetWeightKg;
       if (ts == null) {
         descTarget = '';
       } else if (tw == null || tw == 0) {
-        descTarget = 'target ${ts}s';
+        descTarget = l10n.historySecondsTarget(ts);
       } else {
         descTarget =
-            'target ${ts}s @ ${tw == tw.roundToDouble() ? tw.toStringAsFixed(0) : tw.toStringAsFixed(1)} kg';
+            l10n.historySecondsWeightTarget(ts, formatKg(context, tw));
       }
     } else {
       // Bodyweight sets carry reps and no weight. Both halves below drop the
@@ -767,17 +780,18 @@ class _SetRow extends StatelessWidget {
         final w = completion.actualWeightKg;
         final reps = completion.actualReps ?? 0;
         descActual = (w == null || w == 0)
-            ? '$reps reps'
-            : '${formatWeight(w)} kg × $reps';
+            ? l10n.historyRepsActual(reps)
+            : l10n.historyWeightRepsActual(formatKg(context, w), reps);
       }
       final tw = set.workoutSet.targetWeightKg;
       final tr = set.workoutSet.targetReps;
       if (tr == null) {
         descTarget = '';
       } else if (tw == null || tw == 0) {
-        descTarget = 'target $tr reps';
+        descTarget = l10n.historyRepsTarget(tr);
       } else {
-        descTarget = 'target ${formatWeight(tw)} kg × $tr';
+        descTarget =
+            l10n.historyWeightRepsTarget(formatKg(context, tw), tr);
       }
     }
     return InkWell(
@@ -822,6 +836,7 @@ class _SetRow extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(
                           _setHrLine(
+                            context,
                             completion?.avgHeartRate,
                             completion?.maxHeartRate,
                           ),
@@ -838,12 +853,12 @@ class _SetRow extends StatelessWidget {
               IconButton(
                 onPressed: onRemoveCompletion,
                 icon: const Icon(Icons.remove_circle_outline),
-                tooltip: 'Remove completion',
+                tooltip: context.l10n.historyRemoveCompletion,
               ),
             IconButton(
               onPressed: onRemoveSet,
               icon: const Icon(Icons.close),
-              tooltip: 'Remove set',
+              tooltip: context.l10n.historyRemoveSet,
             ),
           ],
         ),
@@ -852,10 +867,11 @@ class _SetRow extends StatelessWidget {
   }
 }
 
-String _setHrLine(int? avg, int? max) {
-  if (avg != null && max != null) return 'HR avg $avg · max $max';
-  if (avg != null) return 'HR avg $avg';
-  return 'HR max $max';
+String _setHrLine(BuildContext context, int? avg, int? max) {
+  final l10n = context.l10n;
+  if (avg != null && max != null) return l10n.historySetHrAvgMax(avg, max);
+  if (avg != null) return l10n.historySetHrAvg(avg);
+  return l10n.historySetHrMax(max!);
 }
 
 /// Returns (reps, weightKg, seconds) — at most two of them are non-null,
@@ -875,11 +891,10 @@ class _StampRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d = value;
+    final locale = Localizations.localeOf(context).toString();
     final dateLabel =
-        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-    final timeLabel =
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+        DateFormat(context.l10n.historyDatePattern, locale).format(value);
+    final timeLabel = DateFormat('HH:mm', locale).format(value);
     return Align(
       alignment: Alignment.centerLeft,
       child: Wrap(
@@ -888,13 +903,13 @@ class _StampRow extends StatelessWidget {
           _StampChip(
             icon: Icons.event_outlined,
             label: dateLabel,
-            tooltip: 'Change date',
+            tooltip: context.l10n.historyChangeDate,
             onTap: onEditDate,
           ),
           _StampChip(
             icon: Icons.schedule_outlined,
             label: timeLabel,
-            tooltip: 'Change time',
+            tooltip: context.l10n.historyChangeTime,
             onTap: onEditTime,
           ),
         ],
@@ -945,7 +960,7 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
   required int? reps,
   required double? weightKg,
   required int? seconds,
-  String title = 'Set',
+  required String title,
 }) async {
   final repsController = TextEditingController(text: reps?.toString() ?? '');
   final weightController = TextEditingController(
@@ -970,8 +985,8 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
                   controller: secondsController,
                   autofocus: true,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Seconds',
+                  decoration: InputDecoration(
+                    labelText: context.l10n.historySeconds,
                     suffixText: 's',
                   ),
                 ),
@@ -981,8 +996,8 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight (optional)',
+                  decoration: InputDecoration(
+                    labelText: context.l10n.historyWeightOptional,
                     suffixText: 'kg',
                   ),
                 ),
@@ -994,8 +1009,8 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Weight',
+                  decoration: InputDecoration(
+                    labelText: context.l10n.historyWeight,
                     suffixText: 'kg',
                   ),
                 ),
@@ -1003,18 +1018,19 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
                 TextField(
                   controller: repsController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Reps'),
+                  decoration:
+                      InputDecoration(labelText: context.l10n.historyReps),
                 ),
               ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
+          child: Text(ctx.l10n.historyCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Save'),
+          child: Text(ctx.l10n.historySave),
         ),
       ],
     ),
@@ -1023,11 +1039,11 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
   if (kind == exerciseKindTime) {
     final s = int.tryParse(secondsController.text.trim());
     if (s == null) return null;
-    final w = double.tryParse(weightController.text.trim());
+    final w = parseDecimal(weightController.text);
     return (null, w, s);
   }
   final r = int.tryParse(repsController.text.trim());
-  final w = double.tryParse(weightController.text.trim());
+  final w = parseDecimal(weightController.text);
   if (r == null || w == null) return null;
   return (r, w, null);
 }
@@ -1137,7 +1153,7 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '${list.length} set${list.length == 1 ? '' : 's'} exceeded their target',
+                  context.l10n.historyImprovementsHeadline(list.length),
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                   ),
@@ -1147,7 +1163,7 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2),
                     child: Text(
-                      _formatImprovement(imp),
+                      _formatImprovement(context, imp),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onPrimaryContainer,
                       ),
@@ -1155,7 +1171,7 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
                   ),
                 if (extra > 0)
                   Text(
-                    '…and $extra more',
+                    context.l10n.historyAndMore(extra),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onPrimaryContainer,
                       fontStyle: FontStyle.italic,
@@ -1166,12 +1182,12 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
                   children: [
                     TextButton(
                       onPressed: _dismiss,
-                      child: const Text('Dismiss'),
+                      child: Text(context.l10n.historyDismiss),
                     ),
                     const SizedBox(width: 4),
                     FilledButton(
                       onPressed: _apply,
-                      child: const Text('Apply'),
+                      child: Text(context.l10n.historyApply),
                     ),
                   ],
                 ),
@@ -1183,18 +1199,27 @@ class _ImprovementsBannerState extends ConsumerState<_ImprovementsBanner> {
     );
   }
 
-  static String _formatImprovement(WorkoutImprovement imp) {
-    final setLabel = 'set ${imp.setIndex + 1}';
+  static String _formatImprovement(BuildContext context, WorkoutImprovement imp) {
+    final l10n = context.l10n;
     if (imp.kind == exerciseKindTime) {
-      return '${imp.exerciseName} · $setLabel · ${imp.oldSeconds}s → ${imp.newSeconds}s';
+      return l10n.historyImprovementTime(
+        imp.exerciseName,
+        imp.setIndex + 1,
+        '${imp.oldSeconds}',
+        '${imp.newSeconds}',
+      );
     }
-    final oldW = _fmtWeight(imp.oldWeightKg);
-    final newW = _fmtWeight(imp.newWeightKg);
-    return '${imp.exerciseName} · $setLabel · ${imp.oldReps}×$oldW → ${imp.newReps}×$newW';
+    return l10n.historyImprovementReps(
+      imp.exerciseName,
+      imp.setIndex + 1,
+      '${imp.oldReps}',
+      _fmtWeight(context, imp.oldWeightKg),
+      '${imp.newReps}',
+      _fmtWeight(context, imp.newWeightKg),
+    );
   }
 
-  static String _fmtWeight(double? w) {
-    if (w == null) return '—';
-    return w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
-  }
+  static String _fmtWeight(BuildContext context, double? w) =>
+      w == null ? '—' : formatKg(context, w);
 }
+

@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
+import '../l10n/locale_controller.dart';
 import 'watch_pick_routine_page.dart';
 
-class WatchApp extends StatelessWidget {
+class WatchApp extends ConsumerWidget {
   const WatchApp({super.key, this.ambient = false});
 
   final bool ambient;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'GymTracker',
+      locale: ref.watch(localeProvider),
+      localizationsDelegates: appLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: watchTheme(),
       home: ambient ? const _AmbientFace() : const WatchPickRoutinePage(),
     );

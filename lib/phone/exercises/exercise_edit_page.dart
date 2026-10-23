@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
 import 'muscle_selector.dart';
 
 class ExerciseEditPage extends ConsumerStatefulWidget {
@@ -104,7 +105,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.exerciseSaveError('$e'))));
       return;
     }
   }
@@ -114,18 +115,16 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete exercise?'),
-        content: Text(
-          'Delete "${_loaded!.name}"? Workouts that reference it will need to be edited.',
-        ),
+        title: Text(ctx.l10n.exerciseDeleteTitle),
+        content: Text(ctx.l10n.exerciseDeleteBody(_loaded!.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: Text(ctx.l10n.commonDelete),
           ),
         ],
       ),
@@ -137,7 +136,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not delete: $e')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.exerciseDeleteError('$e'))));
       return;
     }
     if (!mounted) return;
@@ -157,13 +156,13 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !widget.embedded,
-        title: Text(isEdit ? 'Edit exercise' : 'New exercise'),
+        title: Text(isEdit ? context.l10n.exerciseEdit : context.l10n.exerciseNew),
         actions: [
           if (isEdit)
             IconButton(
               onPressed: _delete,
               icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete',
+              tooltip: context.l10n.commonDelete,
             ),
         ],
       ),
@@ -178,28 +177,28 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
               TextFormField(
                 controller: _nameController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
+                decoration: InputDecoration(
+                  labelText: context.l10n.commonName,
                   border: OutlineInputBorder(),
                 ),
                 textInputAction: TextInputAction.done,
                 onFieldSubmitted: (_) => _save(),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Name is required';
+                  if (v == null || v.trim().isEmpty) return context.l10n.commonNameRequired;
                   return null;
                 },
               ),
               const SizedBox(height: 16),
               SegmentedButton<String>(
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: exerciseKindReps,
-                    label: Text('Reps'),
+                    label: Text(context.l10n.commonReps),
                     icon: Icon(Icons.repeat),
                   ),
                   ButtonSegment(
                     value: exerciseKindTime,
-                    label: Text('Time'),
+                    label: Text(context.l10n.commonTime),
                     icon: Icon(Icons.timer_outlined),
                   ),
                 ],
@@ -216,7 +215,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
                 }),
               ),
               const SizedBox(height: 16),
-              FilledButton(onPressed: _save, child: const Text('Save')),
+              FilledButton(onPressed: _save, child: Text(context.l10n.commonSave)),
               ],
             ),
           ),

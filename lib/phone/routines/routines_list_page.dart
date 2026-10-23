@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
 import '../../sync/sync_service.dart';
 import '../account_action.dart';
 import '../breakpoints.dart';
@@ -30,7 +31,7 @@ class RoutinesListPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Routines'),
+        title: Text(context.l10n.routinesTitle),
         actions: const [AccountAction()],
       ),
       floatingActionButton: FloatingActionButton(
@@ -130,9 +131,9 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
             selectedExerciseId: _reId,
             onExerciseRemoved: _clearExercise,
           )
-        : const MasterDetailPlaceholder(
+        : MasterDetailPlaceholder(
             icon: Icons.fitness_center,
-            label: 'Select a routine, or + to create one.',
+            label: context.l10n.routinesSelectPrompt,
           );
 
     Widget setEditor({required bool showBack}) => showSetEditor
@@ -144,9 +145,9 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
             showBack: showBack,
             onClose: _clearExercise,
           )
-        : const MasterDetailPlaceholder(
+        : MasterDetailPlaceholder(
             icon: Icons.repeat,
-            label: 'Select an exercise to edit its sets.',
+            label: context.l10n.routineSelectExercisePrompt,
           );
 
     return Scaffold(
@@ -189,12 +190,12 @@ class _RoutinesMasterDetailState extends State<_RoutinesMasterDetail> {
               children: [
                 Expanded(
                   child: Text(
-                    'Routines',
+                    context.l10n.routinesTitle,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
                 IconButton(
-                  tooltip: 'New routine',
+                  tooltip: context.l10n.routineNew,
                   onPressed: _newDraft,
                   icon: const Icon(Icons.add),
                 ),
@@ -250,7 +251,7 @@ class _SwipeToStart extends StatelessWidget {
               Icon(Icons.play_arrow, color: scheme.onPrimaryContainer),
               const SizedBox(width: 8),
               Text(
-                'Start',
+                context.l10n.routineSwipeStart,
                 style: TextStyle(
                   color: scheme.onPrimaryContainer,
                   fontWeight: FontWeight.w600,
@@ -295,14 +296,14 @@ class ResumeWorkoutBanner extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Workout in progress',
+                      context.l10n.routineWorkoutInProgress,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: scheme.onPrimaryContainer,
                       ),
                     ),
                     Text(
-                      workout.routineName ?? 'Ad-hoc workout',
+                      workout.routineName ?? context.l10n.routineAdHocWorkout,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: scheme.onPrimaryContainer),
@@ -312,7 +313,7 @@ class ResumeWorkoutBanner extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () => context.push('/run/resume/${workout.syncId}'),
-                child: const Text('Resume'),
+                child: Text(context.l10n.routineResume),
               ),
             ],
           ),
@@ -348,18 +349,18 @@ class RoutinesListView extends ConsumerWidget {
     return routinesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) =>
-          ListView(physics: physics, children: [Center(child: Text('Error: $e'))]),
+          ListView(physics: physics, children: [Center(child: Text(context.l10n.commonError('$e')))]),
       data: (summaries) {
         if (summaries.isEmpty) {
           return CustomScrollView(
             physics: physics,
             slivers: [
-              const ListEmptyState(
+              ListEmptyState(
                 icon: Icons.fitness_center,
-                title: 'No routines yet',
+                title: context.l10n.routinesEmptyTitle,
                 lines: [
-                  'Tap + to design your first routine.',
-                  'Pull down to sync with the watch.',
+                  context.l10n.routinesEmptyLine1,
+                  context.l10n.routinesEmptyLine2,
                 ],
               ).asSliver(),
             ],
@@ -375,9 +376,7 @@ class RoutinesListView extends ConsumerWidget {
               selected: s.routine.syncId == selectedId,
               title: Text(s.routine.name),
               subtitle: Text(
-                s.exerciseCount == 1
-                    ? '1 exercise'
-                    : '${s.exerciseCount} exercises',
+                context.l10n.routineExerciseCount(s.exerciseCount),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onSelect(s.routine.syncId),

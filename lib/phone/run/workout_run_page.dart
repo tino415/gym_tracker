@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
 import '../../sync/health_connect_publisher.dart';
 import '../../sync/workout_bridge.dart';
 import '../settings/health_connect_controller.dart';
@@ -253,7 +254,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   bool get _currentIsCompleted => _currentSet?.completion != null;
 
   String _routineName() =>
-      _snapshot?.workout.routineName ?? _snapshot?.routine?.name ?? 'Workout';
+      _snapshot?.workout.routineName ?? _snapshot?.routine?.name ??
+      context.l10n.runWorkoutDefaultName;
 
   /// Rest comes from the exercise whose set was just completed — the same rule
   /// standalone and inside a circuit, where each member carries the pause to
@@ -500,6 +502,8 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     });
   }
 
+  String get _locale => Localizations.localeOf(context).toString();
+
   bool get _holding => _timeEndTime != null;
 
   bool get _holdingHere =>
@@ -601,10 +605,9 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final remaining = _remainingSetCount();
     if (remaining > 0) {
       final ok = await _confirm(
-        title: 'Finish workout?',
-        body: '$remaining ${remaining == 1 ? 'set is' : 'sets are'} '
-            'still unlogged.',
-        action: 'Finish',
+        title: context.l10n.runFinishTitle,
+        body: context.l10n.runUnloggedSets(remaining),
+        action: context.l10n.runFinish,
       );
       if (!ok || !mounted) return;
     }
@@ -630,9 +633,9 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final workoutId = _workoutId;
     if (workoutId == null) return;
     final ok = await _confirm(
-      title: 'Discard workout?',
-      body: 'Everything logged in this session is deleted.',
-      action: 'Discard',
+      title: context.l10n.runDiscardTitle,
+      body: context.l10n.runDiscardBody,
+      action: context.l10n.runDiscard,
       destructive: true,
     );
     if (!ok || !mounted) return;
@@ -663,7 +666,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -686,11 +689,11 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   Widget build(BuildContext context) {
     if (_startError != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Workout')),
+        appBar: AppBar(title: Text(context.l10n.runWorkoutDefaultName)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text("Couldn't start the workout.\n\n$_startError"),
+            child: Text(context.l10n.runStartError('$_startError')),
           ),
         ),
       );
@@ -698,7 +701,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final snap = _snapshot;
     if (snap == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Workout')),
+        appBar: AppBar(title: Text(context.l10n.runWorkoutDefaultName)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -706,13 +709,16 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       appBar: AppBar(
         title: Text(_routineName()),
         actions: [
-          TextButton(onPressed: _finish, child: const Text('Finish')),
+          TextButton(onPressed: _finish, child: Text(context.l10n.runFinish)),
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'discard') _discard();
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'discard', child: Text('Discard workout')),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'discard',
+                child: Text(context.l10n.runDiscardMenu),
+              ),
             ],
           ),
         ],
@@ -735,7 +741,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     final ex = _currentExercise;
     final set = _currentSet;
     if (ex == null || set == null) {
-      return const Center(child: Text('Nothing to do in this workout.'));
+      return Center(child: Text(context.l10n.runNothingToDo));
     }
     final kind = ex.kind;
     final ws = set.workoutSet;
@@ -753,19 +759,21 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         ),
         const SizedBox(height: 4),
         Text(
-          'Set ${_setIdx + 1} of ${ex.sets.length}'
-          '${_circuitGroupAt(_exerciseIdx) != null ? ' • circuit' : ''}',
+          _circuitGroupAt(_exerciseIdx) != null
+              ? context.l10n.runSetOfTotalCircuit(_setIdx + 1, ex.sets.length)
+              : context.l10n.runSetOfTotal(_setIdx + 1, ex.sets.length),
           style: theme.textTheme.bodyMedium
               ?.copyWith(color: theme.colorScheme.outline),
         ),
         const SizedBox(height: 16),
         Text(
-          'Target  ${formatSetTarget(
+          context.l10n.runTarget(formatSetTarget(
+            context,
             kind: kind,
             reps: ws.targetReps,
             weightKg: ws.targetWeightKg,
             seconds: ws.targetSeconds,
-          )}',
+          )),
           style: theme.textTheme.bodyLarge,
         ),
         _buildLastTime(kind),
@@ -779,7 +787,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(56),
           ),
-          label: Text(_currentIsCompleted ? 'Undo set' : 'Done'),
+          label: Text(_currentIsCompleted ? context.l10n.runUndoSet : context.l10n.commonDone),
         ),
         const SizedBox(height: 12),
         Row(
@@ -788,13 +796,13 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
             TextButton.icon(
               onPressed: _goPrev,
               icon: const Icon(Icons.chevron_left),
-              label: const Text('Previous'),
+              label: Text(context.l10n.runPrevious),
             ),
             TextButton.icon(
               onPressed: _goNext,
               icon: const Icon(Icons.chevron_right),
               iconAlignment: IconAlignment.end,
-              label: const Text('Next'),
+              label: Text(context.l10n.runNext),
             ),
           ],
         ),
@@ -805,8 +813,10 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   Widget _buildHoldElsewhereChip() {
     final pos = _positionOfSet(_holdSetId);
     final name = pos == null
-        ? 'Timer'
-        : '${_snapshot!.exercises[pos.eIdx].workoutExercise.exerciseName} timer';
+        ? context.l10n.runTimerChip
+        : context.l10n.runExerciseTimer(
+            _snapshot!.exercises[pos.eIdx].workoutExercise.exerciseName,
+          );
     return Align(
       alignment: Alignment.centerLeft,
       child: ActionChip(
@@ -824,12 +834,13 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        'Last time  ${formatSetTarget(
+        context.l10n.runLastTime(formatSetTarget(
+          context,
           kind: kind,
           reps: last.actualReps,
           weightKg: last.actualWeightKg,
           seconds: last.actualSeconds,
-        )}',
+        )),
         style: theme.textTheme.bodyMedium
             ?.copyWith(color: theme.colorScheme.outline),
       ),
@@ -838,15 +849,17 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
 
   List<Widget> _buildRepsControls() => [
         _Stepper(
-          label: 'Reps',
+          label: context.l10n.commonReps,
           value: '$_reps',
           onMinus: _reps > 0 ? () => setState(() => _reps--) : null,
           onPlus: () => setState(() => _reps++),
         ),
         const SizedBox(height: 12),
         _Stepper(
-          label: 'Weight',
-          value: '${formatWeight(_weightKg)} kg',
+          label: context.l10n.commonWeight,
+          value: context.l10n.commonWeightKg(
+            formatWeight(_weightKg, locale: _locale),
+          ),
           onMinus: _weightKg >= 2.5
               ? () => setState(() => _weightKg -= 2.5)
               : null,
@@ -871,12 +884,12 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
           child: OutlinedButton.icon(
             onPressed: _toggleTimeRun,
             icon: Icon(_holdingHere ? Icons.pause : Icons.play_arrow),
-            label: Text(_holdingHere ? 'Pause' : 'Start timer'),
+            label: Text(_holdingHere ? context.l10n.runPause : context.l10n.runStartTimer),
           ),
         ),
         const SizedBox(height: 12),
         _Stepper(
-          label: 'Time',
+          label: context.l10n.commonTime,
           value: _formatSeconds(_timeStartTarget),
           onMinus: _timeStartTarget > _timeTargetStep
               ? () => _changeTimeTarget(-_timeTargetStep)
@@ -885,8 +898,10 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         ),
         const SizedBox(height: 12),
         _Stepper(
-          label: 'Weight',
-          value: '${formatWeight(_weightKg)} kg',
+          label: context.l10n.commonWeight,
+          value: context.l10n.commonWeightKg(
+            formatWeight(_weightKg, locale: _locale),
+          ),
           onMinus: _weightKg >= 2.5
               ? () => setState(() => _weightKg -= 2.5)
               : null,
@@ -902,20 +917,23 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       final snap = _snapshot!;
       final ex = snap.exercises[next.eIdx];
       final ws = ex.sets[next.sIdx].workoutSet;
-      upNext = '${ex.workoutExercise.exerciseName} • '
-          'set ${next.sIdx + 1} • '
-          '${formatSetTarget(
-        kind: ex.kind,
-        reps: ws.targetReps,
-        weightKg: ws.targetWeightKg,
-        seconds: ws.targetSeconds,
-      )}';
+      upNext = context.l10n.runUpNextLine(
+        ex.workoutExercise.exerciseName,
+        next.sIdx + 1,
+        formatSetTarget(
+          context,
+          kind: ex.kind,
+          reps: ws.targetReps,
+          weightKg: ws.targetWeightKg,
+          seconds: ws.targetSeconds,
+        ),
+      );
     }
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('Rest', style: theme.textTheme.titleMedium),
+          Text(context.l10n.runRest, style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
             _formatSeconds(_restSecondsLeft),
@@ -928,7 +946,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
-                'Up next  $upNext',
+                context.l10n.runUpNext(upNext),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.outline),
@@ -940,17 +958,17 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
             children: [
               OutlinedButton(
                 onPressed: () => _bumpRest(-15),
-                child: const Text('−15s'),
+                child: Text(context.l10n.runRestMinus),
               ),
               const SizedBox(width: 12),
               OutlinedButton(
                 onPressed: () => _bumpRest(15),
-                child: const Text('+15s'),
+                child: Text(context.l10n.runRestPlus),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          FilledButton(onPressed: _skipRest, child: const Text('Skip rest')),
+          FilledButton(onPressed: _skipRest, child: Text(context.l10n.runSkipRest)),
         ],
       ),
     );
@@ -1043,7 +1061,7 @@ class _Stepper extends StatelessWidget {
         IconButton.outlined(
           onPressed: onMinus,
           icon: const Icon(Icons.remove),
-          tooltip: 'Decrease $label',
+          tooltip: context.l10n.runDecrease(label),
         ),
         Expanded(
           child: Text(
@@ -1057,7 +1075,7 @@ class _Stepper extends StatelessWidget {
         IconButton.outlined(
           onPressed: onPlus,
           icon: const Icon(Icons.add),
-          tooltip: 'Increase $label',
+          tooltip: context.l10n.runIncrease(label),
         ),
       ],
     );

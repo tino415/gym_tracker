@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
+import 'muscle_label.dart';
 
 /// Multi-select chip list of muscle groups, shared by the exercise editor
 /// ([ExerciseEditPage]) and the inline "Create new exercise" dialog in the
@@ -23,13 +25,13 @@ class MuscleSelector extends ConsumerWidget {
     final musclesAsync = ref.watch(musclesStreamProvider);
     return musclesAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (e, _) => Text('Could not load muscles: $e'),
+      error: (e, _) => Text(context.l10n.exerciseMusclesLoadError('$e')),
       data: (muscles) {
         if (muscles.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Muscles', style: Theme.of(context).textTheme.titleSmall),
+            Text(context.l10n.exerciseMusclesTitle, style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -37,7 +39,7 @@ class MuscleSelector extends ConsumerWidget {
               children: [
                 for (final m in muscles)
                   FilterChip(
-                    label: Text(m.name),
+                    label: Text(muscleLabel(context.l10n, m.name)),
                     selected: selectedIds.contains(m.syncId),
                     onSelected: (_) => onToggled(m.syncId),
                   ),

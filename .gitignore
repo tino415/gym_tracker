@@ -54,3 +54,4 @@ app.*.map.json
 
 # Local database backups (see `just backup-phone` / `backup-firestore`)
 /backups/
+lib/l10n/gen/

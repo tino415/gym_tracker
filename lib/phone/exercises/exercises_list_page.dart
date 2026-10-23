@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/providers.dart';
+import '../../l10n/l10n.dart';
 import '../account_action.dart';
 import '../breakpoints.dart';
 import '../list_empty_state.dart';
 import '../wide_master_detail.dart';
 import 'exercise_edit_page.dart';
+import 'muscle_label.dart';
 
 /// Exercises home. Narrow: single-pane list that pushes the editor. Wide:
 /// master-detail split with the editor inline (see [masterDetailBreakpoint]).
@@ -19,8 +21,8 @@ class ExercisesListPage extends ConsumerWidget {
     final wide = MediaQuery.sizeOf(context).width >= masterDetailBreakpoint;
     if (wide) {
       return WideMasterDetail(
-        title: 'Exercises',
-        addTooltip: 'New exercise',
+        title: context.l10n.exercisesTitle,
+        addTooltip: context.l10n.exerciseNew,
         onAdd: (api) async => api.newDraft(),
         listBuilder: (onSelect, selectedId) =>
             ExercisesListView(onSelect: onSelect, selectedId: selectedId),
@@ -31,16 +33,16 @@ class ExercisesListPage extends ConsumerWidget {
           onDeleted: onDeleted,
           onCreated: onCreated,
         ),
-        placeholder: const MasterDetailPlaceholder(
+        placeholder: MasterDetailPlaceholder(
           icon: Icons.list_alt,
-          label: 'Select an exercise, or + to create one.',
+          label: context.l10n.exercisesSelectPrompt,
         ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Exercises'),
+        title: Text(context.l10n.exercisesTitle),
         actions: const [AccountAction()],
       ),
       floatingActionButton: FloatingActionButton(
@@ -92,15 +94,15 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
     final exercisesAsync = ref.watch(exercisesWithMusclesStreamProvider);
     return exercisesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(context.l10n.commonError('$e'))),
       data: (exercises) {
         // Nothing to search through yet — show the plain empty state instead of
         // a search box over an empty list.
         if (exercises.isEmpty) {
-          return const ListEmptyState(
+          return ListEmptyState(
             icon: Icons.list_alt,
-            title: 'No exercises yet',
-            lines: ['Tap + to add your first one.'],
+            title: context.l10n.exercisesEmptyTitle,
+            lines: [context.l10n.exercisesEmptyLine],
           );
         }
 
@@ -120,13 +122,13 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
-                  hintText: 'Search exercises',
+                  hintText: context.l10n.exercisesSearchHint,
                   isDense: true,
                   border: const OutlineInputBorder(),
                   suffixIcon: _query.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: 'Clear',
+                          tooltip: context.l10n.commonClear,
                           icon: const Icon(Icons.clear),
                           onPressed: _clearQuery,
                         ),
@@ -139,8 +141,8 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
               child: filtered.isEmpty
                   ? ListEmptyState(
                       icon: Icons.search_off,
-                      title: 'No exercises match',
-                      lines: ['Nothing named “${_query.trim()}”.'],
+                      title: context.l10n.exercisesNoMatchTitle,
+                      lines: [context.l10n.exercisesNoMatchLine(_query.trim())],
                     )
                   : ListView.separated(
                       itemCount: filtered.length,
@@ -159,7 +161,7 @@ class _ExercisesListViewState extends ConsumerState<ExercisesListView> {
                                     runSpacing: 4,
                                     children: [
                                       for (final m in e.muscles)
-                                        _MuscleTag(name: m.name),
+                                        _MuscleTag(name: muscleLabel(context.l10n, m.name)),
                                     ],
                                   ),
                                 ),

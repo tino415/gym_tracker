@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n.dart';
 import 'round_safe_area.dart';
 
 /// Compact watch-sized "Discard?" confirmation. Renders the routine name as
@@ -40,9 +41,9 @@ class DiscardDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Discard?',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              context.l10n.watchDiscardTitle,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 2),
             Text(

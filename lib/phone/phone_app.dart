@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/l10n.dart';
+import '../l10n/locale_controller.dart';
 import '../selectable_on_web.dart';
 import 'breakpoints.dart';
 import 'exercises/exercise_edit_page.dart';
@@ -133,6 +135,9 @@ class PhoneApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       title: 'GymTracker',
+      locale: ref.watch(localeProvider),
+      localizationsDelegates: appLocalizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
