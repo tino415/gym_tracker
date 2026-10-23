@@ -93,10 +93,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: [
-              const Align(
-                alignment: Alignment.centerRight,
-                child: SizedBox(width: 180, child: LanguagePicker()),
-              ),
               Icon(Icons.fitness_center, size: 48, color: theme.colorScheme.primary),
               const SizedBox(height: 16),
               Text(
@@ -229,6 +225,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: Text(context.l10n.signInWithGoogle),
                 ),
               ],
+              const SizedBox(height: 24),
+              const Divider(),
+              const LanguagePicker(),
             ],
           ),
         ),
