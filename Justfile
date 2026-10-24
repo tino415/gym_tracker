@@ -309,14 +309,14 @@ web-emulator:
     flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} \
       --dart-define=FIREBASE_USE_EMULATOR=true
 
-# Build + deploy the web app to Firebase Hosting (prod).
+# Build + deploy the web app and Firestore rules to Firebase (prod).
 #
 # Inherits `web`'s `flutter clean`, so this WIPES build/ — including any APK you
 # just built. Build device APKs *after* deploying, never before, or use
 # `release-all`, which sequences it for you.
-[doc('Build + deploy the web app to Firebase Hosting (prod)')]
+[doc('Build + deploy the web app and Firestore rules to Firebase (prod)')]
 deploy: web
-    firebase deploy --only hosting --project {{FIREBASE_PROJECT}}
+    firebase deploy --only hosting,firestore:rules --project {{FIREBASE_PROJECT}}
 
 # Which bundle is actually being served, against the commit you have checked out.
 #

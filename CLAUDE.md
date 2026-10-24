@@ -43,6 +43,25 @@ that restoring alone is not full recovery: the restored rows carry their
 *pre-migration* `version`, so a bad higher-versioned copy already pushed to
 Firestore would win the version-LWW arbitration and sync straight back.
 
+## Pull requests
+
+**Merge only a green PR.** `.github/workflows/ci.yml` runs on every non-draft PR
+and on every push to `main` (analyze, both test suites, then codegen + schema +
+l10n with `git diff --exit-code`, so a schema change pushed without `just
+schema` fails). GitHub Free has no branch protection, so nothing enforces it:
+check the run yourself. The Termux deploy button deploys only a `main` commit
+whose `ci.yml` run completed green.
+
+**A PR that changes anything visible carries screenshots**, one set per form
+factor it touches: phone and watch from the emulators (`just phone-apk-demo`,
+then `adb screencap`), web from headless Chromium, a flow as a `screenrecord`
+clip or numbered stills, before and after for a visual change. Upload them with
+the `pr-images` skill, never commit them. A PR with no visible change says so in
+one line.
+
+`just deploy` ships Hosting and `firestore:rules` together, so a rules change is
+reviewed once, in its PR.
+
 ## Testing
 
 Two traps that cost real time, neither guessable from the failure:
