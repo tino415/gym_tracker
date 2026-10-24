@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Flutter version
+        id: flutter
+        run: echo "version=$(sed -n 's/^ARG FLUTTER_VERSION=//p' .local-install/Containerfile)" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.flutter.outputs.version }}
+          channel: stable
+          cache: true
+
+      - uses: extractions/setup-just@v2
+
+      - run: flutter pub get
+      - run: just analyze
+      - run: just test
+      - run: just test-web
+
+      - name: Regenerate committed code
+        run: |
+          just codegen
+          just schema
+          flutter gen-l10n
+
+      - name: Fail if generated code is stale
+        run: git diff --exit-code
