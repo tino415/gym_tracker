@@ -52,13 +52,6 @@ schema` fails). GitHub Free has no branch protection, so nothing enforces it:
 check the run yourself. The Termux deploy button deploys only a `main` commit
 whose `ci.yml` run completed green.
 
-**A documentation-only change skips CI**: `ci.yml` has `paths-ignore:
-['**.md', 'docs/**']` on both triggers, so any Markdown file (`README.md`,
-`CLAUDE.md`, one outside `docs/`) or anything under `docs/` starts no run, and
-no `[skip ci]` marker is needed. A change that touches any other file still runs
-the whole workflow. The deploy button offers the previous green commit for a
-skipped `main` commit, which ships the same bundle.
-
 **A PR that changes anything visible carries screenshots**, one set per form
 factor it touches: phone and watch from the emulators (`just phone-apk-demo`,
 then `adb screencap`), web from headless Chromium, a flow as a `screenrecord`
