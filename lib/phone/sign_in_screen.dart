@@ -43,10 +43,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     super.dispose();
   }
 
-  Future<void> _run(
-    Future<void> Function() action, {
-    bool validate = true,
-  }) async {
+  Future<void> _run(Future<void> Function() action, {bool validate = true}) async {
     if (validate && !_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
@@ -89,177 +86,159 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final auth = ref.read(authServiceProvider);
     final theme = Theme.of(context);
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(child: Center(child: _form(context, auth, theme))),
-          _languageFooter(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _form(BuildContext context, AuthService auth, ThemeData theme) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 400),
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.all(24),
-        children: [
-          Icon(
-            Icons.fitness_center,
-            size: 48,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'GymTracker',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            context.l10n.signInSubtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: theme.colorScheme.outline),
-          ),
-          const SizedBox(height: 24),
-          Form(
-            key: _formKey,
-            // Group the fields so a password manager treats them as one
-            // credential (autofill + save-on-submit via
-            // finishAutofillContext in _run).
-            child: AutofillGroup(
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: InputDecoration(
-                      labelText: context.l10n.signInEmail,
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) {
-                      final value = v?.trim() ?? '';
-                      if (value.isEmpty) {
-                        return context.l10n.signInEmailRequired;
-                      }
-                      if (!value.contains('@')) {
-                        return context.l10n.signInEmailInvalid;
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    autofillHints: const [AutofillHints.password],
-                    decoration: InputDecoration(
-                      labelText: context.l10n.signInPassword,
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) => (v ?? '').length < 6
-                        ? context.l10n.signInPasswordTooShort
-                        : null,
-                    // Enter submits sign-in (keyboard-first desktop), guarded
-                    // by the busy flag so it can't double-fire.
-                    onFieldSubmitted: (_) {
-                      if (_busy) return;
-                      _run(
-                        () => auth.signInWithEmail(
-                          _emailController.text.trim(),
-                          _passwordController.text,
-                        ),
-                      );
-                    },
-                  ),
-                ],
+      bottomNavigationBar: _languageFooter(context),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(24),
+            children: [
+              Icon(Icons.fitness_center, size: 48, color: theme.colorScheme.primary),
+              const SizedBox(height: 16),
+              Text(
+                'GymTracker',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineSmall,
               ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
-            value: _storeHeartRate,
-            onChanged: _busy
-                ? null
-                : (v) => setState(() => _storeHeartRate = v ?? false),
-            title: Text(context.l10n.signInStoreHeartRate),
-            subtitle: Text(
-              context.l10n.signInStoreHeartRateHint,
-              style: TextStyle(color: theme.colorScheme.outline),
-            ),
-          ),
-          // Consent to health data has to be informed, so the policy is
-          // reachable from where the decision is made.
-          const PrivacyPolicyLink(),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _busy
-                ? null
-                : () => _run(
-                    () => auth.signInWithEmail(
-                      _emailController.text.trim(),
-                      _passwordController.text,
-                    ),
-                  ),
-            child: _busy
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(context.l10n.signInButton),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: _busy
-                ? null
-                : () => _run(
-                    () => auth.registerWithEmail(
-                      _emailController.text.trim(),
-                      _passwordController.text,
-                    ),
-                  ),
-            child: Text(context.l10n.signInCreateAccount),
-          ),
-          if (googleSignInSupported) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    context.l10n.signInOr,
-                    style: TextStyle(color: theme.colorScheme.outline),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.signInSubtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.colorScheme.outline),
+              ),
+              const SizedBox(height: 24),
+              Form(
+                key: _formKey,
+                // Group the fields so a password manager treats them as one
+                // credential (autofill + save-on-submit via
+                // finishAutofillContext in _run).
+                child: AutofillGroup(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: InputDecoration(
+                          labelText: context.l10n.signInEmail,
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return context.l10n.signInEmailRequired;
+                          if (!value.contains('@')) return context.l10n.signInEmailInvalid;
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: InputDecoration(
+                          labelText: context.l10n.signInPassword,
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) =>
+                            (v ?? '').length < 6 ? context.l10n.signInPasswordTooShort : null,
+                        // Enter submits sign-in (keyboard-first desktop), guarded
+                        // by the busy flag so it can't double-fire.
+                        onFieldSubmitted: (_) {
+                          if (_busy) return;
+                          _run(() => auth.signInWithEmail(
+                                _emailController.text.trim(),
+                                _passwordController.text,
+                              ));
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                const Expanded(child: Divider()),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                value: _storeHeartRate,
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _storeHeartRate = v ?? false),
+                title: Text(context.l10n.signInStoreHeartRate),
+                subtitle: Text(
+                  context.l10n.signInStoreHeartRateHint,
+                  style: TextStyle(color: theme.colorScheme.outline),
+                ),
+              ),
+              // Consent to health data has to be informed, so the policy is
+              // reachable from where the decision is made.
+              const PrivacyPolicyLink(),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() => auth.signInWithEmail(
+                          _emailController.text.trim(),
+                          _passwordController.text,
+                        )),
+                child: _busy
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(context.l10n.signInButton),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() => auth.registerWithEmail(
+                          _emailController.text.trim(),
+                          _passwordController.text,
+                        )),
+                child: Text(context.l10n.signInCreateAccount),
+              ),
+              if (googleSignInSupported) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        context.l10n.signInOr,
+                        style: TextStyle(color: theme.colorScheme.outline),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => _run(auth.signInWithGoogle, validate: false),
+                  icon: const Icon(Icons.login),
+                  label: Text(context.l10n.signInWithGoogle),
+                ),
               ],
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () => _run(auth.signInWithGoogle, validate: false),
-              icon: const Icon(Icons.login),
-              label: Text(context.l10n.signInWithGoogle),
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _languageFooter(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (keyboardOpen) return const SizedBox.shrink();
     return SafeArea(
       child: Center(
+        heightFactor: 1,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 400),
           child: Padding(
@@ -271,9 +250,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 const Divider(),
                 Text(
                   context.l10n.language,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.outline),
                 ),
                 LanguagePicker(enabled: !_busy),
               ],
