@@ -1578,12 +1578,10 @@ class _TimeSetView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final big = theme.textTheme.headlineSmall?.copyWith(
+    final big = theme.textTheme.titleLarge?.copyWith(
       fontFeatures: const [FontFeature.tabularFigures()],
       color: secondsRemaining < 0 ? theme.colorScheme.error : null,
     );
-    final isRound = WatchShapeScope.of(context);
-    final hInset = isRound ? 24.0 : 0.0;
     return _ScrollableSetView(
       onSwap: onSwap,
       onSkipSet: onSkipSet,
@@ -1606,12 +1604,34 @@ class _TimeSetView extends StatelessWidget {
             Expanded(
               child: _ScaledControls(
                 children: [
-                  Text(
-                    context.l10n.watchSecondsShort(secondsRemaining),
-                    style: big,
-                    textAlign: TextAlign.center,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            context.l10n.watchSecondsShort(secondsRemaining),
+                            style: big,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      OutlinedButton(
+                        onPressed: onToggleRun,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: Text(
+                          running
+                              ? context.l10n.watchPause
+                              : context.l10n.watchStart,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   StepperValue<int>(
                     value: targetSeconds,
                     step: _timeTargetStep,
@@ -1620,7 +1640,7 @@ class _TimeSetView extends StatelessWidget {
                     suffix: context.l10n.watchUnitSec,
                     onChanged: onTargetSecondsChanged,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   StepperValue<double>(
                     value: weightKg,
                     step: 2.5,
@@ -1631,27 +1651,6 @@ class _TimeSetView extends StatelessWidget {
                     ),
                     suffix: context.l10n.watchUnitKg,
                     onChanged: onWeightChanged,
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: hInset),
-                    child: OutlinedButton.icon(
-                      onPressed: onToggleRun,
-                      icon: Icon(
-                        running ? Icons.pause : Icons.play_arrow,
-                        size: 16,
-                      ),
-                      label: Text(
-                        running
-                            ? context.l10n.watchPause
-                            : context.l10n.watchStart,
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(26),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
                   ),
                 ],
               ),

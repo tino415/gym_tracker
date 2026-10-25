@@ -595,6 +595,46 @@ void main() {
       expect(find.text('7s'), findsOneWidget);
     });
 
+    testWidgets('timed set controls are big enough to hit at watch size', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Cardio',
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Stationary bike',
+            kind: exerciseKindTime,
+            sets: [_SetFixture(seconds: 300, weight: 10)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      for (final icon in [Icons.add, Icons.remove]) {
+        for (final button in find.byIcon(icon).evaluate().toList()) {
+          final size = tester.getSize(find.byWidget(button.widget));
+          final hit = tester.getRect(
+            find.ancestor(
+              of: find.byWidget(button.widget),
+              matching: find.byType(InkWell),
+            ),
+          );
+          expect(hit.width, greaterThanOrEqualTo(40), reason: '$icon $size');
+          expect(hit.height, greaterThanOrEqualTo(40), reason: '$icon $size');
+        }
+      }
+      final pill = tester.getRect(find.widgetWithText(OutlinedButton, 'Start'));
+      expect(pill.height, greaterThanOrEqualTo(40));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('the seconds stepper moves the target, running or not',
         (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());

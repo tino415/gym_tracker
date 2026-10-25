@@ -49,17 +49,30 @@ class StepperValue<T extends num> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // Reserve a fixed slot for the value so the +/- buttons don't shift
-    // when the digit count changes. 44 px fits "100" at titleMedium with
+    // when the digit count changes. 40 px fits "100" at titleMedium with
     // tight margins on either side.
     final valueText = SizedBox(
-      width: 44,
-      child: Text(
-        formatter(value),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleMedium?.copyWith(height: 1.0),
+      width: 40,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            formatter(value),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(height: 1.0),
+          ),
+          if (suffix != null)
+            Text(
+              suffix!,
+              style: theme.textTheme.labelSmall?.copyWith(
+                height: 1.0,
+                color: theme.colorScheme.outline,
+              ),
+            ),
+        ],
       ),
     );
-    final row = Row(
+    return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -73,26 +86,6 @@ class StepperValue<T extends num> extends StatelessWidget {
           ),
         ),
         _RoundButton(icon: Icons.add, onTap: () => _bump(1)),
-      ],
-    );
-    if (suffix == null) return row;
-    // Pull the unit caption up under the value glyphs — without the negative
-    // offset, Text's intrinsic ascent/descent leaves a visible gap below the
-    // 36 px button row.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        row,
-        Transform.translate(
-          offset: const Offset(0, -8),
-          child: Text(
-            suffix!,
-            style: theme.textTheme.labelSmall?.copyWith(
-              height: 1.0,
-              color: theme.colorScheme.outline,
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -112,7 +105,7 @@ class _RoundButton extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
-        child: SizedBox(width: 36, height: 36, child: Icon(icon, size: 18)),
+        child: SizedBox(width: 44, height: 44, child: Icon(icon, size: 22)),
       ),
     );
   }
