@@ -12,6 +12,7 @@ import '../../data/providers.dart';
 import '../../l10n/l10n.dart';
 import '../../sync/health_connect_publisher.dart';
 import '../../sync/workout_bridge.dart';
+import '../exercises/figure/exercise_visual.dart';
 import '../settings/health_connect_controller.dart';
 import '../../watch/set_target_format.dart';
 import '../../watch/circuit_nav.dart';
@@ -750,20 +751,36 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       children: [
         if (_holding && !_holdingHere) _buildHoldElsewhereChip(),
-        Text(
-          ex.workoutExercise.exerciseName,
-          // Keyed so tests can tell the current-exercise heading apart from
-          // the same name repeated in the overview strip.
-          key: const Key('runExerciseName'),
-          style: theme.textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          _circuitGroupAt(_exerciseIdx) != null
-              ? context.l10n.runSetOfTotalCircuit(_setIdx + 1, ex.sets.length)
-              : context.l10n.runSetOfTotal(_setIdx + 1, ex.sets.length),
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.outline),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ex.workoutExercise.exerciseName,
+                    // Keyed so tests can tell the current-exercise heading apart from
+                    // the same name repeated in the overview strip.
+                    key: const Key('runExerciseName'),
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _circuitGroupAt(_exerciseIdx) != null
+                        ? context.l10n.runSetOfTotalCircuit(_setIdx + 1, ex.sets.length)
+                        : context.l10n.runSetOfTotal(_setIdx + 1, ex.sets.length),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox.square(
+              dimension: 64,
+              child: ExerciseVisualById(exerciseId: ex.workoutExercise.exerciseId),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Text(

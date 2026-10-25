@@ -3,8 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../data/database.dart';
-
 import 'body_regions.dart';
 
 class MuscleMap extends StatelessWidget {
@@ -81,29 +79,4 @@ class MuscleMapPainter extends CustomPainter {
       old.bodyColor != bodyColor ||
       old.unlitColor != unlitColor ||
       old.litColor != litColor;
-}
-
-class ExerciseThumbnail extends StatelessWidget {
-  const ExerciseThumbnail({super.key, required this.muscles});
-
-  static const size = 44.0;
-
-  final List<Muscle> muscles;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: size,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: Center(child: MuscleMap(highlighted: {for (final m in muscles) m.syncId})),
-        ),
-      ),
-    );
-  }
 }

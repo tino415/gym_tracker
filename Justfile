@@ -104,6 +104,11 @@ test-file file:
 test-name name:
     flutter test --no-pub --plain-name '{{name}}'
 
+# Every exercise that has a pose, as one PNG grid at build/figure_contact_sheet.png
+[doc('Render all exercise figures into one contact-sheet PNG')]
+contact-sheet:
+    flutter test --no-pub test/figure_contact_sheet_test.dart
+
 # Drift codegen — run after editing lib/data/database.dart. --force-jit is
 # mandatory: sqlite3_flutter_libs >= 3.0 ships a build hook that breaks
 # `dart compile`, which build_runner uses by default.

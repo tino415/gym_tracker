@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../l10n/l10n.dart';
-import 'muscle_map.dart';
+import 'figure/exercise_visual.dart';
 import 'muscle_selector.dart';
 
 class ExerciseEditPage extends ConsumerStatefulWidget {
@@ -177,7 +177,12 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
               children: [
               SizedBox(
                 height: 200,
-                child: Center(child: MuscleMap(highlighted: _selectedMuscleIds)),
+                child: Center(
+                  child: ExerciseVisual(
+                    exerciseId: _loaded?.syncId,
+                    highlighted: _selectedMuscleIds,
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               TextFormField(
