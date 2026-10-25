@@ -6,7 +6,7 @@ void main() {
   test('sync_dtos.dart imports nothing that needs Flutter or the database', () {
     final imports = File('lib/sync/sync_dtos.dart')
         .readAsLinesSync()
-        .where((l) => l.startsWith('import '))
+        .where((l) => RegExp(r'^\s*(import|export|part)\b').hasMatch(l))
         .toList();
 
     expect(imports, ["import '../data/exercise_kind.dart';"]);

@@ -1,6 +1,5 @@
 import '../data/exercise_kind.dart';
 
-
 const routineBundleType = 'routine_bundle';
 const workoutCompletedType = 'workout_completed';
 const syncRequestType = 'sync_request';
