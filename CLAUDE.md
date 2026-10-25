@@ -198,6 +198,9 @@ each keeps its own worker and cache — clearing one leaves the other stale, and
 
 ## Architecture
 
+Decisions that were argued rather than obvious are recorded in `docs/adr/`,
+one file each. Read the matching record before reopening one of them.
+
 Single Flutter app shipped to both phone and Wear OS — the same binary, with a runtime branch.
 
 ### Entry point and shell selection
