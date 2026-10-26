@@ -26,8 +26,9 @@ services:
       GYM_PHONE_DEVICE: "127.0.0.1:5557"
       # adb scans local 5555-5585 for emulators, so the forwarded 5557 would
       # also show up as emulator-5556 and the `phone` alias would see two
-      # phones. Below 5555 the scan covers nothing.
-      ADB_LOCAL_TRANSPORT_MAX_PORT: "5553"
+      # phones. adb 37 ignores ADB_LOCAL_TRANSPORT_MAX_PORT; ADB_EMU=0 turns
+      # the scan off.
+      ADB_EMU: "0"
     volumes:
       - .:/workspace:Z
       # `--web-hostname dev.local` must listen on every address, or the published
