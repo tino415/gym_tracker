@@ -22,7 +22,7 @@ class ExerciseVisual extends StatelessWidget {
   }
 }
 
-final _exerciseMusclesProvider = FutureProvider.family<List<Muscle>, String>(
+final _exerciseMusclesProvider = FutureProvider.autoDispose.family<List<Muscle>, String>(
   (ref, exerciseId) => ref.watch(exerciseRepositoryProvider).musclesForExercise(exerciseId),
 );
 

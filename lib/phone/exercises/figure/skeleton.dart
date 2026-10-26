@@ -83,6 +83,8 @@ class FigureJoints {
 }
 
 FigureJoints poseJoints(Pose pose) {
+  assert(pose.arms.length == 1 || pose.arms.length == 2);
+  assert(pose.legs.length == 1 || pose.legs.length == 2);
   final shoulder = _step(pose.hip, pose.torso, torsoLength);
   final headCentre = _step(shoulder, pose.head, neckLength + headRadius);
   final armRoots = _limbRoots(shoulder, pose.arms.length, frontShoulderHalfWidth);
