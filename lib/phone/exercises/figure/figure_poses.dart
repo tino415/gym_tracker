@@ -45,8 +45,7 @@ const _backSquat = FigureSpec(
     legs: [LegAngles(thigh: 10, shin: 100, foot: -5)],
   ),
   equipment: [
-    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 14, inFront: true),
-    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 6, filled: true, inFront: true),
+    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 14, filled: true, inFront: true),
   ],
 );
 
