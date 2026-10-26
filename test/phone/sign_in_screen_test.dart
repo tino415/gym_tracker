@@ -25,10 +25,31 @@ void main() {
     );
 
     final picker = tester.getRect(find.byType(LanguagePicker));
-    final createAccount = tester.getRect(find.byType(OutlinedButton).last);
+    final createAccount = tester.getRect(find.widgetWithText(OutlinedButton, 'Create account'));
     final signIn = tester.getRect(find.byType(FilledButton));
 
     expect(picker.top, greaterThan(createAccount.bottom));
     expect(picker.width, signIn.width);
+  });
+
+  testWidgets('language picker is labelled and on the first screen of a phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [initialLocaleProvider.overrideWithValue(const Locale('en'))],
+        child: MaterialApp(
+          localizationsDelegates: appLocalizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const SignInScreen(),
+        ),
+      ),
+    );
+
+    expect(find.text('Language'), findsOneWidget);
+    expect(tester.getRect(find.byType(LanguagePicker)).bottom, lessThanOrEqualTo(640));
   });
 }

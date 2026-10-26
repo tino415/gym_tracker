@@ -86,6 +86,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final auth = ref.read(authServiceProvider);
     final theme = Theme.of(context);
     return Scaffold(
+      bottomNavigationBar: _languageFooter(context),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 400),
@@ -225,10 +226,35 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   label: Text(context.l10n.signInWithGoogle),
                 ),
               ],
-              const SizedBox(height: 24),
-              const Divider(),
-              const LanguagePicker(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _languageFooter(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (keyboardOpen) return const SizedBox.shrink();
+    return SafeArea(
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Divider(),
+                Text(
+                  context.l10n.language,
+                  style: TextStyle(color: Theme.of(context).colorScheme.outline),
+                ),
+                LanguagePicker(enabled: !_busy),
+              ],
+            ),
           ),
         ),
       ),
