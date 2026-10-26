@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/database.dart';
 import 'sync_codec.dart';
+import 'sync_dto_mapping.dart';
 
 const _uuid = Uuid();
 
@@ -17,12 +18,12 @@ class SyncRepository {
     for (final r in all) {
       // A tombstone travels as a versioned deletion marker, not a full routine.
       if (r.deletedAt != null) {
-        result.add(RoutineTemplateDto.tombstone(r));
+        result.add(routineTombstoneToDto(r));
         continue;
       }
       final full = await _db.loadFullRoutine(r.syncId);
       if (full == null) continue;
-      // Hydrate each routine exercise with its alternatives. fromFullRoutine
+      // Hydrate each routine exercise with its alternatives. routineExerciseToDto
       // can't see the canonical exercise rows for alternatives without an
       // extra DB roundtrip, so we patch the dtos here.
       final exDtos = <RoutineExerciseDto>[];
@@ -61,7 +62,7 @@ class SyncRepository {
             ),
           );
         }
-        final base = RoutineExerciseDto.fromFullExercise(re);
+        final base = routineExerciseToDto(re);
         exDtos.add(
           RoutineExerciseDto(
             syncId: base.syncId,
@@ -98,12 +99,12 @@ class SyncRepository {
     final result = <ExerciseDto>[];
     for (final e in all) {
       if (e.deletedAt != null) {
-        result.add(ExerciseDto.tombstone(e));
+        result.add(exerciseTombstoneToDto(e));
         continue;
       }
       final muscles = await _db.musclesForExercise(e.syncId);
       result.add(
-        ExerciseDto.fromRow(e, [for (final m in muscles) m.syncId]),
+        exerciseToDto(e, [for (final m in muscles) m.syncId]),
       );
     }
     return result;

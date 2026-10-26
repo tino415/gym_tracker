@@ -3,16 +3,14 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import 'circuit_rest_v15.dart';
+import 'exercise_kind.dart';
 import 'muscle_seeds.dart';
+
+export 'exercise_kind.dart';
 
 part 'database.g.dart';
 
 const _uuid = Uuid();
-
-// Exercise kinds. Reps-based exercises track reps + weight per set; time-based
-// exercises track a duration per set.
-const exerciseKindReps = 'reps';
-const exerciseKindTime = 'time';
 
 /// One starter-catalogue row as the write path needs it: identity, display and
 /// tags, with nothing derived at write time so two installs seeding the same
