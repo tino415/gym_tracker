@@ -45,8 +45,8 @@ const _backSquat = FigureSpec(
     legs: [LegAngles(thigh: 10, shin: 100, foot: -5)],
   ),
   equipment: [
-    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 14),
-    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 6, filled: true),
+    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 14, inFront: true),
+    EquipmentCircle(Anchor.at(Joint.shoulder, dx: -4, dy: -4), 6, filled: true, inFront: true),
   ],
 );
 
@@ -72,11 +72,13 @@ const _seatedLateralRaise = FigureSpec(
       Anchor.at(Joint.wrist, dx: -4, dy: -6),
       Anchor.at(Joint.wrist, dx: 4, dy: 6),
       filled: true,
+      inFront: true,
     ),
     EquipmentRoundRect(
       Anchor.at(Joint.wrist, limb: 1, dx: -4, dy: -6),
       Anchor.at(Joint.wrist, limb: 1, dx: 4, dy: 6),
       filled: true,
+      inFront: true,
     ),
   ],
 );

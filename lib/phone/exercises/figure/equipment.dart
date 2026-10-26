@@ -36,26 +36,27 @@ Offset _jointPosition(FigureJoints j, Joint joint, int limb) => switch (joint) {
     };
 
 sealed class Equipment {
-  const Equipment({this.width = 3});
+  const Equipment({this.width = 3, this.inFront = false});
 
   final double width;
+  final bool inFront;
 }
 
 class EquipmentLine extends Equipment {
-  const EquipmentLine(this.from, this.to, {super.width});
+  const EquipmentLine(this.from, this.to, {super.width, super.inFront});
 
   final Anchor from;
   final Anchor to;
 }
 
 class EquipmentPolyline extends Equipment {
-  const EquipmentPolyline(this.points, {super.width});
+  const EquipmentPolyline(this.points, {super.width, super.inFront});
 
   final List<Anchor> points;
 }
 
 class EquipmentCircle extends Equipment {
-  const EquipmentCircle(this.centre, this.radius, {this.filled = false, super.width});
+  const EquipmentCircle(this.centre, this.radius, {this.filled = false, super.width, super.inFront});
 
   final Anchor centre;
   final double radius;
@@ -64,7 +65,7 @@ class EquipmentCircle extends Equipment {
 
 class EquipmentRoundRect extends Equipment {
   const EquipmentRoundRect(this.corner, this.oppositeCorner,
-      {this.radius = 3, this.filled = false, super.width});
+      {this.radius = 3, this.filled = false, super.width, super.inFront});
 
   final Anchor corner;
   final Anchor oppositeCorner;

@@ -53,10 +53,9 @@ class FigurePainter extends CustomPainter {
     );
     canvas.scale(scale);
     _paintFloor(canvas);
-    for (final item in placement.spec.equipment) {
-      _paintEquipment(canvas, item);
-    }
+    _paintEquipmentWhere(canvas, inFront: false);
     _paintFigure(canvas, placement.joints);
+    _paintEquipmentWhere(canvas, inFront: true);
   }
 
   void _paintFloor(Canvas canvas) {
@@ -65,6 +64,12 @@ class FigurePainter extends CustomPainter {
       const Offset(190, figureFloorY),
       _stroke(floorColor, _floorStroke),
     );
+  }
+
+  void _paintEquipmentWhere(Canvas canvas, {required bool inFront}) {
+    for (final item in placement.spec.equipment.where((e) => e.inFront == inFront)) {
+      _paintEquipment(canvas, item);
+    }
   }
 
   void _paintEquipment(Canvas canvas, Equipment item) {
