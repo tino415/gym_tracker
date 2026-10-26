@@ -8,6 +8,7 @@ import 'package:gym_tracker/data/providers.dart';
 import 'package:gym_tracker/phone/exercises/body_regions.dart';
 import 'package:gym_tracker/phone/exercises/exercise_edit_page.dart';
 import 'package:gym_tracker/phone/exercises/exercises_list_page.dart';
+import 'package:gym_tracker/phone/exercises/figure/exercise_visual.dart';
 import 'package:gym_tracker/phone/exercises/muscle_map.dart';
 
 void main() {

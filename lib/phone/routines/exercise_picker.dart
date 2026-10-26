@@ -6,7 +6,7 @@ import '../../data/providers.dart';
 import '../../l10n/l10n.dart';
 import '../breakpoints.dart';
 import '../exercises/muscle_label.dart';
-import '../exercises/muscle_map.dart';
+import '../exercises/figure/exercise_visual.dart';
 import '../exercises/muscle_selector.dart';
 
 /// Shared exercise picker — adding an exercise to a routine or a workout, and
@@ -279,7 +279,7 @@ class _ExerciseResultList extends StatelessWidget {
         final e = exercises[i];
         final count = markCounts[e.exercise.syncId] ?? 0;
         return ListTile(
-          leading: ExerciseThumbnail(muscles: e.muscles),
+          leading: ExerciseThumbnail(exerciseId: e.exercise.syncId, muscles: e.muscles),
           trailing: Icon(
             e.exercise.kind == exerciseKindTime
                 ? Icons.timer_outlined
