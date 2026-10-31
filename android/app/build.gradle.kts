@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val playUpload = System.getenv("PLAY_UPLOAD") != null
+val uploadProperties = Properties().apply {
+    if (playUpload) file("../key.properties").inputStream().use { load(it) }
 }
 
 android {
@@ -25,16 +32,27 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 30
-        targetSdk = 34
+        targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        if (playUpload) {
+            create("upload") {
+                storeFile = file(uploadProperties.getProperty("storeFile"))
+                storePassword = uploadProperties.getProperty("storePassword")
+                keyAlias = uploadProperties.getProperty("keyAlias")
+                keyPassword = uploadProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             // The installed apps carry the debug key, and `pm install -r` only
             // upgrades over the same signature.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (playUpload) "upload" else "debug")
         }
     }
 }
