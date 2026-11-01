@@ -25,9 +25,25 @@ String idOf(String name) => exerciseSeeds.firstWhere((s) => s.name == name).id;
 
 void main() {
   group('poses', () {
-    test('the three sample exercises resolve to a figure', () {
-      for (final name in ['TRX Low row', 'Back squat', 'Seated dumbbell lateral raise']) {
-        expect(figureFor(idOf(name)), isNotNull, reason: name);
+    test('every seed resolves to a figure', () {
+      for (final seed in exerciseSeeds) {
+        expect(figureFor(seed.id), isNotNull, reason: seed.name);
+      }
+    });
+
+    test('the left and right seeds of a movement mirror one base pose', () {
+      for (final base in [
+        'Bulgarian split squat',
+        'Single leg calf raise',
+        'Side plank',
+        'TRX Bulgarian split squat',
+        'TRX Pistol squat',
+        'TRX Single leg Romanian deadlift',
+      ]) {
+        final left = figureFor(idOf('$base left'))!;
+        final right = figureFor(idOf('$base right'))!;
+        expect(left.spec, same(right.spec), reason: base);
+        expect(left.mirrored, isNot(right.mirrored), reason: base);
       }
     });
 
@@ -85,6 +101,50 @@ void main() {
       expect(joints.armRoots[0].dx, lessThan(joints.armRoots[1].dx));
       expect(joints.arms[0].wrist.dx, lessThan(joints.shoulder.dx));
       expect(joints.arms[1].wrist.dx, greaterThan(joints.shoulder.dx));
+    });
+
+    test('a pair of limbs in profile shares one root', () {
+      final joints = figureFor(idOf('Walking lunge'))!.joints;
+      expect(joints.legs, hasLength(2));
+      expect(joints.legRoots[0], joints.legRoots[1]);
+    });
+
+    test('a pose can be rooted at the ankle or the wrist it rests on', () {
+      const angles = (
+        arms: [ArmAngles(upper: 30, fore: 70)],
+        legs: [LegAngles(thigh: 80, shin: 100, foot: 0)],
+      );
+      const point = Offset(100, 150);
+
+      final fromAnkle = poseJoints(
+        Pose.fromAnkle(point, torso: -90, head: -90, arms: angles.arms, legs: angles.legs),
+      );
+      final fromWrist = poseJoints(
+        Pose.fromWrist(point, torso: -90, head: -90, arms: angles.arms, legs: angles.legs),
+      );
+
+      expect(gap(fromAnkle.legs.first.ankle, point), closeTo(0, 1e-9));
+      expect(gap(fromWrist.arms.first.wrist, point), closeTo(0, 1e-9));
+    });
+
+    test('a pose rooted at the wrist of a spread pair still lands that wrist on the point', () {
+      const point = Offset(60, 30);
+      final joints = poseJoints(
+        Pose.fromWrist(
+          point,
+          torso: -90,
+          head: -90,
+          arms: const [ArmAngles(upper: 200, fore: -100), ArmAngles(upper: -20, fore: -80)],
+          legs: const [LegAngles(thigh: 90, shin: 90, foot: 0)],
+        ),
+      );
+      expect(gap(joints.arms.first.wrist, point), closeTo(0, 1e-9));
+    });
+
+    test('a ghost pose mirrors along with its figure', () {
+      final placement = figureFor(idOf('Burpees'))!;
+      final mirrored = FigurePlacement(placement.spec, mirrored: true);
+      expect(mirrored.ghost!.joints.hip.dx, figureCanvasSize.width - placement.ghost!.joints.hip.dx);
     });
 
     test('a side view draws the near limb only', () {

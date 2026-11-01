@@ -38,13 +38,64 @@ class Pose {
     required this.head,
     required this.arms,
     required this.legs,
+    this.inProfile = false,
+    this.neck = neckLength,
   });
+
+  /// Places the hip so that the first leg's ankle lands on [ankle].
+  factory Pose.fromAnkle(
+    Offset ankle, {
+    required double torso,
+    required double head,
+    required List<ArmAngles> arms,
+    required List<LegAngles> legs,
+    bool inProfile = false,
+    double neck = neckLength,
+  }) {
+    final knee = _step(ankle, legs.first.shin + 180, shinLength);
+    return Pose(
+      hip: _step(knee, legs.first.thigh + 180, thighLength),
+      torso: torso,
+      head: head,
+      arms: arms,
+      legs: legs,
+      inProfile: inProfile,
+      neck: neck,
+    );
+  }
+
+  /// Places the hip so that the first arm's wrist lands on [wrist].
+  factory Pose.fromWrist(
+    Offset wrist, {
+    required double torso,
+    required double head,
+    required List<ArmAngles> arms,
+    required List<LegAngles> legs,
+    bool inProfile = false,
+  }) {
+    final elbow = _step(wrist, arms.first.fore + 180, forearmLength);
+    final root = _step(elbow, arms.first.upper + 180, upperArmLength);
+    final spread = arms.length == 2 && !inProfile;
+    final shoulder = spread ? root.translate(frontShoulderHalfWidth, 0) : root;
+    return Pose(
+      hip: _step(shoulder, torso + 180, torsoLength),
+      torso: torso,
+      head: head,
+      arms: arms,
+      legs: legs,
+      inProfile: inProfile,
+    );
+  }
 
   final Offset hip;
   final double torso;
   final double head;
   final List<ArmAngles> arms;
   final List<LegAngles> legs;
+
+  /// Two limbs of a pair share one root, as they do seen from the side.
+  final bool inProfile;
+  final double neck;
 }
 
 class ArmJoints {
@@ -86,9 +137,9 @@ FigureJoints poseJoints(Pose pose) {
   assert(pose.arms.length == 1 || pose.arms.length == 2);
   assert(pose.legs.length == 1 || pose.legs.length == 2);
   final shoulder = _step(pose.hip, pose.torso, torsoLength);
-  final headCentre = _step(shoulder, pose.head, neckLength + headRadius);
-  final armRoots = _limbRoots(shoulder, pose.arms.length, frontShoulderHalfWidth);
-  final legRoots = _limbRoots(pose.hip, pose.legs.length, frontHipHalfWidth);
+  final headCentre = _step(shoulder, pose.head, pose.neck + headRadius);
+  final armRoots = _limbRoots(shoulder, pose.arms.length, pose.inProfile ? 0 : frontShoulderHalfWidth);
+  final legRoots = _limbRoots(pose.hip, pose.legs.length, pose.inProfile ? 0 : frontHipHalfWidth);
   return FigureJoints(
     hip: pose.hip,
     shoulder: shoulder,
