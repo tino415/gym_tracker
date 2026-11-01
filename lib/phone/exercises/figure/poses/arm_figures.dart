@@ -30,8 +30,8 @@ Pose _standingCurl() => Pose.fromAnkle(
 final _cableBicepsCurl = FigureSpec(
   pose: _standingCurl(),
   equipment: [
-    EquipmentLine(point(168, 190), point(168, 165)),
-    ...cable(hand, 160, 172),
+    EquipmentLine(point(118, 190), point(118, 172)),
+    ...cable(hand, 112, 178),
     thinBar(hand),
   ],
 );
@@ -70,8 +70,8 @@ final _overheadCableTricepsExtension = FigureSpec(
     inProfile: true,
   ),
   equipment: [
-    post(22, 55),
-    ...cable(hand, 30, 55),
+    EquipmentLine(point(38, 190), point(38, 172)),
+    ...cable(hand, 44, 178),
   ],
 );
 
@@ -85,7 +85,7 @@ final _seatedOverheadDumbbellExtension = FigureSpec(
   ),
   equipment: [
     ...flatBench(60, 118),
-    ...dumbbell(hand),
+    ...uprightDumbbell(hand),
   ],
 );
 

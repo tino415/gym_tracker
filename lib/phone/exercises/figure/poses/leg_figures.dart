@@ -70,6 +70,13 @@ final _legPress = FigureSpec(
   ],
 );
 
+const _shoulderPad = EquipmentRoundRect(
+  Anchor.at(Joint.shoulder, dx: -6, dy: -12),
+  Anchor.at(Joint.shoulder, dx: 8, dy: -3),
+  filled: true,
+  inFront: true,
+);
+
 final _hackSquat = FigureSpec(
   pose: const Pose(
     hip: Offset(100, 150),
@@ -80,12 +87,7 @@ final _hackSquat = FigureSpec(
   ),
   equipment: [
     pad(point(55, 123), point(100, 165)),
-    EquipmentRoundRect(
-      const Anchor.at(Joint.shoulder, dx: -6, dy: -12),
-      const Anchor.at(Joint.shoulder, dx: 8, dy: -3),
-      filled: true,
-      inFront: true,
-    ),
+    _shoulderPad,
     EquipmentLine(point(40, 110), point(112, 178)),
     EquipmentRoundRect(point(118, 186), point(160, 190), filled: true),
     post(45, 115),
@@ -137,7 +139,7 @@ final _deadlift = FigureSpec(
   equipment: [barbell(point(108, figureFloorY - 14))],
 );
 
-const _romanianDeadliftLeg = LegAngles(thigh: 50, shin: 95, foot: 0);
+const _romanianDeadliftLeg = LegAngles(thigh: 78, shin: 92, foot: 0);
 
 Pose _romanianDeadliftPose() => Pose.fromAnkle(
       const Offset(100, onFloorY),
@@ -154,7 +156,7 @@ final _romanianDeadlift = FigureSpec(
 
 final _dumbbellRomanianDeadlift = FigureSpec(
   pose: _romanianDeadliftPose(),
-  equipment: dumbbell(hand),
+  equipment: [endOnDumbbell(hand)],
 );
 
 final _hipThrust = FigureSpec(
@@ -225,6 +227,7 @@ final _calvesOnHackMachine = FigureSpec(
     post(160, 177),
     pad(const Anchor.at(Joint.hip, dx: 14, dy: 4), const Anchor.at(Joint.shoulder, dx: 14, dy: 4)),
     EquipmentLine(const Anchor.at(Joint.shoulder, dx: 18, dy: 6), point(175, 177)),
+    _shoulderPad,
   ],
 );
 

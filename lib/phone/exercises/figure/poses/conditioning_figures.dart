@@ -19,11 +19,23 @@ const _plankLeg = LegAngles(thigh: 161, shin: 161, foot: 75);
 
 final _burpees = FigureSpec(
   pose: Pose.fromWrist(
-    const Offset(150, onFloorY),
+    const Offset(125, onFloorY),
     torso: -19,
     head: -19,
     arms: const [_straightArm],
     legs: const [_plankLeg],
+  ),
+  ghost: const FigureSpec(
+    pose: Pose(
+      hip: Offset(168, 108),
+      torso: -90,
+      head: -90,
+      arms: [ArmAngles(upper: -108, fore: -108), ArmAngles(upper: -72, fore: -72)],
+      legs: [
+        LegAngles(thigh: 94, shin: 94, foot: 120),
+        LegAngles(thigh: 86, shin: 86, foot: 60),
+      ],
+    ),
   ),
 );
 
@@ -102,11 +114,11 @@ final _stationaryBike = FigureSpec(
     EquipmentCircle(point(98, 150), 16),
     EquipmentLine(point(98, 150), const Anchor.at(Joint.ankle, dx: 8, dy: 5)),
     EquipmentLine(const Anchor.at(Joint.ankle, dx: 2, dy: 7), const Anchor.at(Joint.ankle, dx: 16, dy: 7), width: 4),
-    EquipmentLine(point(98, 150), point(150, 165)),
-    EquipmentCircle(point(150, 165), 18),
-    EquipmentLine(point(150, 165), hand.shifted(4, 0)),
+    EquipmentLine(point(98, 150), point(150, 160)),
+    EquipmentCircle(point(150, 160), 26),
+    EquipmentLine(point(150, 160), hand.shifted(4, 0)),
     EquipmentLine(hand.shifted(-6, 0), hand.shifted(10, 0), width: 5, inFront: true),
-    EquipmentLine(point(70, figureFloorY), point(170, figureFloorY), width: 5),
+    EquipmentLine(point(70, figureFloorY), point(180, figureFloorY), width: 5),
     EquipmentLine(point(98, 166), point(98, figureFloorY)),
   ],
 );

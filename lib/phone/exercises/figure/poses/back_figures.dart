@@ -21,43 +21,45 @@ final backFigures = <String, FigurePlacement>{
   'c9da715b-33ce-42f8-9e88-87b9431922d2': FigurePlacement(_seatedWideMagCableRow),
 };
 
-const _hangingLegs = [LegAngles(thigh: 93, shin: 93, foot: 55)];
-const _barY = 38.0;
+const _barY = 28.0;
+const _rig = <Equipment>[
+  EquipmentLine(Anchor.canvas(28, _barY), Anchor.canvas(172, _barY), width: 4),
+  EquipmentLine(Anchor.canvas(32, _barY), Anchor.canvas(32, figureFloorY)),
+  EquipmentLine(Anchor.canvas(168, _barY), Anchor.canvas(168, figureFloorY)),
+];
+const _wideGripHandX = 61.3;
+const _neutralGripHandX = 69.0;
+const _narrowGripHandX = 74.0;
+
+ArmAngles _otherArm(ArmAngles arm) => ArmAngles(upper: 180 - arm.upper, fore: 180 - arm.fore);
+
+Pose _hangingSeenFromBehind(double handX, ArmAngles leftArm) => Pose.fromWrist(
+      Offset(handX, _barY),
+      torso: -90,
+      head: -90,
+      arms: [leftArm, _otherArm(leftArm)],
+      legs: const [
+        LegAngles(thigh: 92, shin: 91, foot: 100),
+        LegAngles(thigh: 88, shin: 89, foot: 80),
+      ],
+    );
 
 final _pullUp = FigureSpec(
-  pose: Pose.fromWrist(
-    const Offset(112, _barY),
-    torso: -88,
-    head: -88,
-    arms: const [ArmAngles(upper: 62, fore: -82)],
-    legs: _hangingLegs,
-  ),
-  equipment: overheadBar(112, _barY),
+  pose: _hangingSeenFromBehind(_wideGripHandX, const ArmAngles(upper: 200, fore: -100)),
+  equipment: _rig,
 );
 
 final _chinUp = FigureSpec(
-  pose: Pose.fromWrist(
-    const Offset(118, _barY),
-    torso: -82,
-    head: -85,
-    arms: const [ArmAngles(upper: 45, fore: -85)],
-    legs: _hangingLegs,
-  ),
-  equipment: overheadBar(118, _barY),
+  pose: _hangingSeenFromBehind(_narrowGripHandX, const ArmAngles(upper: 145, fore: -70)),
+  equipment: _rig,
 );
 
 final _pullUpNeutralGrip = FigureSpec(
-  pose: Pose.fromWrist(
-    const Offset(112, _barY),
-    torso: -88,
-    head: -88,
-    arms: const [ArmAngles(upper: 62, fore: -82)],
-    legs: _hangingLegs,
-  ),
+  pose: _hangingSeenFromBehind(_neutralGripHandX, const ArmAngles(upper: 165, fore: -80)),
   equipment: [
-    post(180, _barY),
-    EquipmentLine(point(100, _barY), point(180, _barY)),
-    EquipmentLine(point(100, _barY), point(124, _barY), width: 6, inFront: true),
+    ..._rig,
+    EquipmentCircle(hand, 6, filled: true, inFront: true),
+    const EquipmentCircle(Anchor.at(Joint.wrist, limb: 1), 6, filled: true, inFront: true),
   ],
 );
 
@@ -102,8 +104,8 @@ final _chestSupportedDumbbellRow = FigureSpec(
     legs: const [LegAngles(thigh: 145, shin: 145, foot: 60)],
   ),
   equipment: [
-    pad(const Anchor.at(Joint.hip, dx: 4, dy: 9), const Anchor.at(Joint.shoulder, dx: 14, dy: 3)),
-    EquipmentLine(const Anchor.at(Joint.hip, dx: 24, dy: 0), point(126, figureFloorY)),
+    const EquipmentLine(Anchor.at(Joint.hip, dx: 2, dy: 9), Anchor.at(Joint.hip, dx: 32, dy: -8)),
+    post(110, 139),
     ...dumbbell(hand),
   ],
 );
@@ -128,16 +130,20 @@ List<Equipment> _pullDownMachine() => [
       ...cable(hand, 87, 18),
     ];
 
+const _narrowMagHalfWidth = 8.0;
+const _wideMagHalfWidth = 18.0;
+
 final _cableLatPullDown = FigureSpec(
   pose: _seatedAtPullDown(),
-  equipment: [..._pullDownMachine(), thinBar(hand)],
+  equipment: [..._pullDownMachine(), thinBar(hand), ...straightBarInset()],
 );
 
 final _narrowMagLatPullDown = FigureSpec(
   pose: _seatedAtPullDown(),
   equipment: [
     ..._pullDownMachine(),
-    EquipmentLine(hand.shifted(-6, 0), hand.shifted(6, 0), width: 6, inFront: true),
+    thinBar(hand),
+    ...magHandleInset(halfWidth: _narrowMagHalfWidth),
   ],
 );
 
@@ -145,7 +151,8 @@ final _wideMagLatPullDown = FigureSpec(
   pose: _seatedAtPullDown(),
   equipment: [
     ..._pullDownMachine(),
-    EquipmentLine(hand.shifted(-12, 0), hand.shifted(12, 0), width: 6, inFront: true),
+    thinBar(hand),
+    ...magHandleInset(halfWidth: _wideMagHalfWidth),
   ],
 );
 
@@ -185,18 +192,19 @@ List<Equipment> _rowMachine(double handleY) => [
 
 final _seatedCableRow = FigureSpec(
   pose: _seatedAtRow(const ArmAngles(upper: 115, fore: 0)),
-  equipment: [..._rowMachine(134.8), thinBar(hand)],
+  equipment: [..._rowMachine(134.8), thinBar(hand), ...vHandleInset()],
 );
 
 final _seatedWideGripCableRow = FigureSpec(
   pose: _seatedAtRow(const ArmAngles(upper: 145, fore: 10)),
-  equipment: [..._rowMachine(130), thinBar(hand)],
+  equipment: [..._rowMachine(130), thinBar(hand), ...straightBarInset()],
 );
 
 final _seatedWideMagCableRow = FigureSpec(
   pose: _seatedAtRow(const ArmAngles(upper: 130, fore: 0)),
   equipment: [
     ..._rowMachine(131.4),
-    EquipmentLine(hand.shifted(-10, 0), hand.shifted(10, 0), width: 6, inFront: true),
+    thinBar(hand),
+    ...magHandleInset(halfWidth: _wideMagHalfWidth),
   ],
 );

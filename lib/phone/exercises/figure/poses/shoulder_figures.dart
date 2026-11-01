@@ -43,37 +43,57 @@ final _shoulderPressMachine = FigureSpec(
   ],
 );
 
-const _seatedLateralRaise = FigureSpec(
-  pose: Pose(
-    hip: Offset(100, 145),
+const _lateralRaiseHip = Offset(100, 125);
+const _lateralRaiseShoulderY = 78.0;
+const _lateralRaiseArrowRadius = 62.0;
+
+const _seatedLegs = [
+  LegAngles(thigh: 96, shin: 90, foot: 170),
+  LegAngles(thigh: 84, shin: 90, foot: 10),
+];
+
+List<Equipment> _lateralRaiseBench() => [
+      EquipmentRoundRect(point(72, 133), point(128, 140)),
+      post(84, 140),
+      post(116, 140),
+    ];
+
+List<Equipment> _dumbbellsInBothHands() => [
+      _smallDumbbell(hand),
+      _smallDumbbell(const Anchor.at(Joint.wrist, limb: 1)),
+    ];
+
+Equipment _smallDumbbell(Anchor grip) => EquipmentRoundRect(
+      grip.shifted(-4, -6),
+      grip.shifted(4, 6),
+      filled: true,
+      inFront: true,
+    );
+
+final _seatedLateralRaise = FigureSpec(
+  pose: const Pose(
+    hip: _lateralRaiseHip,
     torso: -90,
     head: -90,
     arms: [ArmAngles(upper: 175, fore: 172), ArmAngles(upper: 5, fore: 8)],
-    legs: [
-      LegAngles(thigh: 160, shin: 95, foot: 175),
-      LegAngles(thigh: 20, shin: 85, foot: 5),
-    ],
+    legs: _seatedLegs,
   ),
   equipment: [
-    EquipmentRoundRect(
-      Anchor.at(Joint.hip, dx: -26, dy: 8),
-      Anchor.at(Joint.hip, dx: 26, dy: 14),
-    ),
-    EquipmentLine(Anchor.at(Joint.hip, dx: 0, dy: 14), Anchor.canvas(100, 190)),
-    EquipmentLine(Anchor.canvas(80, 190), Anchor.canvas(120, 190)),
-    EquipmentRoundRect(
-      Anchor.at(Joint.wrist, dx: -4, dy: -6),
-      Anchor.at(Joint.wrist, dx: 4, dy: 6),
-      filled: true,
-      inFront: true,
-    ),
-    EquipmentRoundRect(
-      Anchor.at(Joint.wrist, limb: 1, dx: -4, dy: -6),
-      Anchor.at(Joint.wrist, limb: 1, dx: 4, dy: 6),
-      filled: true,
-      inFront: true,
-    ),
+    ..._lateralRaiseBench(),
+    ..._dumbbellsInBothHands(),
+    ...arcArrow(const Offset(88, _lateralRaiseShoulderY), _lateralRaiseArrowRadius, 118, 158),
+    ...arcArrow(const Offset(112, _lateralRaiseShoulderY), _lateralRaiseArrowRadius, 62, 22),
   ],
+  ghost: FigureSpec(
+    pose: const Pose(
+      hip: _lateralRaiseHip,
+      torso: -90,
+      head: -90,
+      arms: [ArmAngles(upper: 100, fore: 97), ArmAngles(upper: 80, fore: 83)],
+      legs: _seatedLegs,
+    ),
+    equipment: _dumbbellsInBothHands(),
+  ),
 );
 
 final _facePull = FigureSpec(

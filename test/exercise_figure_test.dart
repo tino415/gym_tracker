@@ -127,6 +127,26 @@ void main() {
       expect(gap(fromWrist.arms.first.wrist, point), closeTo(0, 1e-9));
     });
 
+    test('a pose rooted at the wrist of a spread pair still lands that wrist on the point', () {
+      const point = Offset(60, 30);
+      final joints = poseJoints(
+        Pose.fromWrist(
+          point,
+          torso: -90,
+          head: -90,
+          arms: const [ArmAngles(upper: 200, fore: -100), ArmAngles(upper: -20, fore: -80)],
+          legs: const [LegAngles(thigh: 90, shin: 90, foot: 0)],
+        ),
+      );
+      expect(gap(joints.arms.first.wrist, point), closeTo(0, 1e-9));
+    });
+
+    test('a ghost pose mirrors along with its figure', () {
+      final placement = figureFor(idOf('Burpees'))!;
+      final mirrored = FigurePlacement(placement.spec, mirrored: true);
+      expect(mirrored.ghost!.joints.hip.dx, figureCanvasSize.width - placement.ghost!.joints.hip.dx);
+    });
+
     test('a side view draws the near limb only', () {
       final joints = figureFor(idOf('TRX Low row'))!.joints;
       expect(joints.arms, hasLength(1));

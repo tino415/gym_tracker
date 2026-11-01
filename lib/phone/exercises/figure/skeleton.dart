@@ -74,7 +74,9 @@ class Pose {
     bool inProfile = false,
   }) {
     final elbow = _step(wrist, arms.first.fore + 180, forearmLength);
-    final shoulder = _step(elbow, arms.first.upper + 180, upperArmLength);
+    final root = _step(elbow, arms.first.upper + 180, upperArmLength);
+    final spread = arms.length == 2 && !inProfile;
+    final shoulder = spread ? root.translate(frontShoulderHalfWidth, 0) : root;
     return Pose(
       hip: _step(shoulder, torso + 180, torsoLength),
       torso: torso,

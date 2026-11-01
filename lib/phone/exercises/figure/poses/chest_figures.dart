@@ -53,13 +53,30 @@ List<Equipment> _inclineBench() => [
     ];
 
 final _dumbbellBenchPress = FigureSpec(
-  pose: _lyingOnBench(const ArmAngles(upper: 50, fore: -90)),
-  equipment: [...flatBench(28, 118), ...dumbbell(hand)],
+  pose: _lyingOnBench(const ArmAngles(upper: 40, fore: -90)),
+  equipment: [...flatBench(28, 118), endOnDumbbell(hand)],
 );
 
+const _topViewBenchLeft = 84.0;
+const _topViewBenchRight = 116.0;
+
 final _dumbbellChestFly = FigureSpec(
-  pose: _lyingOnBench(const ArmAngles(upper: 50, fore: -30)),
-  equipment: [...flatBench(28, 118), ...dumbbell(hand)],
+  hasFloor: false,
+  pose: const Pose(
+    hip: Offset(100, 106),
+    torso: -90,
+    head: -90,
+    arms: [ArmAngles(upper: 185, fore: 170), ArmAngles(upper: -5, fore: 10)],
+    legs: [
+      LegAngles(thigh: 93, shin: 93, foot: 70),
+      LegAngles(thigh: 87, shin: 87, foot: 110),
+    ],
+  ),
+  equipment: [
+    EquipmentRoundRect(point(_topViewBenchLeft, 28), point(_topViewBenchRight, 116)),
+    ...uprightDumbbell(hand),
+    ...uprightDumbbell(const Anchor.at(Joint.wrist, limb: 1)),
+  ],
 );
 
 final _mildInclineDumbbellPress = FigureSpec(
@@ -75,7 +92,7 @@ final _mildInclineDumbbellPress = FigureSpec(
     EquipmentLine(point(100, 160), point(124, 160), width: 7),
     post(112, 160),
     post(60, 150),
-    ...dumbbell(hand),
+    endOnDumbbell(hand),
   ],
 );
 
@@ -139,8 +156,8 @@ final _dumbbellPullover = FigureSpec(
     hip: Offset(124, onBenchY),
     torso: 180,
     head: 180,
-    arms: [ArmAngles(upper: 150, fore: 165)],
+    arms: [ArmAngles(upper: -120, fore: -120)],
     legs: [_benchLeg],
   ),
-  equipment: [...flatBench(58, 100), ...dumbbell(hand)],
+  equipment: [...flatBench(58, 100), ...uprightDumbbell(hand)],
 );

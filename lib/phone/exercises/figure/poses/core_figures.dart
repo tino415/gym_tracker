@@ -94,7 +94,7 @@ final _weightedDeclineSitUp = FigureSpec(
     EquipmentLine(point(114, 131), point(150, figureFloorY)),
     EquipmentCircle(const Anchor.at(Joint.ankle, dx: -3, dy: -11), 6, filled: true, inFront: true),
     EquipmentLine(const Anchor.at(Joint.ankle, dx: -3, dy: -11), point(120, 128)),
-    barbell(const Anchor.at(Joint.shoulder, dx: 14, dy: 14)),
+    ...kettlebell(hand),
   ],
 );
 

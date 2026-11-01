@@ -8,6 +8,7 @@ import 'skeleton.dart';
 
 const _figureStroke = 10.0;
 const _floorStroke = 2.0;
+const _ghostOpacity = 0.3;
 
 class ExerciseFigure extends StatelessWidget {
   const ExerciseFigure({super.key, required this.placement});
@@ -52,10 +53,23 @@ class FigurePainter extends CustomPainter {
       (size.height - figureCanvasSize.height * scale) / 2,
     );
     canvas.scale(scale);
-    _paintFloor(canvas);
-    _paintEquipmentWhere(canvas, inFront: false);
+    if (placement.spec.hasFloor) _paintFloor(canvas);
+    _paintGhost(canvas);
+    _paintPlacement(canvas, placement);
+  }
+
+  void _paintGhost(Canvas canvas) {
+    final ghost = placement.ghost;
+    if (ghost == null) return;
+    canvas.saveLayer(null, Paint()..color = Colors.black.withValues(alpha: _ghostOpacity));
+    _paintPlacement(canvas, ghost);
+    canvas.restore();
+  }
+
+  void _paintPlacement(Canvas canvas, FigurePlacement placement) {
+    _paintEquipmentWhere(canvas, placement, inFront: false);
     _paintFigure(canvas, placement.joints);
-    _paintEquipmentWhere(canvas, inFront: true);
+    _paintEquipmentWhere(canvas, placement, inFront: true);
   }
 
   void _paintFloor(Canvas canvas) {
@@ -66,13 +80,13 @@ class FigurePainter extends CustomPainter {
     );
   }
 
-  void _paintEquipmentWhere(Canvas canvas, {required bool inFront}) {
+  void _paintEquipmentWhere(Canvas canvas, FigurePlacement placement, {required bool inFront}) {
     for (final item in placement.spec.equipment.where((e) => e.inFront == inFront)) {
-      _paintEquipment(canvas, item);
+      _paintEquipment(canvas, placement, item);
     }
   }
 
-  void _paintEquipment(Canvas canvas, Equipment item) {
+  void _paintEquipment(Canvas canvas, FigurePlacement placement, Equipment item) {
     final stroke = _stroke(equipmentColor, item.width);
     switch (item) {
       case EquipmentLine():
