@@ -28,7 +28,14 @@ access_token() {
     -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer -d "assertion=$signing_input.$signature" | jq -r .access_token
 }
 
-call() { curl -fsS -H "Authorization: Bearer $token" "$@"; }
+call() {
+  local body status
+  body=$(curl -sS -w "\n%{http_code}" -H "Authorization: Bearer $token" "$@") || return 1
+  status=${body##*$'\n'}
+  body=${body%$'\n'*}
+  [ "$status" -lt 300 ] || { echo "HTTP $status from ${*: -1}: $body" >&2; return 1; }
+  printf %s "$body"
+}
 
 open_edit() { call -X POST -H 'Content-Type: application/json' -d '{}' "$api/$package/edits" | jq -r .id; }
 
@@ -40,13 +47,14 @@ check() {
 }
 
 upload() {
-  local edit version
+  local edit version response
   edit=$(open_edit)
-  version=$(call -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$bundle" \
-    "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media" | jq -r .versionCode)
+  response=$(call -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$bundle" \
+    "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media") || { echo "$response" >&2; return 1; }
+  version=$(jq -r .versionCode <<<"$response")
   call -X PUT -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg track "$track" --arg code "$version" --arg notes "$notes" \
-      '{track:$track,releases:[{status:"completed",versionCodes:[$code],releaseNotes:(if $notes == "" then [] else [{language:"en-US",text:$notes}] end)}]}')" \
+    -d "$(jq -nc --arg track "$track" --arg code "$version" --arg notes "$notes" --arg status "${PLAY_RELEASE_STATUS:-completed}" \
+      '{track:$track,releases:[{status:$status,versionCodes:[$code],releaseNotes:(if $notes == "" then [] else [{language:"en-US",text:$notes}] end)}]}')" \
     "$api/$package/edits/$edit/tracks/$track" > /dev/null
   call -X POST "$api/$package/edits/$edit:commit" > /dev/null
   echo "released versionCode $version to $track"
