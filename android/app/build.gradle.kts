@@ -35,6 +35,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["debuggable"] = (!playUpload).toString()
     }
 
     signingConfigs {
