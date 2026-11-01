@@ -86,6 +86,7 @@ void main() {
 
       Future<SetCompletion?> lastOf(String exerciseId) =>
           db.lastCompletionForExerciseAtSetIndex(
+            routineExerciseId: null,
             exerciseId: exerciseId,
             setIndex: 0,
             excludeWorkoutId: 'another workout',

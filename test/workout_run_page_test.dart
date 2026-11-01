@@ -465,6 +465,45 @@ void main() {
     await disposeTree(tester);
   });
 
+  testWidgets('last time of an exercise listed twice is the entry being run', (
+    tester,
+  ) async {
+    final bench = await db.createExercise('Bench');
+    final routine = await db.createRoutine('Heavy and light');
+    for (final reps in [5, 12]) {
+      final slot = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: bench.syncId,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: slot.syncId,
+        targetReps: reps,
+        targetWeightKg: 60,
+      );
+    }
+    final past = await db.startWorkout(routine.syncId);
+    final entries = (await db.loadFullWorkout(past.syncId))!.exercises;
+    for (final (entry, reps) in [(entries[1], 11), (entries[0], 4)]) {
+      await db.upsertSetCompletion(
+        workoutId: past.syncId,
+        workoutSetId: entry.sets.single.workoutSet.syncId,
+        actualReps: reps,
+        actualWeightKg: 60,
+      );
+    }
+    await db.updateWorkoutTimes(
+      workoutId: past.syncId,
+      startedAt: DateTime(2026, 7, 1, 18),
+      endedAt: DateTime(2026, 7, 1, 19),
+    );
+
+    await pumpRun(tester, routineId: routine.syncId);
+
+    expect(find.text('Last time  4 × 60 kg'), findsOneWidget);
+
+    await disposeTree(tester);
+  });
+
   testWidgets('finish stamps endedAt and lands on the workout in history',
       (tester) async {
     final r = await seedRoutine(

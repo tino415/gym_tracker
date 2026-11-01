@@ -1177,6 +1177,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
   @override
   Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
     required String exerciseId,
+    required String? routineExerciseId,
     required int setIndex,
     required String excludeWorkoutId,
   }) async {
@@ -1192,8 +1193,15 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       final completionBySet = {
         for (final c in dto.completions) c.workoutSetSyncId: c,
       };
-      for (final we in dto.exercises) {
-        if (we.exerciseSyncId != exerciseId) continue;
+      final entries = dto.exercises
+          .where((we) => we.exerciseSyncId == exerciseId)
+          .toList()
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final preferredFirst = [
+        ...entries.where((we) => _isSlot(we, routineExerciseId)),
+        ...entries.where((we) => !_isSlot(we, routineExerciseId)),
+      ];
+      for (final we in preferredFirst) {
         for (final s in we.sets) {
           if (s.setIndex != setIndex) continue;
           final c = completionBySet[s.syncId];
@@ -1203,6 +1211,9 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     }
     return null;
   }
+
+  static bool _isSlot(WorkoutExerciseDto we, String? routineExerciseId) =>
+      routineExerciseId != null && we.routineExerciseSyncId == routineExerciseId;
 
   /// Promote every outstanding improvement to its routine planned set (primary
   /// or alternative), in one routine-doc write with a version bump. Idempotent:

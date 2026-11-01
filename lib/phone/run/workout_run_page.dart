@@ -305,6 +305,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         .read(workoutRepositoryProvider)
         .lastCompletionForExerciseAtSetIndex(
           exerciseId: exerciseId,
+          routineExerciseId: ex?.workoutExercise.routineExerciseId,
           setIndex: _setIdx,
           excludeWorkoutId: workoutId,
         );
