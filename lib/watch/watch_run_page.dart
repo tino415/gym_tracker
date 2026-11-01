@@ -21,7 +21,7 @@ import 'watch_workout_done_page.dart';
 import 'widgets/countdown_pill.dart';
 import 'widgets/discard_dialog.dart';
 import 'widgets/round_safe_area.dart';
-import 'widgets/stepper_button.dart';
+import 'widgets/set_value_editor_page.dart';
 
 class WatchRunPage extends ConsumerStatefulWidget {
   const WatchRunPage({
@@ -54,6 +54,8 @@ class WatchRunPage extends ConsumerStatefulWidget {
 enum _Phase { logSet, rest }
 
 const _timeTargetStep = 5;
+const _weightStep = 2.5;
+const _setActionHeight = 44.0;
 
 class _WatchRunPageState extends ConsumerState<WatchRunPage>
     with WidgetsBindingObserver {
@@ -1469,6 +1471,18 @@ class _RepsSetView extends StatelessWidget {
   final int? heartRateBpm;
   final String? lastTimeText;
 
+  Future<void> _editReps(BuildContext context) async {
+    final edited = await editSetValue<int>(
+      context,
+      value: reps,
+      step: 1,
+      min: 1,
+      formatter: (v) => v.toString(),
+      unit: context.l10n.watchUnitReps,
+    );
+    if (edited != null) onRepsChanged(edited);
+  }
+
   @override
   Widget build(BuildContext context) {
     return _ScrollableSetView(
@@ -1491,28 +1505,31 @@ class _RepsSetView extends StatelessWidget {
               lastTimeText: lastTimeText,
             ),
             Expanded(
-              child: _ScaledControls(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  StepperValue<double>(
-                    value: weightKg,
-                    step: 2.5,
-                    min: 0,
-                    formatter: (w) => formatWeight(
-                      w,
-                      locale: Localizations.localeOf(context).toString(),
+                  _SetValueButton(
+                    onTap: () => _editReps(context),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          reps.toString(),
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                        Text(
+                          ' ${context.l10n.watchUnitReps}',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                      ],
                     ),
-                    suffix: context.l10n.watchUnitKg,
-                    onChanged: onWeightChanged,
                   ),
-                  const SizedBox(height: 8),
-                  StepperValue<int>(
-                    value: reps,
-                    step: 1,
-                    min: 1,
-                    formatter: (v) => v.toString(),
-                    suffix: context.l10n.watchUnitReps,
-                    onChanged: onRepsChanged,
-                  ),
+                  _WeightChip(weightKg: weightKg, onChanged: onWeightChanged),
                 ],
               ),
             ),
@@ -1575,6 +1592,20 @@ class _TimeSetView extends StatelessWidget {
   final int? heartRateBpm;
   final String? lastTimeText;
 
+  bool get timerStarted => running || secondsRemaining != targetSeconds;
+
+  Future<void> _editTarget(BuildContext context) async {
+    final edited = await editSetValue<int>(
+      context,
+      value: targetSeconds,
+      step: _timeTargetStep,
+      min: _timeTargetStep,
+      formatter: (v) => v.toString(),
+      unit: context.l10n.watchUnitSec,
+    );
+    if (edited != null) onTargetSecondsChanged(edited);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1582,8 +1613,6 @@ class _TimeSetView extends StatelessWidget {
       fontFeatures: const [FontFeature.tabularFigures()],
       color: secondsRemaining < 0 ? theme.colorScheme.error : null,
     );
-    final isRound = WatchShapeScope.of(context);
-    final hInset = isRound ? 24.0 : 0.0;
     return _ScrollableSetView(
       onSwap: onSwap,
       onSkipSet: onSkipSet,
@@ -1604,62 +1633,54 @@ class _TimeSetView extends StatelessWidget {
               lastTimeText: lastTimeText,
             ),
             Expanded(
-              child: _ScaledControls(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    context.l10n.watchSecondsShort(secondsRemaining),
-                    style: big,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  StepperValue<int>(
-                    value: targetSeconds,
-                    step: _timeTargetStep,
-                    min: _timeTargetStep,
-                    formatter: (v) => v.toString(),
-                    suffix: context.l10n.watchUnitSec,
-                    onChanged: onTargetSecondsChanged,
-                  ),
-                  const SizedBox(height: 8),
-                  StepperValue<double>(
-                    value: weightKg,
-                    step: 2.5,
-                    min: 0,
-                    formatter: (w) => formatWeight(
-                      w,
-                      locale: Localizations.localeOf(context).toString(),
-                    ),
-                    suffix: context.l10n.watchUnitKg,
-                    onChanged: onWeightChanged,
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: hInset),
-                    child: OutlinedButton.icon(
-                      onPressed: onToggleRun,
-                      icon: Icon(
-                        running ? Icons.pause : Icons.play_arrow,
-                        size: 16,
-                      ),
-                      label: Text(
-                        running
-                            ? context.l10n.watchPause
-                            : context.l10n.watchStart,
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(26),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        visualDensity: VisualDensity.compact,
-                      ),
+                  _SetValueButton(
+                    onTap: () => _editTarget(context),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          context.l10n.watchSecondsShort(secondsRemaining),
+                          style: big,
+                        ),
+                        if (timerStarted)
+                          Text(
+                            '/$targetSeconds',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                  _WeightChip(weightKg: weightKg, onChanged: onWeightChanged),
                 ],
               ),
             ),
-            _doneButton(
-              context: context,
-              completed: completed,
-              onTap: onToggleDone,
+            Row(
+              children: [
+                Expanded(
+                  child: _runButton(
+                    context,
+                    running: running,
+                    onTap: onToggleRun,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: _doneButton(
+                    context: context,
+                    completed: completed,
+                    onTap: onToggleDone,
+                    emphasised: running,
+                    insetOnRound: false,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1668,29 +1689,79 @@ class _TimeSetView extends StatelessWidget {
   }
 }
 
-/// Shrinks a set face's controls to fit the band between the header and
-/// Done instead of letting them overflow under Done. The SizedBox pins the
-/// width, since a bare FittedBox lays its child out at unbounded width and the
-/// steppers need a bounded one.
-class _ScaledControls extends StatelessWidget {
-  const _ScaledControls({required this.children});
+class _SetValueButton extends StatelessWidget {
+  const _SetValueButton({required this.child, required this.onTap});
 
-  final List<Widget> children;
+  final Widget child;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => Center(
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: SizedBox(
-            width: constraints.maxWidth,
-            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+    return InkWell(
+      customBorder: const StadiumBorder(),
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 40, minWidth: 64),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Center(
+            widthFactor: 1,
+            child: FittedBox(fit: BoxFit.scaleDown, child: child),
           ),
         ),
       ),
     );
   }
+}
+
+class _WeightChip extends StatelessWidget {
+  const _WeightChip({required this.weightKg, required this.onChanged});
+
+  final double weightKg;
+  final ValueChanged<double> onChanged;
+
+  Future<void> _edit(BuildContext context) async {
+    final locale = Localizations.localeOf(context).toString();
+    final edited = await editSetValue<double>(
+      context,
+      value: weightKg,
+      step: _weightStep,
+      min: 0,
+      formatter: (w) => formatWeight(w, locale: locale),
+      unit: context.l10n.watchUnitKg,
+    );
+    if (edited != null) onChanged(edited);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context).toString();
+    return ActionChip(
+      onPressed: () => _edit(context),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      label: Text(
+        '${formatWeight(weightKg, locale: locale)} ${context.l10n.watchUnitKg}',
+      ),
+    );
+  }
+}
+
+Widget _runButton(
+  BuildContext context, {
+  required bool running,
+  required VoidCallback onTap,
+}) {
+  final label = Text(
+    running ? context.l10n.watchPause : context.l10n.watchStart,
+  );
+  final style = FilledButton.styleFrom(
+    minimumSize: const Size.fromHeight(_setActionHeight),
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+  );
+  return running
+      ? FilledButton.tonal(onPressed: onTap, style: style, child: label)
+      : FilledButton(onPressed: onTap, style: style, child: label);
 }
 
 /// Lays out a set view's main content with side rails for the prev/next
@@ -1731,7 +1802,7 @@ class _SetViewScaffold extends StatelessWidget {
             // inset keeps the header off the bezel and pulls the Done button
             // up from the very bottom.
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               child: child,
             ),
           ),
@@ -1982,24 +2053,30 @@ Widget _doneButton({
   required BuildContext context,
   required bool completed,
   required VoidCallback onTap,
+  bool emphasised = true,
+  bool insetOnRound = true,
 }) {
   final style = FilledButton.styleFrom(
-    minimumSize: const Size.fromHeight(32),
-    padding: const EdgeInsets.symmetric(horizontal: 12),
+    minimumSize: const Size.fromHeight(_setActionHeight),
+    padding: const EdgeInsets.symmetric(horizontal: 4),
   );
   // Pill button at the bottom of the round face — pull its ends inside the
   // bezel chord.
   final isRound = WatchShapeScope.of(context);
-  final hInset = isRound ? 32.0 : 0.0;
+  final hInset = isRound && insetOnRound ? 32.0 : 0.0;
   return Padding(
     padding: EdgeInsets.symmetric(horizontal: hInset),
     child: SizedBox(
       width: double.infinity,
-      child: completed
+      child: completed || !emphasised
           ? FilledButton.tonal(
               onPressed: onTap,
               style: style,
-              child: Text(context.l10n.watchDoneChecked),
+              child: Text(
+                completed
+                    ? context.l10n.watchDoneChecked
+                    : context.l10n.watchDone,
+              ),
             )
           : FilledButton(
               onPressed: onTap,
