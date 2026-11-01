@@ -30,6 +30,7 @@ APK_OUT := "build/app/outputs/flutter-apk"
 # missing libflutter.so.
 WATCH_ABIS := "android-arm,android-arm64"
 PHONE_ABIS := "android-arm64"
+UPLOAD_PROPERTIES := "/cache/android/upload.properties"
 
 # Whether the build seeds the starter exercise library on a first launch into an
 # empty library. Override for a device being reinstalled into an account that
@@ -144,6 +145,24 @@ phone-apk:
     flutter build apk {{APK_MODE}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_STARTER={{SEED_STARTER}} {{BUILD_DEFINE}} \
       {{ if env_var_or_default("GOOGLE_SERVER_CLIENT_ID", "") != "" { "--dart-define=GOOGLE_SERVER_CLIENT_ID=" + env_var("GOOGLE_SERVER_CLIENT_ID") } else { "" } }}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
+
+# App bundle for Play, signed with the upload key kept in the android-user
+# volume next to the debug keystore (Play re-signs it with the app signing key).
+# Each upload needs a higher versionCode than the last, and phone and watch
+# bundles share that space, so the phone one is twice the commit count.
+[doc('Play app bundle for the phone, signed with the upload key')]
+phone-aab build=`echo $((2 * $(git rev-list --count HEAD)))`:
+    cp {{UPLOAD_PROPERTIES}} android/key.properties
+    PLAY_UPLOAD=1 PLAY_FORM_FACTOR=phone flutter build appbundle --release --build-number {{build}} --target-platform {{PHONE_ABIS}} --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_STARTER={{SEED_STARTER}} {{BUILD_DEFINE}}
+    cp build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/phone-release.aab
+
+# App bundle for the Wear OS track. Phone and watch bundles share one
+# versionCode space, so the watch one is the phone one plus 1.
+[doc('Play app bundle for the watch, signed with the upload key')]
+watch-aab build=`echo $((2 * $(git rev-list --count HEAD) + 1))`:
+    cp {{UPLOAD_PROPERTIES}} android/key.properties
+    PLAY_UPLOAD=1 flutter build appbundle --release --build-number {{build}} --target-platform {{WATCH_ABIS}} {{BUILD_DEFINE}}
+    cp build/app/outputs/bundle/release/app-release.aab build/app/outputs/bundle/release/watch-release.aab
 
 # As phone-apk, but the app seeds demo routines on first launch (reps sets, a
 # circuit pair, a time-kind hold) — the fixtures worth having when verifying a
