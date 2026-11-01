@@ -17,24 +17,23 @@ final conditioningFigures = <String, FigurePlacement>{
 const _straightArm = ArmAngles(upper: 90, fore: 90);
 const _plankLeg = LegAngles(thigh: 161, shin: 161, foot: 75);
 
+const _burpeeSharedAnkle = Offset(39, 172);
+
 final _burpees = FigureSpec(
-  pose: Pose.fromWrist(
-    const Offset(125, onFloorY),
+  pose: Pose.fromAnkle(
+    _burpeeSharedAnkle,
     torso: -19,
     head: -19,
     arms: const [_straightArm],
     legs: const [_plankLeg],
   ),
-  ghost: const FigureSpec(
-    pose: Pose(
-      hip: Offset(168, 108),
+  ghost: FigureSpec(
+    pose: Pose.fromAnkle(
+      _burpeeSharedAnkle,
       torso: -90,
-      head: -90,
-      arms: [ArmAngles(upper: -108, fore: -108), ArmAngles(upper: -72, fore: -72)],
-      legs: [
-        LegAngles(thigh: 94, shin: 94, foot: 120),
-        LegAngles(thigh: 86, shin: 86, foot: 60),
-      ],
+      head: -105,
+      arms: const [ArmAngles(upper: -55, fore: -55)],
+      legs: const [LegAngles(thigh: 90, shin: 90, foot: 75)],
     ),
   ),
 );

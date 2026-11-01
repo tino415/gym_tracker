@@ -143,10 +143,10 @@ final _trxPistolSquat = FigureSpec(
 
 final _trxSingleLegRomanianDeadlift = FigureSpec(
   pose: Pose.fromAnkle(
-    const Offset(100, onFloorY),
+    const Offset(70, onFloorY),
     torso: -25,
-    head: -12,
-    arms: const [ArmAngles(upper: -67, fore: -67)],
+    head: -30,
+    arms: const [ArmAngles(upper: 18, fore: 18)],
     legs: const [
       LegAngles(thigh: 80, shin: 95, foot: 0),
       LegAngles(thigh: 155, shin: 155, foot: 65),
