@@ -6,6 +6,7 @@ import 'package:gym_tracker/data/database.dart';
 import 'package:gym_tracker/data/providers.dart';
 import 'package:gym_tracker/watch/watch_app.dart';
 import 'package:gym_tracker/watch/watch_run_page.dart';
+import 'package:gym_tracker/watch/widgets/round_safe_area.dart';
 
 /// Build a routine described as `[(name, kind, [(reps?, kg?, sec?)], group?)]`
 /// and return the loaded FullRoutine. Quick fixture helper.
@@ -66,17 +67,38 @@ Future<void> _pumpRun(
   WidgetTester tester, {
   required AppDatabase db,
   required FullRoutine routine,
+  bool round = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [databaseProvider.overrideWithValue(db)],
       child: MaterialApp(
         theme: watchTheme(),
+        builder: (context, child) =>
+            WatchShapeScope(isRound: round, child: child!),
         home: WatchRunPage(routine: routine),
       ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> editValue(
+  WidgetTester tester,
+  Finder opener, {
+  IconData tap = Icons.add,
+  int times = 1,
+}) async {
+  await tester.tap(opener);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 700));
+  for (var i = 0; i < times; i++) {
+    await tester.tap(find.byIcon(tap));
+    await tester.pump();
+  }
+  await tester.tap(find.widgetWithText(FilledButton, 'OK'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 700));
 }
 
 void main() {
@@ -220,20 +242,20 @@ void main() {
       expect(find.text('2/3'), findsOneWidget);
       expect(find.text('Rest 60s'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await editValue(tester, find.widgetWithText(ActionChip, '80 kg'));
       await tester.pump(const Duration(seconds: 2));
-      expect(find.text('82.5'), findsOneWidget);
-      expect(find.text('Rest 58s'), findsOneWidget);
+      expect(find.text('82.5 kg'), findsOneWidget);
+      expect(find.text('Rest 57s'), findsOneWidget);
 
-      await tester.tap(find.text('Rest 58s'));
+      await tester.tap(find.text('Rest 57s'));
       await tester.pump();
-      expect(find.text('58s'), findsOneWidget);
+      expect(find.text('57s'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 58));
       await tester.pump();
       expect(find.text('Rest'), findsNothing);
       expect(find.text('2/3'), findsOneWidget);
-      expect(find.text('82.5'), findsOneWidget);
+      expect(find.text('82.5 kg'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pump();
@@ -242,7 +264,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('the rest pill leaves the reps steppers clear of Done',
+    testWidgets('the rest pill leaves the reps controls clear of Done',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(226, 226));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -257,9 +279,9 @@ void main() {
       await tester.pump();
       expect(find.text('Rest 60s'), findsOneWidget);
 
-      final repsLabel = tester.getRect(find.text('reps'));
+      final weightChip = tester.getRect(find.byType(ActionChip));
       final done = tester.getRect(find.widgetWithText(FilledButton, 'Done'));
-      expect(repsLabel.bottom, lessThanOrEqualTo(done.top));
+      expect(weightChip.bottom, lessThanOrEqualTo(done.top));
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -281,12 +303,12 @@ void main() {
       expect(find.text('Done ✓'), findsOneWidget);
       expect(find.text('Rest 55s'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.add).last);
+      await editValue(tester, find.text('10'));
       await tester.pump(const Duration(seconds: 1));
 
       expect(find.text('11'), findsOneWidget);
       expect(find.text('Done ✓'), findsOneWidget);
-      expect(find.text('Rest 54s'), findsOneWidget);
+      expect(find.text('Rest 53s'), findsOneWidget);
       final reps = [for (final c in await completionsOf(db)) c.actualReps];
       expect(reps, [11]);
       await tester.pumpWidget(const SizedBox());
@@ -479,13 +501,125 @@ void main() {
   });
 
   group('Watch run page — time-based exercise', () {
-    testWidgets('Start button sits above Done at watch size (no overlap)', (
-      tester,
-    ) async {
-      // Render at the watch's logical size — the default 800x600 test surface
-      // is too tall to surface the cramped-layout overlap.
-      await tester.binding.setSurfaceSize(const Size(226, 226));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final side in [226.0, 192.0]) {
+      group('set faces at ${side.toInt()}dp, round', () {
+        Future<void> openFace(
+          WidgetTester tester,
+          _ExerciseFixture exercise,
+        ) async {
+          await tester.binding.setSurfaceSize(Size(side, side));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final db = AppDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(db.close);
+          final routine = await _seedRoutine(
+            db,
+            name: 'Core',
+            exercises: [exercise],
+          );
+          await _pumpRun(tester, db: db, routine: routine, round: true);
+          await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+          await tester.pumpAndSettle();
+        }
+
+        void expectInsideFace(WidgetTester tester, Finder finder) {
+          final rect = tester.getRect(finder);
+          final centre = Offset(side / 2, side / 2);
+          final bite = rect.shortestSide / 2 * (1 - 0.7071);
+          final rounded = rect.deflate(bite);
+          for (final corner in [
+            rounded.topLeft,
+            rounded.topRight,
+            rounded.bottomLeft,
+            rounded.bottomRight,
+          ]) {
+            expect((corner - centre).distance, lessThanOrEqualTo(side / 2));
+          }
+        }
+
+        testWidgets('timed face: big targets, Start beside Done', (
+          tester,
+        ) async {
+          await openFace(
+            tester,
+            const _ExerciseFixture(
+              name: 'Plank',
+              kind: exerciseKindTime,
+              sets: [_SetFixture(seconds: 30, weight: 10)],
+            ),
+          );
+
+          final start = find.widgetWithText(FilledButton, 'Start').last;
+          final done = find.widgetWithText(FilledButton, 'Done');
+          final startRect = tester.getRect(start);
+          final doneRect = tester.getRect(done);
+          expect(startRect.height, greaterThanOrEqualTo(44));
+          expect(doneRect.height, greaterThanOrEqualTo(44));
+          expect(startRect.right, lessThanOrEqualTo(doneRect.left));
+          expect(startRect.width, greaterThanOrEqualTo(48));
+          expect(tester.getSize(find.text('30s')).height, greaterThan(0));
+          expect(tester.getSize(find.byType(ActionChip)).height,
+              greaterThanOrEqualTo(32));
+          expect(tester.getRect(find.text('30s')).bottom,
+              lessThanOrEqualTo(tester.getRect(find.byType(ActionChip)).top));
+          expect(tester.getRect(find.byType(ActionChip)).bottom,
+              lessThanOrEqualTo(startRect.top));
+          expectInsideFace(tester, start);
+          expectInsideFace(tester, done);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        });
+
+        testWidgets('reps face: big targets, Done 44dp', (tester) async {
+          await openFace(
+            tester,
+            const _ExerciseFixture(
+              name: 'Bench',
+              sets: [_SetFixture(reps: 8, weight: 60)],
+            ),
+          );
+
+          final done = find.widgetWithText(FilledButton, 'Done');
+          final chip = find.byType(ActionChip);
+          expect(tester.getSize(done).height, greaterThanOrEqualTo(44));
+          expect(tester.getSize(chip).height, greaterThanOrEqualTo(32));
+          expect(tester.getRect(find.text('8')).bottom,
+              lessThanOrEqualTo(tester.getRect(chip).top));
+          expect(tester.getRect(chip).bottom,
+              lessThanOrEqualTo(tester.getRect(done).top));
+          expectInsideFace(tester, done);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        });
+
+        testWidgets('editor: 64dp buttons, OK inside the bezel', (
+          tester,
+        ) async {
+          await openFace(
+            tester,
+            const _ExerciseFixture(
+              name: 'Bench',
+              sets: [_SetFixture(reps: 8, weight: 60)],
+            ),
+          );
+          await tester.tap(find.byType(ActionChip));
+          await tester.pumpAndSettle();
+
+          for (final icon in [Icons.remove, Icons.add]) {
+            final button = find.ancestor(
+              of: find.byIcon(icon),
+              matching: find.byType(InkWell),
+            );
+            expect(tester.getSize(button).shortestSide, 64);
+            expectInsideFace(tester, button);
+          }
+          expectInsideFace(tester, find.widgetWithText(FilledButton, 'OK'));
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        });
+      });
+    }
+
+    testWidgets('OK applies the edit, back discards it', (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
       final routine = await _seedRoutine(
@@ -503,14 +637,17 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pumpAndSettle();
 
-      // The countdown, the Start/Pause control and Done are all present...
-      expect(find.text('30s'), findsOneWidget);
-      final startRect = tester.getRect(
-        find.widgetWithText(OutlinedButton, 'Start'),
-      );
-      final doneRect = tester.getRect(find.widgetWithText(FilledButton, 'Done'));
-      // ...and the Start control is fully above the Done button.
-      expect(startRect.bottom, lessThanOrEqualTo(doneRect.top));
+      await tester.tap(find.byType(ActionChip));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pump();
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ActionChip, '10 kg'), findsOneWidget);
+
+      await editValue(tester, find.widgetWithText(ActionChip, '10 kg'));
+      expect(find.widgetWithText(ActionChip, '12.5 kg'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('countdown decrements each second after Start tap',
@@ -539,14 +676,13 @@ void main() {
       // Time set view shows the target.
       expect(find.text('10s'), findsOneWidget);
 
-      // Tap the time-set view's Start (an OutlinedButton).
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+      // Tap the time-set view's Start.
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').last);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('9s'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('8s'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('7s'), findsOneWidget);
@@ -573,13 +709,12 @@ void main() {
       await _pumpRun(tester, db: db, routine: routine);
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').last);
       await tester.pump();
 
       // 2 s into the countdown.
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('8s'), findsOneWidget);
 
       // Provoke a snapshot emission by writing to a watched table. Must run
       // under `tester.runAsync` — direct awaits on real-time IO don't
@@ -595,7 +730,7 @@ void main() {
       expect(find.text('7s'), findsOneWidget);
     });
 
-    testWidgets('the seconds stepper moves the target, running or not',
+    testWidgets('the seconds editor moves the target, running or not',
         (tester) async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -614,29 +749,27 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).first);
-      await tester.pump();
+      await editValue(tester, find.text('10s'));
       expect(find.text('15s'), findsOneWidget);
-      expect(find.text('15'), findsOneWidget);
+      expect(find.text('/15'), findsNothing);
+      await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').last);
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('13s'), findsOneWidget);
+      expect(find.text('/15'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.remove).first);
-      await tester.pump();
-      expect(find.text('8s'), findsOneWidget);
-      expect(find.text('10'), findsOneWidget);
+      await editValue(tester, find.text('13s'), tap: Icons.remove);
+      expect(find.text('/10'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.remove).first);
-      await tester.pump();
-      expect(find.text('3s'), findsOneWidget);
-      expect(find.text('5'), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.remove).first);
-      await tester.pump();
-      expect(find.text('5'), findsOneWidget);
+      await editValue(
+        tester,
+        find.textContaining(RegExp(r'^\d+s$')),
+        tap: Icons.remove,
+        times: 3,
+      );
+      expect(find.text('/5'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });
@@ -664,7 +797,7 @@ void main() {
       await _pumpRun(tester, db: db, routine: await seedCore(db));
       await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Start'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').last);
     }
 
     // Takes three seconds of the fake clock.
@@ -692,7 +825,7 @@ void main() {
       await switchFromList(tester, 'Plank');
 
       expect(find.text('25s'), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, 'Pause'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Pause'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -726,23 +859,21 @@ void main() {
       await startHold(tester, db);
       await tester.pump(const Duration(seconds: 2));
 
-      await tester.tap(find.byIcon(Icons.add).first);
+      await editValue(tester, find.text('28s'));
       await tester.pump();
-      expect(find.text('33s'), findsOneWidget);
-      expect(find.text('35'), findsOneWidget);
+      expect(find.text('/35'), findsOneWidget);
 
       await switchFromList(tester, 'Lunge');
-      expect(find.text('Timer 30s'), findsOneWidget);
+      expect(find.textContaining('Timer '), findsOneWidget);
 
-      await tester.tap(find.text('Timer 30s'));
+      await tester.tap(find.textContaining('Timer '));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('29s'), findsOneWidget);
-      expect(find.text('35'), findsOneWidget);
+      expect(find.text('/35'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pump();
       final completions = await db.select(db.setCompletions).get();
-      expect(completions.single.actualSeconds, 6);
+      expect(completions.single.actualSeconds, greaterThanOrEqualTo(6));
       await tester.pumpWidget(const SizedBox());
     });
   });

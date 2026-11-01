@@ -4,102 +4,141 @@ import 'package:intl/intl.dart';
 import '../../l10n/l10n.dart';
 import 'round_safe_area.dart';
 
-class StepperValue<T extends num> extends StatelessWidget {
-  const StepperValue({
+const _stepButtonSize = 64.0;
+
+Future<T?> editSetValue<T extends num>(
+  BuildContext context, {
+  required T value,
+  required T step,
+  required T min,
+  required String Function(T) formatter,
+  required String unit,
+}) {
+  return Navigator.of(context).push<T>(
+    MaterialPageRoute(
+      builder: (_) => SetValueEditorPage<T>(
+        value: value,
+        step: step,
+        min: min,
+        formatter: formatter,
+        unit: unit,
+      ),
+    ),
+  );
+}
+
+class SetValueEditorPage<T extends num> extends StatefulWidget {
+  const SetValueEditorPage({
     super.key,
     required this.value,
     required this.step,
-    required this.onChanged,
+    required this.min,
     required this.formatter,
-    this.min,
-    this.suffix,
+    required this.unit,
   });
 
   final T value;
   final T step;
-  final ValueChanged<T> onChanged;
+  final T min;
   final String Function(T) formatter;
-  final T? min;
-  final String? suffix;
+  final String unit;
+
+  @override
+  State<SetValueEditorPage<T>> createState() => _SetValueEditorPageState<T>();
+}
+
+class _SetValueEditorPageState<T extends num>
+    extends State<SetValueEditorPage<T>> {
+  late T _draft = widget.value;
 
   void _bump(int sign) {
-    final next = (value + step * sign) as T;
-    if (min != null && next < min!) return;
-    onChanged(next);
+    final next = (_draft + widget.step * sign) as T;
+    if (next < widget.min) return;
+    setState(() => _draft = next);
   }
 
-  Future<void> _editTyped(BuildContext context) async {
-    final isInt = value is int;
-    final result = await Navigator.of(context).push<T>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => _NumberEntryPage<T>(
-          initial: formatter(value),
-          suffix: suffix,
-          isInt: isInt,
-        ),
-      ),
+  Future<void> _typeValue() async {
+    final typed = await enterNumber<T>(
+      context,
+      initial: widget.formatter(_draft),
+      suffix: widget.unit,
+      isInt: _draft is int,
     );
-    if (result == null) return;
-    if (min != null && result < min!) return;
-    onChanged(result);
+    if (typed == null || typed < widget.min) return;
+    setState(() => _draft = typed);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Reserve a fixed slot for the value so the +/- buttons don't shift
-    // when the digit count changes. 44 px fits "100" at titleMedium with
-    // tight margins on either side.
-    final valueText = SizedBox(
-      width: 44,
-      child: Text(
-        formatter(value),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleMedium?.copyWith(height: 1.0),
+    final isRound = WatchShapeScope.of(context);
+    return Scaffold(
+      body: RoundSafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: _typeValue,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        widget.formatter(_draft),
+                        style: theme.textTheme.headlineMedium,
+                      ),
+                      Text(
+                        ' ${widget.unit}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _StepButton(icon: Icons.remove, onTap: () => _bump(-1)),
+                  const SizedBox(width: 8),
+                  _StepButton(icon: Icons.add, onTap: () => _bump(1)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isRound ? 32 : 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop<T>(_draft),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(36),
+                    ),
+                    child: Text(context.l10n.watchOk),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-    );
-    final row = Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _RoundButton(icon: Icons.remove, onTap: () => _bump(-1)),
-        InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: () => _editTyped(context),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: valueText,
-          ),
-        ),
-        _RoundButton(icon: Icons.add, onTap: () => _bump(1)),
-      ],
-    );
-    if (suffix == null) return row;
-    // Pull the unit caption up under the value glyphs — without the negative
-    // offset, Text's intrinsic ascent/descent leaves a visible gap below the
-    // 36 px button row.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        row,
-        Transform.translate(
-          offset: const Offset(0, -8),
-          child: Text(
-            suffix!,
-            style: theme.textTheme.labelSmall?.copyWith(
-              height: 1.0,
-              color: theme.colorScheme.outline,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
 
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({required this.icon, required this.onTap});
+class _StepButton extends StatelessWidget {
+  const _StepButton({required this.icon, required this.onTap});
 
   final IconData icon;
   final VoidCallback onTap;
@@ -112,10 +151,29 @@ class _RoundButton extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
-        child: SizedBox(width: 36, height: 36, child: Icon(icon, size: 18)),
+        child: SizedBox(
+          width: _stepButtonSize,
+          height: _stepButtonSize,
+          child: Icon(icon, size: 28),
+        ),
       ),
     );
   }
+}
+
+Future<T?> enterNumber<T extends num>(
+  BuildContext context, {
+  required String initial,
+  required String? suffix,
+  required bool isInt,
+}) {
+  return Navigator.of(context).push<T>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) =>
+          _NumberEntryPage<T>(initial: initial, suffix: suffix, isInt: isInt),
+    ),
+  );
 }
 
 /// Custom numpad — Flutter's TextField is broken on Wear OS (the system
@@ -165,10 +223,9 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
     });
   }
 
-  String _decimalSeparator(BuildContext context) =>
-      NumberFormat.decimalPattern(
-        Localizations.localeOf(context).toString(),
-      ).symbols.DECIMAL_SEP;
+  String _decimalSeparator(BuildContext context) => NumberFormat.decimalPattern(
+    Localizations.localeOf(context).toString(),
+  ).symbols.DECIMAL_SEP;
 
   T? _parse() {
     if (_buffer.isEmpty) return null;
@@ -204,7 +261,10 @@ class _NumberEntryPageState<T extends num> extends State<_NumberEntryPage<T>> {
                   child: Center(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(display, style: theme.textTheme.headlineSmall),
+                      child: Text(
+                        display,
+                        style: theme.textTheme.headlineSmall,
+                      ),
                     ),
                   ),
                 ),
