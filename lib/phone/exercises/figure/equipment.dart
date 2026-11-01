@@ -17,6 +17,13 @@ class Anchor {
   final double dx;
   final double dy;
 
+  Anchor shifted(double byX, double byY) {
+    final joint = this.joint;
+    return joint == null
+        ? Anchor.canvas(dx + byX, dy + byY)
+        : Anchor.at(joint, limb: limb, dx: dx + byX, dy: dy + byY);
+  }
+
   Offset resolve(FigureJoints joints) {
     final joint = this.joint;
     final origin = joint == null ? Offset.zero : _jointPosition(joints, joint, limb);
