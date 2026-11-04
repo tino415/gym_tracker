@@ -766,6 +766,115 @@ void main() {
       expect(after.exercises.single.sets.single.workoutSet.targetWeightKg, 80);
     });
 
+    test('swapping back to the primary restores its targets', () async {
+      final bench = await db.createExercise('Bench');
+      final dbBench = await db.createExercise('DB Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: bench.syncId,
+      );
+      for (final reps in [5, 5, 5]) {
+        await db.addPlannedSet(
+          routineExerciseId: re.syncId,
+          targetReps: reps,
+          targetWeightKg: 80,
+        );
+      }
+      final alt = await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.syncId,
+        exerciseId: dbBench.syncId,
+      );
+      await db.addAlternativePlannedSet(
+        alternativeId: alt.syncId,
+        targetReps: 10,
+        targetWeightKg: 30,
+      );
+      await db.addAlternativePlannedSet(
+        alternativeId: alt.syncId,
+        targetReps: 10,
+        targetWeightKg: 30,
+      );
+      await db.addAlternativePlannedSet(
+        alternativeId: alt.syncId,
+        targetReps: 10,
+        targetWeightKg: 30,
+      );
+
+      final workout = await db.startWorkout(routine.syncId);
+      final snap = await db.loadFullWorkout(workout.syncId);
+      final we = snap!.exercises.single.workoutExercise;
+      final firstSet = snap.exercises.single.sets.first.workoutSet;
+      await db.upsertSetCompletion(
+        workoutId: workout.syncId,
+        workoutSetId: firstSet.syncId,
+        actualReps: 5,
+        actualWeightKg: 80,
+      );
+
+      await db.swapWorkoutExercise(
+        workoutExerciseId: we.syncId,
+        newExerciseId: dbBench.syncId,
+      );
+      await db.swapWorkoutExercise(
+        workoutExerciseId: we.syncId,
+        newExerciseId: bench.syncId,
+      );
+
+      final after = await db.loadFullWorkout(workout.syncId);
+      final sets = after!.exercises.single.sets.map((s) => s.workoutSet);
+      expect(sets.map((s) => s.targetReps).toList(), [5, 5, 5]);
+      expect(sets.map((s) => s.targetWeightKg).toList(), [80, 80, 80]);
+    });
+
+    test('swapping between alternatives without own sets uses the primary',
+        () async {
+      final bench = await db.createExercise('Bench');
+      final dbBench = await db.createExercise('DB Bench');
+      final smith = await db.createExercise('Smith Bench');
+      final routine = await db.createRoutine('Push');
+      final re = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: bench.syncId,
+      );
+      await db.addPlannedSet(
+        routineExerciseId: re.syncId,
+        targetReps: 5,
+        targetWeightKg: 80,
+      );
+      final alt = await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.syncId,
+        exerciseId: dbBench.syncId,
+      );
+      await db.addAlternativePlannedSet(
+        alternativeId: alt.syncId,
+        targetReps: 10,
+        targetWeightKg: 30,
+      );
+      await db.addRoutineExerciseAlternative(
+        routineExerciseId: re.syncId,
+        exerciseId: smith.syncId,
+      );
+
+      final workout = await db.startWorkout(routine.syncId);
+      final snap = await db.loadFullWorkout(workout.syncId);
+      final weId = snap!.exercises.single.workoutExercise.syncId;
+
+      await db.swapWorkoutExercise(
+        workoutExerciseId: weId,
+        newExerciseId: dbBench.syncId,
+      );
+      await db.swapWorkoutExercise(
+        workoutExerciseId: weId,
+        newExerciseId: smith.syncId,
+      );
+
+      final after = await db.loadFullWorkout(workout.syncId);
+      final set = after!.exercises.single.sets.single.workoutSet;
+      expect(set.targetReps, 5);
+      expect(set.targetWeightKg, 80);
+    });
+
     test('routine deletion sets routineExerciseId NULL on workout exercise',
         () async {
       final bench = await db.createExercise('Bench');

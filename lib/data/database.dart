@@ -2074,11 +2074,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Mid-workout swap: change which canonical exercise this snapshot row
-  /// represents. If the chosen alternative carries its own planned sets, the
-  /// workout's uncompleted sets are retargeted to those values (completed sets
-  /// keep their targets + completions intact). With no alternative planned
-  /// sets, targets are left as-is — falling back to "share with primary"
-  /// behaviour.
+  /// represents. The workout's uncompleted sets are retargeted to the chosen
+  /// exercise's planned sets: its own alternative sets if it has any,
+  /// otherwise the routine slot's primary sets. Completed sets keep their
+  /// targets + completions intact. Without a routine slot, targets are left
+  /// as-is.
   Future<void> swapWorkoutExercise({
     required String workoutExerciseId,
     required String newExerciseId,
@@ -2091,26 +2091,9 @@ class AppDatabase extends _$AppDatabase {
             ..where((t) => t.syncId.equals(workoutExerciseId)))
           .getSingle();
 
-      // Look up the alternative row (and its planned sets) for this slot, if
-      // any: the alternative's exerciseId matches the new selection, and the
-      // workout exercise has a back-pointer to a routine slot.
-      List<AlternativePlannedSet> altPs = const [];
-      final reId = we.routineExerciseId;
-      if (reId != null) {
-        final alts = await (select(routineExerciseAlternatives)
-              ..where((t) => t.routineExerciseId.equals(reId)))
-            .get();
-        final altRow =
-            alts.where((a) => a.exerciseId == newExerciseId).firstOrNull;
-        if (altRow != null) {
-          altPs = await (select(alternativePlannedSets)
-                ..where((t) => t.alternativeId.equals(altRow.syncId))
-                ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
-              .get();
-        }
-      }
+      final targets = await _swapTargets(we.routineExerciseId, newExerciseId);
 
-      if (altPs.isNotEmpty) {
+      if (targets.isNotEmpty) {
         // Retarget unfinished sets in place. Walk existing WorkoutSets in
         // setIndex order; for each one without a completion, overwrite its
         // targets from the matching alt set. Append extras for any alt sets
@@ -2126,7 +2109,7 @@ class AppDatabase extends _$AppDatabase {
           for (final c in completions) c.workoutSetId,
         };
         final byIndex = {for (final s in existingSets) s.setIndex: s};
-        for (final aps in altPs) {
+        for (final aps in targets) {
           final existing = byIndex[aps.setIndex];
           if (existing == null) {
             await into(workoutSets).insert(
@@ -2164,6 +2147,45 @@ class AppDatabase extends _$AppDatabase {
           );
       await _bumpWorkoutVersion(we.workoutId);
     });
+  }
+
+  Future<List<_SwapTarget>>
+  _swapTargets(String? routineExerciseId, String newExerciseId) async {
+    if (routineExerciseId == null) return const [];
+    final alts = await (select(routineExerciseAlternatives)
+          ..where((t) => t.routineExerciseId.equals(routineExerciseId)))
+        .get();
+    final altRow = alts.where((a) => a.exerciseId == newExerciseId).firstOrNull;
+    if (altRow != null) {
+      final own = await (select(alternativePlannedSets)
+            ..where((t) => t.alternativeId.equals(altRow.syncId))
+            ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+          .get();
+      if (own.isNotEmpty) {
+        return [
+          for (final s in own)
+            (
+            setIndex: s.setIndex,
+            targetReps: s.targetReps,
+            targetWeightKg: s.targetWeightKg,
+            targetSeconds: s.targetSeconds,
+          ),
+        ];
+      }
+    }
+    final primary = await (select(plannedSets)
+          ..where((t) => t.routineExerciseId.equals(routineExerciseId))
+          ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
+        .get();
+    return [
+      for (final s in primary)
+        (
+            setIndex: s.setIndex,
+            targetReps: s.targetReps,
+            targetWeightKg: s.targetWeightKg,
+            targetSeconds: s.targetSeconds,
+          ),
+    ];
   }
 
   /// Variants available for [workoutExerciseId]: the routine slot's primary
@@ -2210,3 +2232,10 @@ class AppDatabase extends _$AppDatabase {
     return ordered;
   }
 }
+
+typedef _SwapTarget = ({
+  int setIndex,
+  int? targetReps,
+  double? targetWeightKg,
+  int? targetSeconds,
+});
