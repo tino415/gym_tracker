@@ -10,7 +10,12 @@ import 'account_directory.dart';
 import 'config.dart';
 import 'dev_token_auth.dart';
 import 'emulator_client.dart';
+import 'tools/find_exercises.dart';
+import 'tools/get_routine.dart';
+import 'tools/get_workout.dart';
 import 'tools/list_routines.dart';
+import 'tools/list_workouts.dart';
+import 'tools/read_tool.dart';
 import 'user_scope.dart';
 
 /// Streamable HTTP front for the MCP server. `StreamableMcpServer` would do the
@@ -156,10 +161,15 @@ class GymMcpServer {
     final server = McpServer(
       const Implementation(name: 'gym-tracker', version: '0.0.1'),
     );
-    registerListRoutines(
-      server,
+    final context = ToolContext(
       UserScope(account, _firestore, _config.projectId),
+      () async => await _accounts.verify(account.uid) != null,
     );
+    registerListRoutines(server, context);
+    registerGetRoutine(server, context);
+    registerListWorkouts(server, context);
+    registerGetWorkout(server, context);
+    registerFindExercises(server, context);
     return server;
   }
 

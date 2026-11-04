@@ -21,8 +21,9 @@ Object? valueToJson(fs.Value value) {
     };
   }
   final array = value.arrayValue;
-  if (array != null)
+  if (array != null) {
     return [for (final v in array.values ?? []) valueToJson(v)];
+  }
   return null;
 }
 

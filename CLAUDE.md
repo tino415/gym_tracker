@@ -157,6 +157,12 @@ refuses to start without the emulator host variables.
 emulators:exec`), so stop `just up` first: same ports. CI only analyzes the
 package, since the runner has no emulators.
 
+Read tools: `list_routines`, `get_routine`, `list_workouts`, `get_workout`,
+`find_exercises`. Workout reads name their fields (the heart-rate series is about
+680 samples inline) and pass through `stripHealthData` (now in
+`lib/sync/health_data.dart`, re-exported by `health_upload_consent.dart`): there
+is no heart-rate scope in v1, so no tool may return one.
+
 A tool never takes a uid. The only route to `users/{uid}/…` is `UserScope`,
 which needs a `VerifiedAccount` from `AccountDirectory.verify` (Firebase Auth,
 cached a minute). `GymMcpServer` owns the session map instead of using
