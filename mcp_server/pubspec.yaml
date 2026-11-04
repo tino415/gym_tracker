@@ -1,0 +1,17 @@
+name: gym_tracker_mcp
+description: Remote MCP server over a user's GymTracker data in Firestore.
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  googleapis: ^17.0.0
+  gym_tracker:
+    path: ..
+  http: ^1.2.0
+  mcp_dart: ^2.4.3
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

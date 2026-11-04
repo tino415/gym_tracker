@@ -142,6 +142,27 @@ Three things that bite:
   `package:drift/drift.dart`, which exports a matcher of that name alongside
   `package:matcher`'s. Assert against plain `null`.
 
+## MCP server
+
+`mcp_server/` is a plain Dart package (mcp_dart, Streamable HTTP) that lets an AI
+assistant read a user's data in Firestore; ADR 0001 records how it is
+authenticated. It reads the app's DTOs through a path dependency on this
+package, so it resolves with `flutter pub get`, and `flutter analyze` at the
+root skips it. `just mcp` runs it against the emulators from `just up` (also a
+process-compose entry); the dev token is `dev-token` unless `MCP_DEV_TOKEN` says
+otherwise, and it maps to `MCP_DEV_UID` or the emulator's only account. It
+refuses to start without the emulator host variables.
+
+`just mcp-test` runs the package's tests on throwaway emulators (`firebase
+emulators:exec`), so stop `just up` first: same ports. CI only analyzes the
+package, since the runner has no emulators.
+
+A tool never takes a uid. The only route to `users/{uid}/…` is `UserScope`,
+which needs a `VerifiedAccount` from `AccountDirectory.verify` (Firebase Auth,
+cached a minute). `GymMcpServer` owns the session map instead of using
+`StreamableMcpServer`, because there a tool can't learn which user a request
+belongs to.
+
 ## Web / PWA
 
 `flutter build web` produces an installable PWA (Flutter generates the service

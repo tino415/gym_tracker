@@ -36,6 +36,7 @@ jobs:
       - run: just analyze
       - run: just test
       - run: just test-web
+      - run: cd mcp_server && flutter pub get && dart analyze
 
       - name: Regenerate committed code
         run: |

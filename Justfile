@@ -316,6 +316,19 @@ _web-drive target:
 up:
     process-compose up --tui=false --port 4115
 
+# The MCP server. `mcp_server/` is a plain Dart package that reads the app's
+# DTOs through a path dependency, so it resolves with `flutter pub get`.
+[doc('MCP server on :4121 against the running emulators; MCP_DEV_UID picks the account, else the only one')]
+mcp:
+    cd mcp_server && flutter pub get && \
+      FIRESTORE_EMULATOR_HOST=127.0.0.1:4120 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:4119 \
+      dart run bin/server.dart
+
+[doc('MCP server: analyze + tests on throwaway emulators (stop `just up` first: same ports)')]
+mcp-test:
+    cd mcp_server && flutter pub get && dart analyze
+    firebase emulators:exec --only auth,firestore --project demo-gym-tracker "cd mcp_server && dart test"
+
 # Build the prod web app (Firestore-direct). `flutter clean` first: the web
 # plugin registrant is cached per build-config and can go stale across
 # dart-define configs, silently dropping a plugin (e.g. shared_preferences)
