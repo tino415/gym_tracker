@@ -32,3 +32,14 @@ processes:
     depends_on:
       emulators:
         condition: process_healthy
+
+  mcp:
+    description: MCP server on :4121, dev token, against the emulators
+    command: |
+      cd mcp_server && flutter pub get && exec dart run bin/server.dart
+    environment:
+      - FIRESTORE_EMULATOR_HOST=127.0.0.1:4120
+      - FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:4119
+    depends_on:
+      emulators:
+        condition: process_healthy
