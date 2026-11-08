@@ -92,8 +92,8 @@ class WorkoutBridge(
                 WorkoutService.clearTimer(appContext)
                 result.success(null)
             }
-            "hasBodySensorsPermission" -> {
-                result.success(hasBodySensors())
+            "hasHeartRatePermission" -> {
+                result.success(appContext.hasHeartRatePermission())
             }
             "requestPermissions" -> {
                 val act = activity
@@ -102,9 +102,9 @@ class WorkoutBridge(
                     return
                 }
                 val perms = mutableListOf(
-                    Manifest.permission.BODY_SENSORS,
+                    heartRatePermission,
                     // Health Services' ExerciseClient — the session-long heart
-                    // rate path — needs this on top of BODY_SENSORS. Without it
+                    // rate path — needs this on top of heart rate. Without it
                     // registration fails and we fall back to spot measurement,
                     // which is what made heart rate read near-resting.
                     Manifest.permission.ACTIVITY_RECOGNITION,
@@ -209,11 +209,6 @@ class WorkoutBridge(
         timerJob?.cancel()
         timerJob = null
     }
-
-    private fun hasBodySensors(): Boolean = ContextCompat.checkSelfPermission(
-        appContext,
-        Manifest.permission.BODY_SENSORS,
-    ) == PackageManager.PERMISSION_GRANTED
 
     companion object {
         private const val METHOD_CHANNEL = "gym_tracker/workout/method"
