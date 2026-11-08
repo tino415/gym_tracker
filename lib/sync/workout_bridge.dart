@@ -174,20 +174,21 @@ class WorkoutBridge {
     await _invokeVoid('clearTimer');
   }
 
-  Future<bool> hasBodySensorsPermission() async {
+  Future<bool> hasHeartRatePermission() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
     if (_skipPlatformCalls) return false;
     try {
-      final r = await _method.invokeMethod<bool>('hasBodySensorsPermission');
+      final r = await _method.invokeMethod<bool>('hasHeartRatePermission');
       return r ?? false;
     } on MissingPluginException {
       return false;
     }
   }
 
-  /// Prompts for BODY_SENSORS (+ POST_NOTIFICATIONS on API 33+). Returns true
+  /// Prompts for heart rate, activity recognition (+ POST_NOTIFICATIONS on
+  /// API 33+). Returns true
   /// if every requested permission was granted.
   Future<bool> requestPermissions() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
@@ -205,7 +206,7 @@ class WorkoutBridge {
   /// When true, every platform call is skipped even outside a host `flutter
   /// test` run. On-device integration tests (`flutter test … -d DEVICE`) do
   /// *not* set `FLUTTER_TEST` in the app process, so without this the run page
-  /// would fire a real BODY_SENSORS/notifications permission dialog that blocks
+  /// would fire a real heart rate/notifications permission dialog that blocks
   /// the test. Integration tests set this true before pumping the widget tree.
   static bool debugSkipPlatformCalls = false;
 

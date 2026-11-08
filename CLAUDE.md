@@ -264,7 +264,12 @@ Health Connect reading near-resting. Three rules came out of it:
   `MeasureClient` survives only as the fallback when the watch can't do a
   strength-training session; `startMeasureFallback` logs when it engages, and
   that log is the first thing to check if heart rate reads low again.
-  `ExerciseClient` needs `ACTIVITY_RECOGNITION` on top of `BODY_SENSORS`.
+  `ExerciseClient` needs `ACTIVITY_RECOGNITION` on top of the heart rate
+  permission, which is `BODY_SENSORS` up to API 35 and `health.READ_HEART_RATE`
+  from API 36 (Wear OS 6) on (`HeartRatePermission.kt`). Checking only the
+  old one is how heart rate silently stopped after a watch updated to Wear OS
+  6; `WorkoutService` now logs `heart rate: … not granted` when the permission
+  is why no readings come.
 - **Thinning happens at the producer** (`HR_MIN_GAP_MS`, mirroring
   `kHeartRateSampleGapMs` in `lib/watch/heart_rate_thinning.dart` — keep the two
   in sync), and samples are buffered in the service across engine pauses, drained

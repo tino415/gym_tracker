@@ -6,7 +6,13 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- Heart rate on the watch. From API 36 READ_HEART_RATE replaces
+         BODY_SENSORS for an app targeting 36 (HeartRatePermission.kt). On a
+         phone the same string is Health Connect's read permission, which the
+         phone never requests. -->
+    <uses-permission android:name="android.permission.BODY_SENSORS"
+        android:maxSdkVersion="35" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <!-- Health Services' ExerciseClient. The watch tracks heart rate as a real
          exercise session rather than a spot measurement, which is what keeps it
          sampling with the screen off — through every set. Requested at workout
@@ -16,8 +22,8 @@
     <!-- Qualifies us to start the `health` foreground service. From API 34 the
          platform demands FOREGROUND_SERVICE_HEALTH *plus* one of
          ACTIVITY_RECOGNITION / BODY_SENSORS / HIGH_SAMPLING_RATE_SENSORS, and
-         it must be granted. The watch satisfies that with BODY_SENSORS, which
-         it requests at workout start for heart rate — but the phone run page
+         it must be granted. The watch satisfies that with its heart rate
+         permission, requested at workout start — but the phone run page
          reads no sensors, so prompting there would be asking for something we
          never use. HIGH_SAMPLING_RATE_SENSORS is a *normal* permission, so
          declaring it is granting it: the phone's rest countdown service starts
@@ -28,7 +34,8 @@
 
     <!-- Health Connect. Write-only on purpose: we publish finished workouts and
          never read anything back, which keeps the Play health declaration
-         narrow and the review simpler. Adding a READ permission here is a
+         narrow and the review simpler. READ_HEART_RATE above is the watch's
+         sensor permission, not a Health Connect read; adding a real read is a
          policy decision, not a technical one. -->
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />

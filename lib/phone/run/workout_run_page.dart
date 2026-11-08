@@ -183,7 +183,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     setState(() => _workoutId = workoutId);
 
     // Foreground the process so the native countdown survives backgrounding.
-    // No requestPermissions() here — that prompts for BODY_SENSORS, which the
+    // No requestPermissions() here — that prompts for heart rate, which the
     // phone has no use for.
     unawaited(WorkoutBridge.instance.start(routineName: _routineName()));
   }

@@ -68,7 +68,7 @@ class MainActivity : FlutterActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         workoutBridge?.handlePermissionResult(requestCode, permissions, grantResults)
         // From Android 14 the Health Connect permissions are ordinary runtime
-        // permissions, so they arrive here alongside BODY_SENSORS et al.
+        // permissions, so they arrive here alongside the heart rate one et al.
         healthConnectBridge?.handlePermissionResult(requestCode, grantResults)
     }
 }

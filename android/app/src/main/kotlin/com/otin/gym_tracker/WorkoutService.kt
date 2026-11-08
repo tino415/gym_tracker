@@ -1,6 +1,5 @@
 package com.otin.gym_tracker
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -214,8 +213,8 @@ class WorkoutService : Service() {
                     ?: "Workout"
                 startInForeground(routineName)
                 // Health Services is a Wear API; on a phone there is nothing to
-                // subscribe to, and the phone run page never asks for
-                // BODY_SENSORS anyway.
+                // subscribe to, and the phone run page never asks for the
+                // heart rate permission anyway.
                 if (isWatch()) startHeartRateIfAllowed()
                 _running.value = true
             }
@@ -380,11 +379,8 @@ class WorkoutService : Service() {
 
     private fun startHeartRateIfAllowed() {
         if (exerciseActive || measureSubscribed) return
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BODY_SENSORS,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!hasHeartRatePermission()) {
+            Log.w(TAG, "heart rate: $heartRatePermission not granted, not sampling")
             return
         }
         resetHeartRate()
