@@ -38,9 +38,16 @@ void main() {
   Future<GymMcpServer> serverFor(
     String? uid, {
     String token = 'dev-token',
+    int requestsPerMinute = 60,
   }) async {
     final server = GymMcpServer(
-      _configWith(emulators.config, uid: uid, token: token),
+      _configWith(
+        emulators.config,
+        uid: uid,
+        token: token,
+        requestsPerMinute: requestsPerMinute,
+      ),
+      client: EmulatorAdminClient(),
       now: () => clock,
     );
     await server.start();
@@ -167,8 +174,82 @@ void main() {
       expect(await statusOf(server, authorization: 'Bearer dev-token'), 401);
     });
 
-    test('the server will not start without the emulators', () {
-      expect(() => ServerConfig.fromEnvironment({}), throwsStateError);
+    test(
+      'a token over its budget waits, and a wrong one spends none',
+      () async {
+        final uid = await emulators.createAccount();
+        final server = await serverFor(uid, requestsPerMinute: 2);
+        expect(await statusOf(server, authorization: 'Bearer nope'), 401);
+        expect(await statusOf(server, authorization: 'Bearer dev-token'), 200);
+        expect(await statusOf(server, authorization: 'Bearer dev-token'), 200);
+
+        final throttled = await http.post(
+          Uri.parse('http://127.0.0.1:${server.port}/mcp'),
+          headers: {'Authorization': 'Bearer dev-token'},
+          body: jsonEncode(_initialize),
+        );
+        expect(throttled.statusCode, 429);
+        expect(throttled.headers['retry-after'], '60');
+
+        clock = clock.add(const Duration(minutes: 1));
+        expect(await statusOf(server, authorization: 'Bearer dev-token'), 200);
+      },
+    );
+  });
+
+  group('configuration', () {
+    final production = {
+      'GOOGLE_CLOUD_PROJECT': 'gym-tracker-44a5f',
+      'MCP_PERSONAL_TOKEN': 'a' * 32,
+      'MCP_PERSONAL_UID': 'martin',
+      'MCP_ALLOWED_HOSTS': 'gym-tracker-mcp-1.europe-west1.run.app',
+      'PORT': '8080',
+    };
+
+    test('without the emulators it reads production', () {
+      final config = ServerConfig.fromEnvironment(production);
+      expect(config.backend, isA<GoogleCloudBackend>());
+      expect(config.projectId, 'gym-tracker-44a5f');
+      expect(config.port, 8080);
+      expect(config.token.uid, 'martin');
+      expect(
+        config.allowedHosts,
+        contains('gym-tracker-mcp-1.europe-west1.run.app'),
+      );
+    });
+
+    test('production refuses to start without its token, uid and host', () {
+      for (final name in production.keys.where((k) => k != 'PORT')) {
+        final env = {...production}..remove(name);
+        expect(
+          () => ServerConfig.fromEnvironment(env),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains(name),
+            ),
+          ),
+        );
+      }
+    });
+
+    test('production refuses a short personal token', () {
+      expect(
+        () => ServerConfig.fromEnvironment({
+          ...production,
+          'MCP_PERSONAL_TOKEN': 'dev-token',
+        }),
+        throwsStateError,
+      );
+    });
+
+    test('the dev token never reaches production', () {
+      final config = ServerConfig.fromEnvironment({
+        ...production,
+        'MCP_DEV_TOKEN': 'b' * 40,
+      });
+      expect(config.token.value, 'a' * 32);
     });
   });
 
@@ -455,7 +536,7 @@ void main() {
         final uid = await emulators.createAccount();
         final directory = AccountDirectory(
           client: EmulatorAdminClient(),
-          authRoot: emulators.config.authRoot,
+          identityToolkitRoot: emulators.config.backend.identityToolkitRoot,
           projectId: emulators.config.projectId,
         );
         final account = (await directory.verify(uid))!;
@@ -463,7 +544,7 @@ void main() {
           account,
           FirestoreApi(
             EmulatorAdminClient(),
-            rootUrl: emulators.config.firestoreRoot.toString(),
+            rootUrl: emulators.config.backend.firestoreRoot.toString(),
           ),
           emulators.config.projectId,
         );
@@ -602,15 +683,15 @@ ServerConfig _configWith(
   ServerConfig base, {
   String? uid,
   required String token,
+  int requestsPerMinute = 60,
 }) => ServerConfig(
   host: base.host,
   port: 0,
   projectId: base.projectId,
-  firestoreRoot: base.firestoreRoot,
-  authRoot: base.authRoot,
-  devToken: token,
-  devUid: uid,
+  backend: base.backend,
+  token: StaticToken(token, uid),
   allowedHosts: base.allowedHosts,
+  requestsPerMinute: requestsPerMinute,
 );
 
 const _initialize = {

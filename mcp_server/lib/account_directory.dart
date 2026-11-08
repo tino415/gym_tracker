@@ -13,13 +13,13 @@ class VerifiedAccount {
 class AccountDirectory {
   AccountDirectory({
     required http.Client client,
-    required Uri authRoot,
+    required Uri identityToolkitRoot,
     required String projectId,
     DateTime Function() now = DateTime.now,
     this.cacheFor = const Duration(minutes: 1),
   }) : _client = client,
-       _accountsUrl = authRoot.resolve(
-         'identitytoolkit.googleapis.com/v1/projects/$projectId/accounts',
+       _accountsUrl = identityToolkitRoot.resolve(
+         'v1/projects/$projectId/accounts',
        ),
        _now = now;
 

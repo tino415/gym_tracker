@@ -17,7 +17,7 @@ class Emulators {
       _client = EmulatorAdminClient() {
     _firestore = fs.FirestoreApi(
       _client,
-      rootUrl: config.firestoreRoot.toString(),
+      rootUrl: config.backend.firestoreRoot.toString(),
     );
   }
 
@@ -61,14 +61,10 @@ class Emulators {
     Map<String, Object?> body, [
     String? action,
   ]) async {
-    final base = config.authRoot.resolve(
-      'identitytoolkit.googleapis.com/v1/projects/${config.projectId}/$path',
-    );
+    final root = config.backend.identityToolkitRoot;
     final url = action == null
-        ? base
-        : config.authRoot.resolve(
-            'identitytoolkit.googleapis.com/v1/accounts:$action?key=test',
-          );
+        ? root.resolve('v1/projects/${config.projectId}/$path')
+        : root.resolve('v1/accounts:$action?key=test');
     final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},

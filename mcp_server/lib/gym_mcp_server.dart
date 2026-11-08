@@ -8,8 +8,8 @@ import 'package:mcp_dart/mcp_dart.dart';
 
 import 'account_directory.dart';
 import 'config.dart';
-import 'dev_token_auth.dart';
-import 'emulator_client.dart';
+import 'request_budget.dart';
+import 'static_token_auth.dart';
 import 'tools/find_exercises.dart';
 import 'tools/get_routine.dart';
 import 'tools/get_workout.dart';
@@ -25,26 +25,34 @@ import 'user_scope.dart';
 class GymMcpServer {
   GymMcpServer(
     this._config, {
-    http.Client? client,
+    required http.Client client,
     DateTime Function() now = DateTime.now,
-  }) : _client = client ?? EmulatorAdminClient() {
+  }) : _client = client {
     _accounts = AccountDirectory(
       client: _client,
-      authRoot: _config.authRoot,
+      identityToolkitRoot: _config.backend.identityToolkitRoot,
       projectId: _config.projectId,
       now: now,
     );
-    _authenticator = DevTokenAuthenticator(_config, _accounts);
+    _authenticator = StaticTokenAuthenticator(
+      _config.token,
+      _accounts,
+      RequestBudget.perMinuteAndDay(
+        perMinute: _config.requestsPerMinute,
+        perDay: _config.requestsPerDay,
+        now: now,
+      ),
+    );
     _firestore = fs.FirestoreApi(
       _client,
-      rootUrl: _config.firestoreRoot.toString(),
+      rootUrl: _config.backend.firestoreRoot.toString(),
     );
   }
 
   final ServerConfig _config;
   final http.Client _client;
   late final AccountDirectory _accounts;
-  late final DevTokenAuthenticator _authenticator;
+  late final StaticTokenAuthenticator _authenticator;
   late final fs.FirestoreApi _firestore;
   final Map<String, _Session> _sessions = {};
   HttpServer? _http;
@@ -71,6 +79,8 @@ class GymMcpServer {
       switch (outcome) {
         case Rejected(:final reason):
           return _unauthorized(request, reason);
+        case Throttled(:final retryAfter):
+          return _tooManyRequests(request, retryAfter);
         case Authenticated(:final account):
           return await _route(request, account);
       }
@@ -192,6 +202,15 @@ class GymMcpServer {
       ..write(
         jsonEncode({'error': 'unauthorized', 'error_description': reason}),
       );
+    await request.response.close();
+  }
+
+  Future<void> _tooManyRequests(HttpRequest request, Duration wait) async {
+    request.response
+      ..statusCode = 429
+      ..headers.set('Retry-After', (wait.inMilliseconds / 1000).ceil())
+      ..headers.contentType = ContentType.json
+      ..write(jsonEncode({'error': 'rate_limited'}));
     await request.response.close();
   }
 
