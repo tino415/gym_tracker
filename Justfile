@@ -329,6 +329,35 @@ mcp-test:
     cd mcp_server && flutter pub get && dart analyze
     firebase emulators:exec --only auth,firestore --project demo-gym-tracker "cd mcp_server && dart test"
 
+# `dart compile exe` refuses the server: sqlite3, reached through the app
+# package, has a build hook. `dart build cli` runs it, for the host's
+# architecture only.
+[doc('MCP server: native bundle in mcp_server/build/server/bundle, which mcp_server/Containerfile packages')]
+mcp-bundle:
+    cd mcp_server && flutter pub get && dart build cli -o build/server
+
+[doc('MCP smoke test: initialize, tools/list, list_routines; the token comes from MCP_TOKEN, else dev-token')]
+mcp-smoke url="http://127.0.0.1:4121/mcp":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token="${MCP_TOKEN:-dev-token}"
+    headers=$(mktemp)
+    trap 'rm -f "$headers"' EXIT
+    session=()
+    rpc() {
+      curl -fsS "{{url}}" -H "Authorization: Bearer $token" \
+        -H 'Content-Type: application/json' \
+        -H 'Accept: application/json, text/event-stream' \
+        "${session[@]}" -d "$1" "${@:2}"
+    }
+    rpc '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}' \
+      -D "$headers" >/dev/null
+    session=(-H "Mcp-Session-Id: $(sed -n 's/^mcp-session-id: *//Ip' "$headers" | tr -d '\r')")
+    rpc '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+    rpc '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | grep -o '"name":"[a-z_]*"' | sort -u
+    rpc '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_routines","arguments":{}}}'
+    echo
+
 # Build the prod web app (Firestore-direct). `flutter clean` first: the web
 # plugin registrant is cached per build-config and can go stale across
 # dart-define configs, silently dropping a plugin (e.g. shared_preferences)

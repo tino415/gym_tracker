@@ -1,0 +1,12 @@
+# Packages the bundle from `just mcp-bundle`. It cannot be built inside the
+# image: the server depends on the app package, which needs the Flutter SDK.
+FROM docker.io/library/debian:trixie-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY build/server/bundle/ /app/
+
+USER nobody
+ENTRYPOINT ["/app/bin/server"]

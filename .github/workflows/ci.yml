@@ -20,9 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read Flutter version
+      - name: Read toolchain versions
         id: flutter
-        run: echo "version=$(sed -n 's/^ARG FLUTTER_VERSION=//p' .local-install/Containerfile)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(sed -n 's/^ARG FLUTTER_VERSION=//p' .local-install/Containerfile)" >> "$GITHUB_OUTPUT"
+          echo "firebase=$(sed -n 's/^ARG FIREBASE_TOOLS_VERSION=//p' .local-install/Containerfile)" >> "$GITHUB_OUTPUT"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -36,7 +38,13 @@ jobs:
       - run: just analyze
       - run: just test
       - run: just test-web
-      - run: cd mcp_server && flutter pub get && dart analyze
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm install -g "firebase-tools@${{ steps.flutter.outputs.firebase }}"
+      - run: just mcp-test
 
       - name: Regenerate committed code
         run: |

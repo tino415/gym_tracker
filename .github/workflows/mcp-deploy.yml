@@ -1,0 +1,101 @@
+name: MCP deploy
+
+# A pull request that touches the server builds its image, so the amd64 build
+# is proven before anything is deployed. Deploying is a manual dispatch on main.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'mcp_server/**'
+      - 'lib/sync/**'
+      - 'pubspec.*'
+      - '.github/workflows/mcp-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DEPLOY: ${{ github.event_name == 'workflow_dispatch' }}
+  SERVICE: gym-tracker-mcp
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/gym-tracker/mcp:${{ github.sha }}
+
+jobs:
+  image:
+    if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Deploy only a main commit whose CI passed
+        if: env.DEPLOY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main || { echo "deploys run from main, not $GITHUB_REF"; exit 1; }
+          ci=$(gh run list -R "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --workflow ci.yml \
+            --branch main --event push --json conclusion --jq '.[0].conclusion // "not run"')
+          test "$ci" = success || { echo "ci.yml on $GITHUB_SHA: $ci"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: Read Flutter version
+        id: flutter
+        run: echo "version=$(sed -n 's/^ARG FLUTTER_VERSION=//p' .local-install/Containerfile)" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.flutter.outputs.version }}
+          channel: stable
+          cache: true
+
+      - uses: extractions/setup-just@v2
+
+      - run: just mcp-bundle
+
+      - run: docker build -f mcp_server/Containerfile -t "$SERVICE" mcp_server
+
+      - uses: google-github-actions/auth@v2
+        if: env.DEPLOY == 'true'
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: env.DEPLOY == 'true'
+
+      - name: Push the image
+        if: env.DEPLOY == 'true'
+        run: |
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          docker tag "$SERVICE" "$IMAGE"
+          docker push "$IMAGE"
+
+      # max-instances=1 is the cost cap on compute and also what keeps the
+      # in-memory sessions and request budget whole.
+      - uses: google-github-actions/deploy-cloudrun@v2
+        if: env.DEPLOY == 'true'
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.IMAGE }}
+          flags: >-
+            --max-instances=1
+            --cpu=1
+            --memory=512Mi
+            --service-account=${{ env.SERVICE }}@${{ vars.GCP_PROJECT }}.iam.gserviceaccount.com
+            --allow-unauthenticated
+          env_vars: |
+            GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT }}
+            MCP_ALLOWED_HOSTS=${{ env.SERVICE }}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app
+          secrets: |
+            MCP_PERSONAL_TOKEN=mcp-personal-token:latest
+            MCP_PERSONAL_UID=mcp-personal-uid:latest
+
+      - name: Show the MCP URL
+        if: env.DEPLOY == 'true'
+        run: echo "https://${SERVICE}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app/mcp" >> "$GITHUB_STEP_SUMMARY"
