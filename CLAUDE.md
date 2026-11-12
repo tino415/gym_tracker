@@ -150,12 +150,24 @@ authenticated. It reads the app's DTOs through a path dependency on this
 package, so it resolves with `flutter pub get`, and `flutter analyze` at the
 root skips it. `just mcp` runs it against the emulators from `just up` (also a
 process-compose entry); the dev token is `dev-token` unless `MCP_DEV_TOKEN` says
-otherwise, and it maps to `MCP_DEV_UID` or the emulator's only account. It
-refuses to start without the emulator host variables.
+otherwise, and it maps to `MCP_DEV_UID` or the emulator's only account.
+
+The emulator host variables pick the mode. Without them the server reads
+production through Application Default Credentials and refuses to start unless
+`GOOGLE_CLOUD_PROJECT`, `MCP_PERSONAL_TOKEN` (32+ characters),
+`MCP_PERSONAL_UID` and `MCP_ALLOWED_HOSTS` are all set; the dev token is never
+read there. `MCP_ALLOWED_HOSTS` must name the public hostname, or the
+DNS-rebinding guard answers every request with a 403. The token and the request
+budget (`RequestBudget`, 60 a minute and 1000 a day) are checked before any
+Google call, so a flood costs no Firestore read. Deploying is
+`docs/mcp-deploy.md`.
 
 `just mcp-test` runs the package's tests on throwaway emulators (`firebase
-emulators:exec`), so stop `just up` first: same ports. CI only analyzes the
-package, since the runner has no emulators.
+emulators:exec`), so stop `just up` first: same ports. CI runs it too. `just
+mcp-smoke [url]` walks initialize → tools/list → `list_routines` with curl,
+token from `MCP_TOKEN`. `just mcp-bundle` builds the native bundle that
+`mcp_server/Containerfile` packages, for the host's architecture only, which is
+why the Cloud Run image is built in GitHub Actions.
 
 Read tools: `list_routines`, `get_routine`, `list_workouts`, `get_workout`,
 `find_exercises`. Workout reads name their fields (the heart-rate series is about
