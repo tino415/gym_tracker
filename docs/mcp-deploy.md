@@ -1,7 +1,7 @@
 # Deploying the MCP server
 
-The server runs on Cloud Run in `gym-tracker-44a5f` (ADR 0001), in
-`us-central1`, next to the Firestore database (`nam5`). The image is built and
+The server runs on Cloud Run in `gym-tracker-44a5f` (ADR 0001), in the region
+`GCP_REGION` names, next to the Firestore database. The image is built and
 deployed by `.github/workflows/mcp-deploy.yml`, because Cloud Run is amd64
 only and `dart build cli` cannot cross-compile. Nothing is deployed from a
 workstation and no service-account key exists for it: GitHub Actions signs in
@@ -35,18 +35,18 @@ gh workflow run mcp-deploy.yml --ref main
 ```
 
 It refuses a commit whose `ci.yml` push run did not pass. The run summary
-shows the URL: `https://gym-tracker-mcp-<number>.us-central1.run.app/mcp`.
+shows the URL, `<url>` below.
 
 ## Checking it
 
 ```bash
-MCP_TOKEN=<token> just mcp-smoke https://gym-tracker-mcp-<number>.us-central1.run.app/mcp
+MCP_TOKEN=<token> just mcp-smoke <url>
 ```
 
-lists the five tools and your routines. Then connect a client:
+lists the tools and your routines. Then connect a client:
 
 ```bash
-claude mcp add --transport http gym https://gym-tracker-mcp-<number>.us-central1.run.app/mcp \
+claude mcp add --transport http gym <url> \
   --header "Authorization: Bearer <token>"
 ```
 
