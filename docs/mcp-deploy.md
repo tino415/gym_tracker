@@ -7,17 +7,14 @@ only and `dart build cli` cannot cross-compile. Nothing is deployed from a
 workstation and no service-account key exists for it: GitHub Actions signs in
 through Workload Identity Federation.
 
-Until OAuth lands (D5) the server accepts one personal token, mapped to one uid.
+Until OAuth lands the server accepts one personal token, mapped to one uid.
 
 ## Infrastructure
 
-The cloud resources are defined in OpenTofu outside this repository: the APIs,
-the Artifact Registry repository, the runtime service account (read-only until
-D6: it bypasses `firestore.rules`), the deployer service account and the
-Workload Identity pool it is reached through, the two secrets, and a 5-unit
-budget with alerts at 50, 90 and 100 %. Cloud Run needs the Blaze plan first.
+The cloud resources are defined outside this repository. The runtime service
+account bypasses `firestore.rules`, so it can only read.
 
-The same definitions supply everything the deploy workflow reads:
+Those definitions supply everything the deploy workflow reads:
 
 | Where | Name | What it is |
 |---|---|---|
