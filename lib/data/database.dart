@@ -1637,9 +1637,11 @@ class AppDatabase extends _$AppDatabase {
 
   /// Most recent completion of [exerciseId] at [setIndex], from any *finished*
   /// workout other than [excludeWorkoutId]. Used by the watch run page to show
-  /// "Last: 8 × 80 kg" alongside the current set's targets.
+  /// "Last: 8 × 80 kg" alongside the current set's targets. Where that workout
+  /// lists the exercise more than once, the [routineExerciseId] entry wins.
   Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
     required String exerciseId,
+    required String? routineExerciseId,
     required int setIndex,
     required String excludeWorkoutId,
   }) async {
@@ -1663,7 +1665,15 @@ class AppDatabase extends _$AppDatabase {
           ..where(workouts.syncId.equals(excludeWorkoutId).not())
           ..where(workouts.endedAt.isNotNull())
           ..where(workouts.deletedAt.isNull())
-          ..orderBy([OrderingTerm(expression: workouts.startedAt, mode: OrderingMode.desc)])
+          ..orderBy([
+            OrderingTerm(expression: workouts.startedAt, mode: OrderingMode.desc),
+            if (routineExerciseId != null)
+              OrderingTerm(
+                expression: workoutExercises.routineExerciseId.equals(routineExerciseId),
+                mode: OrderingMode.desc,
+              ),
+            OrderingTerm(expression: workoutExercises.orderIndex),
+          ])
           ..limit(1);
     final row = await query.getSingleOrNull();
     return row?.readTable(setCompletions);

@@ -637,6 +637,7 @@ void main() {
 
     Future<SetCompletion?> lookup({int setIndex = 0, String exclude = 'live'}) =>
         workouts.lastCompletionForExerciseAtSetIndex(
+          routineExerciseId: null,
           exerciseId: 'ex-we1',
           setIndex: setIndex,
           excludeWorkoutId: exclude,
@@ -690,12 +691,52 @@ void main() {
       expect(await lookup(setIndex: 1), isNull);
       expect(
         await workouts.lastCompletionForExerciseAtSetIndex(
+          routineExerciseId: null,
           exerciseId: 'ex-never-done',
           setIndex: 0,
           excludeWorkoutId: 'live',
         ),
         isNull,
       );
+    });
+
+    group('exercise listed twice in a routine', () {
+      Map<String, dynamic> entry(String slot, int orderIndex) => {
+        ...exercise('we1', sets: [wset('$slot-s0')]),
+        'syncId': 'we-$slot',
+        'orderIndex': orderIndex,
+        'routineExerciseSyncId': slot,
+      };
+
+      setUp(
+        () => seed(
+          'w1',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exercises: [entry('easy', 1), entry('hard', 0)],
+          completions: [
+            completion('c-easy', wsId: 'easy-s0', reps: 3),
+            completion('c-hard', wsId: 'hard-s0', reps: 9),
+          ],
+        ),
+      );
+
+      Future<int?> lastRepsFor(String? slot) async =>
+          (await workouts.lastCompletionForExerciseAtSetIndex(
+            exerciseId: 'ex-we1',
+            routineExerciseId: slot,
+            setIndex: 0,
+            excludeWorkoutId: 'live',
+          ))?.actualReps;
+
+      test('each entry reads its own actuals', () async {
+        expect(await lastRepsFor('hard'), 9);
+        expect(await lastRepsFor('easy'), 3);
+      });
+
+      test('without a slot reads the first entry in routine order', () async {
+        expect(await lastRepsFor(null), 9);
+      });
     });
   });
 

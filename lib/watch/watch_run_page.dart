@@ -478,6 +478,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final token = ++_lastCompletionToken;
     final r = await ref.read(databaseProvider).lastCompletionForExerciseAtSetIndex(
       exerciseId: eid,
+      routineExerciseId: we.routineExerciseId,
       setIndex: _setIdx,
       excludeWorkoutId: wid,
     );
