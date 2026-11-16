@@ -36,11 +36,15 @@ The Dart MCP server is also its own OAuth authorization server.
   CIMD and no DCR. The authorization response carries `iss` (RFC 9207), so
   ChatGPT can use its fixed callback.
 - **Sign-in and consent are the Flutter web route `/connect`.** `/authorize`
-  stores the pending request in Firestore and redirects there. The route signs
-  the user in with Firebase, asks for consent on every connect, and POSTs the
-  request id, the Firebase ID token and the decision to the server. There are
-  no cookies, so it doesn't matter that the route and the server sit on
-  different domains.
+  redirects there with the pending request as an HMAC-signed token in the URL
+  (10 minutes, same key set as the access tokens, its own `typ`), so nothing is
+  stored before the user consents. The route signs the user in with Firebase,
+  asks for consent on every connect, and POSTs that token, the Firebase ID
+  token and the decision to the server, which checks the ID token with
+  Identity Toolkit. There are no cookies, so it doesn't matter that the route
+  and the server sit on different domains; the server answers CORS for the app
+  origin only, and the page posts only to the server address built into the
+  bundle.
 - **Tokens are JWTs signed with HS256.** The secret is in Secret Manager, and a
   `kid` allows rotation. Only this server checks them. Access tokens last 1 h
   and carry `aud` = the MCP URL, `sub` = the uid, and a grant id. Refresh
@@ -53,14 +57,15 @@ The Dart MCP server is also its own OAuth authorization server.
   deletion stays client-side and calls nothing new.
 - **One grant covers reading and writing.** `save_routine` is annotated as a
   writing tool, so the client asks the user to confirm each call.
-- All auth state lives in top-level Firestore collections that clients can't
-  reach, and only the server touches it.
+- All auth state lives in top-level Firestore collections (`mcpCodes`,
+  `mcpRefreshTokens`, `mcpRevokedGrants`) that clients can't reach, and only
+  the server touches it. That makes the runtime account a writer: it holds
+  `roles/datastore.user` instead of the viewer role, and the code keeps every
+  write inside those three collections.
 
-Each PR delivers something usable. Until the OAuth PR lands, the server accepts
-a static token: one mapped to an emulator uid during development, then one for
-the owner's uid in production. The OAuth PR removes it, and ships the privacy
-policy's wording for the connector ("the AI assistant you connect, for example
-Claude").
+The static token survives only as an emulator dev token. Production accepts
+signed tokens alone. The privacy policy's wording for the connector ("the AI
+assistant you connect, for example Claude") ships with the OAuth PR.
 
 ## Consequences
 

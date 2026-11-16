@@ -7,12 +7,16 @@ only and `dart build cli` cannot cross-compile. Nothing is deployed from a
 workstation and no service-account key exists for it: GitHub Actions signs in
 through Workload Identity Federation.
 
-Until OAuth lands the server accepts one personal token, mapped to one uid.
+Assistants sign in with OAuth 2.1; the server is its own authorization server
+and the web app's `/connect` page is where a user says yes. There is no static
+token in production.
 
 ## Infrastructure
 
 The cloud resources are defined outside this repository. The runtime service
-account bypasses `firestore.rules`, so it can only read.
+account bypasses `firestore.rules`: it reads users' data and writes only the
+sign-in state in `mcpCodes`, `mcpRefreshTokens` and `mcpRevokedGrants`, whose
+documents a TTL policy on `expiresAt` removes.
 
 Those definitions supply everything the deploy workflow reads:
 
@@ -20,11 +24,18 @@ Those definitions supply everything the deploy workflow reads:
 |---|---|---|
 | Actions variables | `GCP_PROJECT`, `GCP_PROJECT_NUMBER`, `GCP_REGION` | where the service runs, and its URL |
 | Actions variables | `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOYER` | how the workflow signs in to Google Cloud |
-| Secret Manager | `mcp-personal-token`, `mcp-personal-uid` | the personal token and the uid it maps to, read by Cloud Run |
+| Secret Manager | `mcp-signing-keys` | JSON `{kid: secret}` of HS256 keys, read by Cloud Run; the workflow names the current one in `MCP_SIGNING_KID` |
 
 The Actions values are variables, not secrets: none of them grants access on
-its own. The token is generated with the secret, and the value stored in
-`mcp-personal-token` is the one clients send.
+its own. To rotate the signing key, add a second kid to `mcp-signing-keys`,
+deploy with `MCP_SIGNING_KID` pointing at it, and drop the old kid after an
+hour (the access token lifetime) plus the 10 minutes a pending request lives.
+
+The deploy sets `MCP_PUBLIC_URL` (the Cloud Run URL, also the issuer),
+`MCP_APP_URL` (the origin that serves `/connect`) and `MCP_FIREBASE_API_KEY`
+(the public web key, which Identity Toolkit asks for when it checks a sign-in).
+The web app is built with `MCP_SERVER_URL=<url without /mcp> just deploy`, so
+its consent page posts only to that server.
 
 ## Deploying
 
@@ -40,16 +51,16 @@ shows the URL, `<url>` below.
 ## Checking it
 
 ```bash
-MCP_TOKEN=<token> just mcp-smoke <url>
+just mcp-smoke <url>
 ```
 
-lists the tools and your routines. Then connect a client:
+checks the 401 challenge and both metadata documents. Then connect a client,
+which opens the browser on the web app's consent page:
 
 ```bash
-claude mcp add --transport http gym <url> \
-  --header "Authorization: Bearer <token>"
+claude mcp add --transport http gym <url>
 ```
 
-On claude.ai a custom connector works only if its dialog shows the Request
-headers section: No sign-in, `Authorization: Bearer <token>`. ChatGPT has no
-header option and waits for OAuth.
+On claude.ai add a custom connector with the same URL; ChatGPT developer mode
+takes it too. A grant ends when the user removes GymTracker in the assistant
+(access stops within an hour), or after 30 days unused.

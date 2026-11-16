@@ -60,6 +60,12 @@ FIREBASE_PROJECT := "gym-tracker-44a5f"
 BUILD_ID := `printf '%s%s-%s' "$(git rev-parse --short HEAD 2>/dev/null || echo nogit)" "$(git diff --quiet HEAD 2>/dev/null || echo -dirty)" "$(date +%Y%m%d-%H%M)"`
 BUILD_DEFINE := "--dart-define=BUILD_ID=" + BUILD_ID
 
+# Where the web app's consent page sends an assistant's answer. Baked into the
+# bundle, so a crafted link can't point the user's ID token elsewhere. Empty
+# disables the page.
+MCP_SERVER_URL := env_var_or_default("MCP_SERVER_URL", "")
+MCP_DEFINE := "--dart-define=MCP_SERVER_URL=" + MCP_SERVER_URL
+
 # List recipes
 default:
     @just --list
@@ -319,10 +325,12 @@ up:
 
 # The MCP server. `mcp_server/` is a plain Dart package that reads the app's
 # DTOs through a path dependency, so it resolves with `flutter pub get`.
-[doc('MCP server on :4121 against the running emulators; MCP_DEV_UID picks the account, else the only one')]
+[doc('MCP server on :4121 against the running emulators; MCP_DEV_UID picks the dev token account, else the only one')]
 mcp:
     cd mcp_server && flutter pub get && \
       FIRESTORE_EMULATOR_HOST=127.0.0.1:4120 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:4119 \
+      MCP_PUBLIC_URL=http://dev.local:4121 MCP_APP_URL=http://dev.local:4116 \
+      MCP_ALLOWED_HOSTS=dev.local \
       dart run bin/server.dart
 
 [doc('MCP server: analyze + tests on throwaway emulators (stop `just up` first: same ports)')]
@@ -337,11 +345,19 @@ mcp-test:
 mcp-bundle:
     cd mcp_server && flutter pub get && dart build cli -o build/server
 
-[doc('MCP smoke test: initialize, tools/list, list_routines; the token comes from MCP_TOKEN, else dev-token')]
+[doc('MCP smoke test: 401 challenge and both metadata documents; with MCP_TOKEN (or dev-token on the emulators) also initialize, tools/list, list_routines')]
 mcp-smoke url="http://127.0.0.1:4121/mcp":
     #!/usr/bin/env bash
     set -euo pipefail
-    token="${MCP_TOKEN:-dev-token}"
+    origin="{{url}}"; origin="${origin%/mcp}"
+    challenge=$(curl -sS -o /dev/null -D - "{{url}}" -H 'Content-Type: application/json' -d '{}' | grep -i '^www-authenticate:' || true)
+    echo "$challenge" | grep -q 'resource_metadata=' || { echo "no resource_metadata challenge: $challenge" >&2; exit 1; }
+    curl -fsS "$origin/.well-known/oauth-protected-resource/mcp" | jq -e '.resource and (.authorization_servers | length > 0)' >/dev/null
+    curl -fsS "$origin/.well-known/oauth-authorization-server" | jq -e '.authorization_endpoint and .token_endpoint and (.code_challenge_methods_supported | index("S256"))' >/dev/null
+    echo "discovery ok"
+    token="${MCP_TOKEN:-}"
+    if [ -z "$token" ] && [ "$origin" != "${origin#http://127.0.0.1}" ]; then token=dev-token; fi
+    [ -n "$token" ] || exit 0
     headers=$(mktemp)
     trap 'rm -f "$headers"' EXIT
     session=()
@@ -366,7 +382,7 @@ mcp-smoke url="http://127.0.0.1:4121/mcp":
 [doc('Build the PROD web app (Firestore-direct)')]
 web:
     flutter clean
-    flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}}
+    flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} {{MCP_DEFINE}}
 
 # Build the web app against the LOCAL emulator suite, for serving on :4117.
 # Distinct from `web`, which points the bundle at the PROD Firebase project —
@@ -375,7 +391,8 @@ web:
 web-emulator:
     flutter clean
     flutter build web --dart-define=SYNC_BACKEND=firestore {{BUILD_DEFINE}} \
-      --dart-define=FIREBASE_USE_EMULATOR=true
+      --dart-define=FIREBASE_USE_EMULATOR=true \
+      --dart-define=MCP_SERVER_URL=http://dev.local:4121
 
 # Build + deploy the web app and Firestore rules to Firebase (prod).
 #

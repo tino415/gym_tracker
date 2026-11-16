@@ -19,6 +19,7 @@ services:
       - "127.0.0.1:4118:4118"
       - "127.0.0.1:4119:4119"
       - "127.0.0.1:4120:4120"
+      - "127.0.0.1:4121:4121"
     environment:
       # process-compose would otherwise pick this compose.yaml over its own file.
       PC_CONFIG_FILES: process-compose.yaml

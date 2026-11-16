@@ -200,8 +200,11 @@ void main() {
   group('configuration', () {
     final production = {
       'GOOGLE_CLOUD_PROJECT': 'gym-tracker-44a5f',
-      'MCP_PERSONAL_TOKEN': 'a' * 32,
-      'MCP_PERSONAL_UID': 'martin',
+      'MCP_SIGNING_KEYS': jsonEncode({'k1': 'a' * 40, 'k0': 'b' * 40}),
+      'MCP_SIGNING_KID': 'k1',
+      'MCP_PUBLIC_URL': 'https://gym-tracker-mcp-1.europe-west1.run.app',
+      'MCP_APP_URL': 'https://gym-tracker-44a5f.web.app',
+      'MCP_FIREBASE_API_KEY': 'AIzaTest',
       'MCP_ALLOWED_HOSTS': 'gym-tracker-mcp-1.europe-west1.run.app',
       'PORT': '8080',
     };
@@ -211,14 +214,21 @@ void main() {
       expect(config.backend, isA<GoogleCloudBackend>());
       expect(config.projectId, 'gym-tracker-44a5f');
       expect(config.port, 8080);
-      expect(config.token.uid, 'martin');
+      expect(config.devToken, isNull);
+      expect(
+        config.mcpUrl,
+        'https://gym-tracker-mcp-1.europe-west1.run.app/mcp',
+      );
+      expect(config.appUrl, 'https://gym-tracker-44a5f.web.app');
+      expect(config.signingKid, 'k1');
+      expect(config.signingKeys.keys, containsAll(['k0', 'k1']));
       expect(
         config.allowedHosts,
         contains('gym-tracker-mcp-1.europe-west1.run.app'),
       );
     });
 
-    test('production refuses to start without its token, uid and host', () {
+    test('production refuses to start without a setting it needs', () {
       for (final name in production.keys.where((k) => k != 'PORT')) {
         final env = {...production}..remove(name);
         expect(
@@ -234,13 +244,20 @@ void main() {
       }
     });
 
-    test('production refuses a short personal token', () {
+    test('production refuses a short or unnamed signing key', () {
       expect(
         () => ServerConfig.fromEnvironment({
           ...production,
-          'MCP_PERSONAL_TOKEN': 'dev-token',
+          'MCP_SIGNING_KEYS': jsonEncode({'k1': 'short'}),
         }),
-        throwsStateError,
+        throwsArgumentError,
+      );
+      expect(
+        () => ServerConfig.fromEnvironment({
+          ...production,
+          'MCP_SIGNING_KID': 'k9',
+        }),
+        throwsArgumentError,
       );
     });
 
@@ -249,7 +266,7 @@ void main() {
         ...production,
         'MCP_DEV_TOKEN': 'b' * 40,
       });
-      expect(config.token.value, 'a' * 32);
+      expect(config.devToken, isNull);
     });
   });
 
@@ -538,6 +555,7 @@ void main() {
           client: EmulatorAdminClient(),
           identityToolkitRoot: emulators.config.backend.identityToolkitRoot,
           projectId: emulators.config.projectId,
+          webApiKey: emulators.config.webApiKey,
         );
         final account = (await directory.verify(uid))!;
         final scope = UserScope(
@@ -689,7 +707,11 @@ ServerConfig _configWith(
   port: 0,
   projectId: base.projectId,
   backend: base.backend,
-  token: StaticToken(token, uid),
+  issuer: base.issuer,
+  appUrl: base.appUrl,
+  signingKeys: base.signingKeys,
+  signingKid: base.signingKid,
+  devToken: StaticToken(token, uid),
   allowedHosts: base.allowedHosts,
   requestsPerMinute: requestsPerMinute,
 );

@@ -565,6 +565,34 @@
   "shellTabExercises": "Exercises",
   "shellTabWorkouts": "Workouts",
   "shellAccount": "Account",
+  "connectTitle": "Connect {client} to GymTracker?",
+  "@connectTitle": {
+    "placeholders": {
+      "client": {
+        "type": "String"
+      }
+    }
+  },
+  "connectWhatItReads": "{client} will be able to read your routines, workouts and exercises when you ask it about your training. It cannot change anything and never sees your heart rate.",
+  "@connectWhatItReads": {
+    "placeholders": {
+      "client": {
+        "type": "String"
+      }
+    }
+  },
+  "connectWarning": "Only continue if you just started connecting GymTracker in {client}.",
+  "@connectWarning": {
+    "placeholders": {
+      "client": {
+        "type": "String"
+      }
+    }
+  },
+  "connectAllow": "Allow",
+  "connectDeny": "Deny",
+  "connectInvalidLink": "This connection link is not valid or has expired. Start connecting again in your assistant.",
+  "connectFailed": "Could not connect. Start connecting again in your assistant.",
   "signInFailed": "Failed: {error}",
   "@signInFailed": {
     "placeholders": {

@@ -51,3 +51,13 @@ class FixedWindow {
     }
   }
 }
+
+/// One [RequestBudget] per key, made when the key is first seen.
+class KeyedBudgets {
+  KeyedBudgets(this._create);
+
+  final RequestBudget Function() _create;
+  final Map<String, RequestBudget> _budgets = {};
+
+  Duration? spend(String key) => (_budgets[key] ??= _create()).spend();
+}

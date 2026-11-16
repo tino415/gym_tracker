@@ -7,9 +7,20 @@ import 'package:http/http.dart' as http;
 import 'package:mcp_dart/mcp_dart.dart';
 
 import 'account_directory.dart';
+import 'bearer_auth.dart';
 import 'config.dart';
+import 'oauth/auth_store.dart';
+import 'oauth/authorize.dart';
+import 'oauth/clients.dart';
+import 'oauth/connect.dart';
+import 'oauth/http_support.dart';
+import 'oauth/jwt.dart';
+import 'oauth/metadata.dart';
+import 'oauth/revocations.dart';
+import 'oauth/signed_request.dart';
+import 'oauth/signing_keys.dart';
+import 'oauth/token.dart';
 import 'request_budget.dart';
-import 'static_token_auth.dart';
 import 'tools/find_exercises.dart';
 import 'tools/get_routine.dart';
 import 'tools/get_workout.dart';
@@ -32,28 +43,84 @@ class GymMcpServer {
       client: _client,
       identityToolkitRoot: _config.backend.identityToolkitRoot,
       projectId: _config.projectId,
+      webApiKey: _config.webApiKey,
       now: now,
-    );
-    _authenticator = StaticTokenAuthenticator(
-      _config.token,
-      _accounts,
-      RequestBudget.perMinuteAndDay(
-        perMinute: _config.requestsPerMinute,
-        perDay: _config.requestsPerDay,
-        now: now,
-      ),
     );
     _firestore = fs.FirestoreApi(
       _client,
       rootUrl: _config.backend.firestoreRoot.toString(),
+    );
+    final keys = SigningKeys(_config.signingKeys, _config.signingKid, now: now);
+    final store = AuthStore(_firestore, _config.projectId);
+    final revocations = Revocations(store, now: now);
+    final accessTokens = AccessTokens(
+      keys,
+      issuer: _config.issuer,
+      audience: _config.mcpUrl,
+      now: now,
+    );
+    final clients = ClientRegistry.allowlist();
+    final pending = PendingRequests(keys, now: now);
+    final authBudget = RequestBudget.perMinuteAndDay(
+      perMinute: _config.authRequestsPerMinute,
+      perDay: _config.authRequestsPerDay,
+      now: now,
+    );
+    _authenticator = BearerAuthenticator(
+      tokens: accessTokens,
+      revocations: revocations,
+      accounts: _accounts,
+      perAccount: KeyedBudgets(
+        () => RequestBudget.perMinuteAndDay(
+          perMinute: _config.requestsPerMinute,
+          perDay: _config.requestsPerDay,
+          now: now,
+        ),
+      ),
+      overall: RequestBudget.perMinuteAndDay(
+        perMinute: _config.allRequestsPerMinute,
+        perDay: _config.allRequestsPerDay,
+        now: now,
+      ),
+      devToken: _config.devToken,
+    );
+    _authorize = AuthorizeEndpoint(
+      clients: clients,
+      pending: pending,
+      appUrl: _config.appUrl,
+      issuer: _config.issuer,
+      resource: _config.mcpUrl,
+    );
+    _connect = ConnectEndpoint(
+      clients: clients,
+      pending: pending,
+      accounts: _accounts,
+      store: store,
+      budget: authBudget,
+      appUrl: _config.appUrl,
+      issuer: _config.issuer,
+      now: now,
+    );
+    _token = TokenEndpoint(
+      clients: clients,
+      store: store,
+      revocations: revocations,
+      accessTokens: accessTokens,
+      accounts: _accounts,
+      budget: authBudget,
+      resource: _config.mcpUrl,
+      now: now,
     );
   }
 
   final ServerConfig _config;
   final http.Client _client;
   late final AccountDirectory _accounts;
-  late final StaticTokenAuthenticator _authenticator;
+  late final BearerAuthenticator _authenticator;
   late final fs.FirestoreApi _firestore;
+  late final AuthorizeEndpoint _authorize;
+  late final ConnectEndpoint _connect;
+  late final TokenEndpoint _token;
   final Map<String, _Session> _sessions = {};
   HttpServer? _http;
 
@@ -74,21 +141,55 @@ class GymMcpServer {
 
   Future<void> _handle(HttpRequest request) async {
     try {
-      if (request.uri.path != '/mcp') return _plain(request, 404, 'Not Found');
-      final outcome = await _authenticator.authenticate(request.headers);
-      switch (outcome) {
-        case Rejected(:final reason):
-          return _unauthorized(request, reason);
-        case Throttled(:final retryAfter):
-          return _tooManyRequests(request, retryAfter);
-        case Authenticated(:final account):
-          return await _route(request, account);
+      switch (request.uri.path) {
+        case '/mcp':
+          return await _handleMcp(request);
+        case '/authorize' when request.method == 'GET':
+          return await _authorize.handle(request);
+        case '/connect':
+          return await _connect.handle(request);
+        case '/token':
+          return await _token.handle(request);
+        case '/.well-known/oauth-protected-resource/mcp' ||
+            '/.well-known/oauth-protected-resource':
+          return await _metadata(
+            request,
+            protectedResourceMetadata(
+              issuer: _config.issuer,
+              resource: _config.mcpUrl,
+            ),
+          );
+        case '/.well-known/oauth-authorization-server':
+          return await _metadata(
+            request,
+            authorizationServerMetadata(_config.issuer),
+          );
+        default:
+          return await _plain(request, 404, 'Not Found');
       }
     } catch (e, st) {
       stderr.writeln('request failed: $e\n$st');
       try {
         await _plain(request, 500, 'Internal Server Error');
       } catch (_) {}
+    }
+  }
+
+  Future<void> _metadata(HttpRequest request, Map<String, Object?> body) async {
+    if (request.method != 'GET')
+      return _plain(request, 405, 'Method Not Allowed');
+    await sendJson(request.response, 200, body);
+  }
+
+  Future<void> _handleMcp(HttpRequest request) async {
+    final outcome = await _authenticator.authenticate(request.headers);
+    switch (outcome) {
+      case Rejected(:final reason, :final tokenPresented):
+        return _unauthorized(request, reason, tokenPresented);
+      case Throttled(:final retryAfter):
+        return _tooManyRequests(request, retryAfter);
+      case Authenticated(:final account):
+        return await _route(request, account);
     }
   }
 
@@ -194,10 +295,18 @@ class GymMcpServer {
     }
   }
 
-  Future<void> _unauthorized(HttpRequest request, String reason) async {
+  Future<void> _unauthorized(
+    HttpRequest request,
+    String reason,
+    bool tokenPresented,
+  ) async {
+    final challenge = [
+      'Bearer resource_metadata="${protectedResourceMetadataUrl(_config.issuer)}"',
+      if (tokenPresented) 'error="invalid_token"',
+    ].join(', ');
     request.response
       ..statusCode = 401
-      ..headers.set('WWW-Authenticate', 'Bearer error="invalid_token"')
+      ..headers.set('WWW-Authenticate', challenge)
       ..headers.contentType = ContentType.json
       ..write(
         jsonEncode({'error': 'unauthorized', 'error_description': reason}),

@@ -34,6 +34,7 @@ fs.Document jsonToDocument(Map<String, Object?> json) => fs.Document(
 fs.Value jsonToValue(Object? json) => switch (json) {
   null => fs.Value(nullValue: 'NULL_VALUE'),
   bool b => fs.Value(booleanValue: b),
+  DateTime t => fs.Value(timestampValue: t.toUtc().toIso8601String()),
   int i => fs.Value(integerValue: '$i'),
   double d => fs.Value(doubleValue: d),
   String s => fs.Value(stringValue: s),

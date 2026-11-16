@@ -92,9 +92,12 @@ jobs:
           env_vars: |
             GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT }}
             MCP_ALLOWED_HOSTS=${{ env.SERVICE }}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app
+            MCP_PUBLIC_URL=https://${{ env.SERVICE }}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app
+            MCP_APP_URL=https://gym-tracker-44a5f.web.app
+            MCP_FIREBASE_API_KEY=AIzaSyBv9VFgndG4TTmTqhYy7_xcJUvb76bJqwo
+            MCP_SIGNING_KID=k1
           secrets: |
-            MCP_PERSONAL_TOKEN=mcp-personal-token:latest
-            MCP_PERSONAL_UID=mcp-personal-uid:latest
+            MCP_SIGNING_KEYS=mcp-signing-keys:latest
 
       - name: Show the MCP URL
         if: env.DEPLOY == 'true'
