@@ -15,16 +15,25 @@ class AccountDirectory {
     required http.Client client,
     required Uri identityToolkitRoot,
     required String projectId,
+    required String webApiKey,
     DateTime Function() now = DateTime.now,
     this.cacheFor = const Duration(minutes: 1),
   }) : _client = client,
        _accountsUrl = identityToolkitRoot.resolve(
          'v1/projects/$projectId/accounts',
        ),
+       _idTokenLookupUrl = identityToolkitRoot.resolve(
+         'v1/accounts:lookup?key=$webApiKey',
+       ),
        _now = now;
 
   final http.Client _client;
+
+  /// The ID-token lookup is a public endpoint: carrying the admin credential
+  /// turns it into an admin lookup that ignores the token.
+  final http.Client _publicClient = http.Client();
   final Uri _accountsUrl;
+  final Uri _idTokenLookupUrl;
   final DateTime Function() _now;
   final Duration cacheFor;
   final Map<String, _Answer> _answers = {};
@@ -35,6 +44,26 @@ class AccountDirectory {
     final active = usable ? cached.active : await _lookUpActive(uid);
     if (!usable) _answers[uid] = _Answer(active, _now());
     return active ? VerifiedAccount._(uid) : null;
+  }
+
+  /// The account a Firebase ID token was issued to. Identity Toolkit checks the
+  /// token itself, which also works on the emulator, whose tokens are unsigned.
+  Future<VerifiedAccount?> verifyIdToken(String idToken) async {
+    final response = await _publicClient.post(
+      _idTokenLookupUrl,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'idToken': idToken}),
+    );
+    if (response.statusCode == 400) return null;
+    if (response.statusCode != 200) {
+      throw StateError('Firebase Auth :lookup: ${response.statusCode}');
+    }
+    final users = (jsonDecode(response.body) as Map)['users'] as List? ?? [];
+    if (users.length != 1) return null;
+    final user = (users.single as Map).cast<String, Object?>();
+    return user['disabled'] == true
+        ? null
+        : VerifiedAccount._(user['localId'] as String);
   }
 
   Future<String?> soleUid() async {

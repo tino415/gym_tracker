@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 
 import 'emulator_client.dart';
+import 'oauth/signing_keys.dart';
 
 class ServerConfig {
   ServerConfig({
@@ -9,20 +12,54 @@ class ServerConfig {
     required this.port,
     required this.projectId,
     required this.backend,
-    required this.token,
+    required this.issuer,
+    required this.appUrl,
+    required this.signingKeys,
+    required this.signingKid,
     required this.allowedHosts,
+    this.devToken,
+    this.webApiKey = 'demo-api-key',
     this.requestsPerMinute = 60,
     this.requestsPerDay = 1000,
+    this.allRequestsPerMinute = 300,
+    this.allRequestsPerDay = 10000,
+    this.authRequestsPerMinute = 30,
+    this.authRequestsPerDay = 1000,
   });
 
   final String host;
   final int port;
   final String projectId;
   final Backend backend;
-  final StaticToken token;
+
+  /// The origin the server is reached at, which is also the authorization
+  /// server's issuer.
+  final String issuer;
+
+  /// The origin of the web app that serves the `/connect` page.
+  final String appUrl;
+  final Map<String, String> signingKeys;
+  final String signingKid;
   final Set<String> allowedHosts;
+
+  /// The Firebase web API key, which is public: Identity Toolkit asks for it
+  /// when it checks a user's ID token.
+  final String webApiKey;
+
+  /// A fixed bearer token for the emulators; production never has one.
+  final StaticToken? devToken;
+
+  /// Per account.
   final int requestsPerMinute;
   final int requestsPerDay;
+  final int allRequestsPerMinute;
+  final int allRequestsPerDay;
+
+  /// `/connect` and `/token` together.
+  final int authRequestsPerMinute;
+  final int authRequestsPerDay;
+
+  String get mcpUrl => '$issuer/mcp';
 
   factory ServerConfig.fromEnvironment(Map<String, String> env) {
     final firestoreHost = env['FIRESTORE_EMULATOR_HOST'];
@@ -37,20 +74,39 @@ class ServerConfig {
     Map<String, String> env,
     String firestoreHost,
     String authHost,
-  ) => ServerConfig(
-    host: env['MCP_HOST'] ?? '0.0.0.0',
-    port: int.parse(env['MCP_PORT'] ?? '4121'),
-    projectId: env['GCLOUD_PROJECT'] ?? 'demo-gym-tracker',
-    backend: EmulatorBackend(firestoreHost: firestoreHost, authHost: authHost),
-    token: StaticToken(env['MCP_DEV_TOKEN'] ?? 'dev-token', env['MCP_DEV_UID']),
-    allowedHosts: {..._loopbackHosts, ...?env['MCP_ALLOWED_HOSTS']?.split(',')},
-  );
+  ) {
+    final port = int.parse(env['MCP_PORT'] ?? '4121');
+    return ServerConfig(
+      host: env['MCP_HOST'] ?? '0.0.0.0',
+      port: port,
+      projectId: env['GCLOUD_PROJECT'] ?? 'demo-gym-tracker',
+      backend: EmulatorBackend(
+        firestoreHost: firestoreHost,
+        authHost: authHost,
+      ),
+      issuer: _origin(env['MCP_PUBLIC_URL'] ?? 'http://localhost:$port'),
+      appUrl: _origin(env['MCP_APP_URL'] ?? 'http://dev.local:4116'),
+      signingKeys: {'dev': _devSigningKey},
+      signingKid: 'dev',
+      devToken: StaticToken(
+        env['MCP_DEV_TOKEN'] ?? 'dev-token',
+        env['MCP_DEV_UID'],
+      ),
+      allowedHosts: {
+        ..._loopbackHosts,
+        ...?env['MCP_ALLOWED_HOSTS']?.split(','),
+      },
+    );
+  }
 
   factory ServerConfig._forGoogleCloud(Map<String, String> env) {
     const required = [
       'GOOGLE_CLOUD_PROJECT',
-      'MCP_PERSONAL_TOKEN',
-      'MCP_PERSONAL_UID',
+      'MCP_SIGNING_KEYS',
+      'MCP_SIGNING_KID',
+      'MCP_PUBLIC_URL',
+      'MCP_APP_URL',
+      'MCP_FIREBASE_API_KEY',
       'MCP_ALLOWED_HOSTS',
     ];
     final missing = required.where((name) => env[name] == null).toList();
@@ -60,19 +116,20 @@ class ServerConfig {
         'server reads production, which needs ${missing.join(', ')}.',
       );
     }
-    final token = env['MCP_PERSONAL_TOKEN']!;
-    if (token.length < _minimumPersonalTokenLength) {
-      throw StateError(
-        'MCP_PERSONAL_TOKEN must be at least $_minimumPersonalTokenLength '
-        'characters.',
-      );
-    }
+    final keys = SigningKeys.fromJson(
+      env['MCP_SIGNING_KEYS']!,
+      env['MCP_SIGNING_KID']!,
+    ).keys;
     return ServerConfig(
       host: env['MCP_HOST'] ?? '0.0.0.0',
       port: int.parse(env['PORT'] ?? env['MCP_PORT'] ?? '8080'),
       projectId: env['GOOGLE_CLOUD_PROJECT']!,
       backend: GoogleCloudBackend(),
-      token: StaticToken(token, env['MCP_PERSONAL_UID']),
+      issuer: _origin(env['MCP_PUBLIC_URL']!),
+      appUrl: _origin(env['MCP_APP_URL']!),
+      webApiKey: env['MCP_FIREBASE_API_KEY']!,
+      signingKeys: keys,
+      signingKid: env['MCP_SIGNING_KID']!,
       allowedHosts: {
         ..._loopbackHosts,
         ...env['MCP_ALLOWED_HOSTS']!.split(','),
@@ -80,12 +137,16 @@ class ServerConfig {
     );
   }
 
-  static const _minimumPersonalTokenLength = 32;
+  static String _origin(String url) => Uri.parse(url).origin;
+
+  static final _devSigningKey = base64Url.encode(
+    utf8.encode('gym-tracker-mcp-emulator-signing-key'),
+  );
   static const _loopbackHosts = {'localhost', '127.0.0.1', '[::1]'};
 }
 
-/// The one bearer token the server accepts until OAuth lands. Without a [uid]
-/// it maps to the emulator's only account, which production never allows.
+/// A fixed bearer token, accepted on the emulators only. Without a [uid] it
+/// maps to the emulator's only account.
 class StaticToken {
   StaticToken(this.value, this.uid);
 

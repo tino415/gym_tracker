@@ -6,6 +6,7 @@ import '../l10n/l10n.dart';
 import '../l10n/locale_controller.dart';
 import '../selectable_on_web.dart';
 import 'breakpoints.dart';
+import 'connect/connect_page.dart';
 import 'exercises/exercise_edit_page.dart';
 import 'exercises/exercises_list_page.dart';
 import 'history/history_list_page.dart';
@@ -106,6 +107,12 @@ final _router = GoRouter(
       path: '/account',
       parentNavigatorKey: _rootKey,
       builder: (context, state) => const AccountPage(),
+    ),
+    GoRoute(
+      path: '/connect',
+      parentNavigatorKey: _rootKey,
+      builder: (context, state) =>
+          ConnectPage(request: state.uri.queryParameters['request']),
     ),
     // Full-screen, outside the shell: running a workout owns the whole screen.
     // Entry points are hidden on web (see [runFlowAvailable]); the routes stay

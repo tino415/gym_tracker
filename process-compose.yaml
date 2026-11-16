@@ -28,7 +28,8 @@ processes:
         --web-hostname dev.local --web-port 4116 \
         --dart-define=SYNC_BACKEND=firestore \
         --dart-define=FIREBASE_USE_EMULATOR=true \
-        --dart-define=FIREBASE_EMULATOR_HOST=dev.local
+        --dart-define=FIREBASE_EMULATOR_HOST=dev.local \
+        --dart-define=MCP_SERVER_URL=http://dev.local:4121
     depends_on:
       emulators:
         condition: process_healthy
@@ -40,6 +41,9 @@ processes:
     environment:
       - FIRESTORE_EMULATOR_HOST=127.0.0.1:4120
       - FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:4119
+      - MCP_PUBLIC_URL=http://dev.local:4121
+      - MCP_APP_URL=http://dev.local:4116
+      - MCP_ALLOWED_HOSTS=dev.local
     depends_on:
       emulators:
         condition: process_healthy

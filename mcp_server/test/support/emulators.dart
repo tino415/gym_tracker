@@ -26,14 +26,25 @@ class Emulators {
   late final fs.FirestoreApi _firestore;
   var _accounts = 0;
 
-  Future<String> createAccount() async {
-    final response = await _post('accounts', {
-      'localId': 'user-${_accounts++}-${DateTime.now().microsecondsSinceEpoch}',
-      'email':
-          'user$_accounts-${DateTime.now().microsecondsSinceEpoch}@test.dev',
+  Future<String> createAccount() async => (await signUp()).uid;
+
+  /// The account and the Firebase ID token its sign-in returned.
+  Future<({String uid, String idToken})> signUp() async {
+    final email =
+        'user${_accounts++}-${DateTime.now().microsecondsSinceEpoch}@test.dev';
+    final created = await _post('accounts', {
+      'email': email,
       'password': 'password123',
     }, 'signUp');
-    return response['localId'] as String;
+    final signedIn = await _post('accounts', {
+      'email': email,
+      'password': 'password123',
+      'returnSecureToken': true,
+    }, 'signInWithPassword');
+    return (
+      uid: created['localId'] as String,
+      idToken: signedIn['idToken'] as String,
+    );
   }
 
   Future<void> deleteAccount(String uid) async {
@@ -53,6 +64,17 @@ class Emulators {
     await _firestore.projects.databases.documents.patch(
       jsonToDocument(json),
       'projects/${config.projectId}/databases/(default)/documents/users/$uid/$collection/$id',
+    );
+  }
+
+  Future<void> putTopLevel(
+    String collection,
+    String id,
+    Map<String, Object?> json,
+  ) async {
+    await _firestore.projects.databases.documents.patch(
+      jsonToDocument(json),
+      'projects/${config.projectId}/databases/(default)/documents/$collection/$id',
     );
   }
 
