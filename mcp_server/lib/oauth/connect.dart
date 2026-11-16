@@ -72,7 +72,12 @@ class ConnectEndpoint {
         'redirect': _answer(pending, {'error': 'access_denied'}),
       });
     }
-    final account = await _accounts.verifyIdToken(body.idToken);
+    final VerifiedAccount? account;
+    try {
+      account = await _accounts.verifyIdToken(body.idToken);
+    } on StateError {
+      return _fail(response, 503, 'temporarily_unavailable');
+    }
     if (account == null) return _fail(response, 401, 'invalid_token');
     final code = randomSecret();
     await _store.saveCode(

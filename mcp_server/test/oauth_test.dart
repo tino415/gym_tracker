@@ -110,8 +110,12 @@ void main() {
   String sealedRequestFrom(http.Response redirect) {
     expect(redirect.statusCode, 302);
     final location = Uri.parse(redirect.headers['location']!);
-    expect('${location.origin}${location.path}', '$_appUrl/connect');
-    return location.queryParameters['request']!;
+    final inApp = Uri.parse(location.fragment);
+    expect(
+      '${location.origin}${location.path}#${inApp.path}',
+      '$_appUrl/#/connect',
+    );
+    return inApp.queryParameters['request']!;
   }
 
   Future<http.Response> postConnect(
@@ -513,7 +517,7 @@ void main() {
       expect(response.statusCode, 302);
       expect(
         response.headers['location'],
-        startsWith('$_appUrl/connect?request='),
+        startsWith('$_appUrl/#/connect?request='),
       );
     });
   });

@@ -58,7 +58,7 @@ class Reused<T> extends Redemption<T> {
 
 /// The three top-level collections that hold sign-in state. Secrets are keyed
 /// by their SHA-256, so a read of the database yields nothing to present. Each
-/// document has an `expiresAt` timestamp that a TTL policy sweeps.
+/// document has an `expiresAt` timestamp.
 class AuthStore {
   AuthStore(fs.FirestoreApi api, String projectId)
     : _documents = api.projects.databases.documents,
@@ -224,7 +224,10 @@ class AuthStore {
       );
       return decision.outcome;
     } on fs.DetailedApiRequestError catch (e) {
-      if (e.status == 400 || e.status == 409) return Reused(grantId);
+      final lostTheRace =
+          e.status == 400 &&
+          (e.message ?? '').toLowerCase().contains('precondition');
+      if (lostTheRace) return Reused(grantId);
       rethrow;
     }
   }

@@ -20,14 +20,20 @@ class Revocations {
   Set<String> _revoked = {};
   DateTime? _readAt;
 
+  Future<void>? _refreshing;
+
   Future<bool> isRevoked(String grantId) async {
     final readAt = _readAt;
     if (readAt == null || _now().difference(readAt) >= refreshEvery) {
-      final read = _now();
-      _revoked = {..._revoked, ...await _store.revokedGrantIds(read)};
-      _readAt = read;
+      await (_refreshing ??= _refresh().whenComplete(() => _refreshing = null));
     }
     return _revoked.contains(grantId);
+  }
+
+  Future<void> _refresh() async {
+    final read = _now();
+    _revoked = {..._revoked, ...await _store.revokedGrantIds(read)};
+    _readAt = read;
   }
 
   Future<void> revoke(String grantId) async {

@@ -75,7 +75,7 @@ class AuthorizeEndpoint {
     );
     return _redirect(
       request,
-      withQuery('$appUrl/connect', {'request': sealed}),
+      '$appUrl/#/connect?request=${Uri.encodeQueryComponent(sealed)}',
     );
   }
 

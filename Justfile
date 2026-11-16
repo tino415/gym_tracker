@@ -62,7 +62,7 @@ BUILD_DEFINE := "--dart-define=BUILD_ID=" + BUILD_ID
 
 # Where the web app's consent page sends an assistant's answer. Baked into the
 # bundle, so a crafted link can't point the user's ID token elsewhere. Empty
-# disables the page. The prod URL is the Cloud Run URL `mcp-deploy` prints.
+# disables the page.
 MCP_SERVER_URL := env_var_or_default("MCP_SERVER_URL", "")
 MCP_DEFINE := "--dart-define=MCP_SERVER_URL=" + MCP_SERVER_URL
 
