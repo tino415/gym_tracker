@@ -4,7 +4,8 @@ import 'package:intl/intl.dart';
 import '../data/database.dart';
 import '../l10n/l10n.dart';
 
-/// Formats a planned/target set as a compact label for the small watch screen:
+/// Formats a set's reps, weight and seconds, planned or logged, as a compact
+/// label for the small watch screen:
 /// `"8 × 60 kg"`, `"12 reps"`, `"45s • 20 kg"`, `"30s"`, or `"—"` when the
 /// relevant target is missing. Shared by the exercise preview and the rest
 /// "up next" line so both render targets identically.

@@ -353,6 +353,53 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('a done set opened from the exercise preview is editable',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Legs',
+        restSeconds: 60,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Squat',
+            sets: [
+              _SetFixture(reps: 10, weight: 80),
+              _SetFixture(reps: 10, weight: 80),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pump();
+
+      await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Squat'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('10 × 80 kg').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('1/2'), findsOneWidget);
+      expect(find.text('Done ✓'), findsOneWidget);
+      await editValue(tester, find.text('10'));
+      await tester.pump(const Duration(seconds: 1));
+
+      final reps = [for (final c in await completionsOf(db)) c.actualReps];
+      expect(reps, [11]);
+      expect(find.textContaining(RegExp(r'^Rest \d+s$')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('switching exercise from the list during rest keeps the rest',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(226, 226));
