@@ -6,6 +6,7 @@ import 'package:gym_tracker/data/database.dart';
 import 'package:gym_tracker/data/providers.dart';
 import 'package:gym_tracker/watch/watch_app.dart';
 import 'package:gym_tracker/watch/watch_run_page.dart';
+import 'package:gym_tracker/watch/watch_workout_done_page.dart';
 import 'package:gym_tracker/watch/widgets/round_safe_area.dart';
 
 /// Build a routine described as `[(name, kind, [(reps?, kg?, sec?)], group?)]`
@@ -1131,17 +1132,115 @@ void main() {
       await tester.pumpAndSettle();
 
       // Both sets skipped → the workout is complete. Swipe back to the list;
-      // Finish is now enabled (every set is done or skipped).
-      await tester.drag(find.byType(PageView), const Offset(500, 0));
-      await tester.pumpAndSettle();
-      final finish = find.widgetWithText(FilledButton, 'Finish');
-      await tester.ensureVisible(finish);
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<FilledButton>(finish).onPressed,
-        isNotNull,
-        reason: 'skipping every set should enable Finish',
+      // Every set is done or skipped, so Finish needs no confirmation.
+      await _openListAndTapFinish(tester);
+      expect(find.text('Finish workout?'), findsNothing);
+      expect(find.byType(WatchWorkoutDonePage), findsOneWidget);
+    });
+
+    testWidgets('Finish with sets left confirms, then saves the workout',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Half',
+        restSeconds: 0,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+            ],
+          ),
+        ],
       );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pumpAndSettle();
+
+      await _openListAndTapFinish(tester);
+
+      expect(find.text('Finish workout?'), findsOneWidget);
+      expect(find.textContaining('2 sets'), findsOneWidget);
+      await tester.tap(find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byIcon(Icons.check),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WatchWorkoutDonePage), findsOneWidget);
+      final workout = (await tester.runAsync(
+        () => db.select(db.workouts).getSingle(),
+      ))!;
+      expect(workout.endedAt, isNotNull);
+    });
+
+    testWidgets('cancelling the Finish confirmation keeps the workout open',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Cancel',
+        restSeconds: 0,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [
+              _SetFixture(reps: 5, weight: 60),
+              _SetFixture(reps: 5, weight: 60),
+            ],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      await _openListAndTapFinish(tester);
+      await tester.tap(find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byIcon(Icons.close),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WatchWorkoutDonePage), findsNothing);
+      final workout = (await tester.runAsync(
+        () => db.select(db.workouts).getSingle(),
+      ))!;
+      expect(workout.endedAt, isNull);
+    });
+
+    testWidgets('Finish with every set done saves without a dialog',
+        (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final routine = await _seedRoutine(
+        db,
+        name: 'Full',
+        restSeconds: 0,
+        exercises: const [
+          _ExerciseFixture(
+            name: 'Bench',
+            sets: [_SetFixture(reps: 5, weight: 60)],
+          ),
+        ],
+      );
+      await _pumpRun(tester, db: db, routine: routine);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pumpAndSettle();
+
+      await _openListAndTapFinish(tester);
+
+      expect(find.text('Finish workout?'), findsNothing);
+      expect(find.byType(WatchWorkoutDonePage), findsOneWidget);
     });
 
     testWidgets('"Skip exercise" in a circuit keeps the other member',
@@ -1239,6 +1338,16 @@ void main() {
       expect(find.text('Last: 8 × 30 kg'), findsOneWidget);
     });
   });
+}
+
+Future<void> _openListAndTapFinish(WidgetTester tester) async {
+  await tester.drag(find.byType(PageView), const Offset(500, 0));
+  await tester.pumpAndSettle();
+  final finish = find.widgetWithText(FilledButton, 'Finish');
+  await tester.ensureVisible(finish);
+  await tester.pumpAndSettle();
+  await tester.tap(finish);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _finishPastWorkout(

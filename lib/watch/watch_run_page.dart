@@ -64,7 +64,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   // Sets the user chose to skip this session, keyed by workoutSetId. No
   // SetCompletion is written — a skipped set stays 'not done' in history — but
-  // navigation and the Finish gate treat it as resolved so the run doesn't
+  // navigation and the Finish confirmation treat it as resolved so the run doesn't
   // route back to it. In-memory only; gone when the page is disposed.
   final Set<String> _skipped = <String>{};
 
@@ -672,7 +672,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   /// Advance past the current set without recording it. The set is remembered
   /// as skipped so the walker won't route back to it and it counts toward the
-  /// Finish gate.
+  /// Finish confirmation's unresolved count.
   void _skipCurrentSet() {
     final wsId = _currentWorkoutSetId();
     if (wsId == null) return;
@@ -700,8 +700,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   }
 
   /// Move to the next unresolved set after a skip, or, when nothing is left,
-  /// stay put and refresh so the now-enabled Finish surfaces (same end state as
-  /// completing the final set). No rest — skipping isn't finishing a working
+  /// stay put and refresh (same end state as completing the final set). No rest — skipping isn't finishing a working
   /// set.
   void _advanceAfterSkip() {
     final next = _nextForCompletion();
@@ -998,6 +997,19 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   // --- Finish -------------------------------------------------------------
 
+  Future<void> _confirmFinish() async {
+    final unresolved = _unresolvedSetCount();
+    if (unresolved > 0) {
+      final ok = await ConfirmDialog.show(
+        context,
+        title: _l10n.runFinishTitle,
+        subtitle: _l10n.runUnloggedSets(unresolved),
+      );
+      if (!ok || !mounted) return;
+    }
+    await _finishWorkout();
+  }
+
   Future<void> _finishWorkout() async {
     final workoutId = _workoutId;
     if (workoutId == null) return;
@@ -1211,10 +1223,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
                       currentExerciseIdx: _exerciseIdx,
                       routineName: _routineName(),
                       started: _workoutId != null,
-                      allDone: _allDone(),
                       onPick: _openExercisePreview,
                       onStart: _startWorkout,
-                      onFinish: _finishWorkout,
+                      onFinish: _confirmFinish,
                       onDiscard: _confirmDiscard,
                     ),
                     _buildRunPane(context),
@@ -1489,16 +1500,17 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     ];
   }
 
-  bool _allDone() {
-    if (_snapshot == null) return false;
-    if (_snapshot!.exercises.isEmpty) return false;
-    for (var e = 0; e < _snapshot!.exercises.length; e++) {
-      final sets = _snapshot!.exercises[e].sets;
+  int _unresolvedSetCount() {
+    final snapshot = _snapshot;
+    if (snapshot == null) return 0;
+    var count = 0;
+    for (var e = 0; e < snapshot.exercises.length; e++) {
+      final sets = snapshot.exercises[e].sets;
       for (var s = 0; s < sets.length; s++) {
-        if (sets[s].completion == null && !_isSkippedAt(e, s)) return false;
+        if (sets[s].completion == null && !_isSkippedAt(e, s)) count++;
       }
     }
-    return true;
+    return count;
   }
 }
 
@@ -2326,7 +2338,6 @@ class _ExerciseListView extends StatelessWidget {
     required this.currentExerciseIdx,
     required this.routineName,
     required this.started,
-    required this.allDone,
     required this.onPick,
     required this.onStart,
     required this.onFinish,
@@ -2337,7 +2348,6 @@ class _ExerciseListView extends StatelessWidget {
   final int currentExerciseIdx;
   final String routineName;
   final bool started;
-  final bool allDone;
   final void Function(int eIdx) onPick;
   final VoidCallback onStart;
   final VoidCallback onFinish;
@@ -2390,7 +2400,7 @@ class _ExerciseListView extends StatelessWidget {
                       children: [
                         started
                             ? FilledButton(
-                                onPressed: allDone ? onFinish : null,
+                                onPressed: onFinish,
                                 child: Text(context.l10n.watchFinish),
                               )
                             : FilledButton(
