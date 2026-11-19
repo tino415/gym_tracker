@@ -1050,11 +1050,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
 
   // --- Exercise list jump -------------------------------------------------
 
-  /// Open a read-only preview of the given exercise. Available pre-start and
-  /// during an active workout. Never touches `_exerciseIdx` / `_setIdx` or
-  /// cancels timers — the preview is purely informational. The "Switch to
-  /// this" affordance inside the preview is the only way to make this
-  /// exercise active, and it routes through [_jumpToExercise].
+  /// Open a preview of the given exercise. Available pre-start, where it is
+  /// read-only, and during an active workout, where "Switch to this" routes
+  /// through [_jumpToExercise] and a tapped set row through [_openSet].
   Future<void> _openExercisePreview(int eIdx) async {
     if (_setCount(eIdx) == 0) return;
     final navigator = Navigator.of(context);
@@ -1066,6 +1064,10 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         onSwitchActive: () {
           navigator.pop();
           _jumpToExercise(eIdx);
+        },
+        onOpenSet: (sIdx) {
+          navigator.pop();
+          _openSet(eIdx, sIdx);
         },
       );
     } else {
@@ -1105,6 +1107,10 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       final allDone = ex.sets.every((s) => s.completion != null);
       if (allDone) sIdx = 0;
     }
+    _openSet(eIdx, sIdx);
+  }
+
+  void _openSet(int eIdx, int sIdx) {
     _goTo(eIdx, sIdx);
     _pageController.animateToPage(
       1,

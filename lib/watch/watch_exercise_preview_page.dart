@@ -7,11 +7,10 @@ import 'set_target_format.dart';
 import 'widgets/countdown_pill.dart';
 import 'widgets/round_safe_area.dart';
 
-/// Read-only preview of a single exercise on the watch: its name, kind, rest
-/// interval, and the list of planned sets. Reached by tapping an exercise in
-/// the run page's list view. Does not touch the active set cursor or any
-/// timer — opening it is safe at any phase, including while the rest timer
-/// is running.
+/// Preview of a single exercise on the watch: its name, kind, rest interval,
+/// and the list of sets. Reached by tapping an exercise in the run page's list
+/// view. Opening it touches nothing; only the callbacks a workout preview is
+/// given move the active set.
 class WatchExercisePreviewPage extends StatelessWidget {
   const WatchExercisePreviewPage._({
     required this.name,
@@ -22,6 +21,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
     required this.activeMode,
     this.countdown,
     this.onSwitchActive,
+    this.onOpenSet,
     List<_PreviewAlt> alternatives = const [],
   })  : _sets = sets,
         _alternatives = alternatives;
@@ -60,6 +60,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
     FullWorkoutExercise we, {
     ValueListenable<CountdownBadge?>? countdown,
     VoidCallback? onSwitchActive,
+    ValueChanged<int>? onOpenSet,
   }) {
     return WatchExercisePreviewPage._(
       name: we.workoutExercise.exerciseName,
@@ -78,11 +79,15 @@ class WatchExercisePreviewPage extends StatelessWidget {
               we.workoutExercise.params,
             ),
             completed: we.sets[i].completion != null,
+            actualReps: we.sets[i].completion?.actualReps,
+            actualWeightKg: we.sets[i].completion?.actualWeightKg,
+            actualSeconds: we.sets[i].completion?.actualSeconds,
           ),
       ],
       activeMode: true,
       countdown: countdown,
       onSwitchActive: onSwitchActive,
+      onOpenSet: onOpenSet,
     );
   }
 
@@ -95,6 +100,7 @@ class WatchExercisePreviewPage extends StatelessWidget {
   final bool activeMode;
   final ValueListenable<CountdownBadge?>? countdown;
   final VoidCallback? onSwitchActive;
+  final ValueChanged<int>? onOpenSet;
 
   @override
   Widget build(BuildContext context) {
@@ -174,6 +180,9 @@ class WatchExercisePreviewPage extends StatelessWidget {
                           set: s,
                           kind: kind,
                           activeMode: activeMode,
+                          onTap: onOpenSet == null
+                              ? null
+                              : () => onOpenSet!(s.index),
                         ),
                       ),
                   if (_alternatives.isNotEmpty) ...[
@@ -248,6 +257,9 @@ class _PreviewSet {
     required this.targetSeconds,
     required this.paramText,
     required this.completed,
+    this.actualReps,
+    this.actualWeightKg,
+    this.actualSeconds,
   });
 
   final int index;
@@ -256,6 +268,15 @@ class _PreviewSet {
   final int? targetSeconds;
   final String paramText;
   final bool completed;
+  final int? actualReps;
+  final double? actualWeightKg;
+  final int? actualSeconds;
+
+  int? get shownReps => completed ? actualReps ?? targetReps : targetReps;
+  double? get shownWeightKg =>
+      completed ? actualWeightKg ?? targetWeightKg : targetWeightKg;
+  int? get shownSeconds =>
+      completed ? actualSeconds ?? targetSeconds : targetSeconds;
 }
 
 class _PreviewAlt {
@@ -270,56 +291,82 @@ class _SetLine extends StatelessWidget {
     required this.set,
     required this.kind,
     required this.activeMode,
+    this.onTap,
   });
 
   final _PreviewSet set;
   final String kind;
   final bool activeMode;
+  final VoidCallback? onTap;
+
+  bool get _isTime => kind == exerciseKindTime;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.outline;
     final color = activeMode && !set.completed ? muted : null;
-    return Row(
-      children: [
-        SizedBox(
-          width: 18,
-          child: activeMode && set.completed
-              ? Icon(
-                  Icons.check,
-                  size: 14,
-                  color: theme.colorScheme.primary,
-                )
-              : Text(
-                  '${set.index + 1}.',
-                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+    final missed = _missedTargetHint(context);
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 32),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              child: activeMode && set.completed
+                  ? Icon(
+                      Icons.check,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    )
+                  : Text(
+                      '${set.index + 1}.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                    ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  text: _formatLine(context),
+                  children: [
+                    if (missed != null)
+                      TextSpan(
+                        text: ' $missed',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                  ],
                 ),
+                style: theme.textTheme.bodyMedium?.copyWith(color: color),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            _formatTarget(context, set, kind),
-            style: theme.textTheme.bodyMedium?.copyWith(color: color),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  static String _formatTarget(
-    BuildContext context,
-    _PreviewSet s,
-    String kind,
-  ) {
+  String _formatLine(BuildContext context) {
     final main = formatSetTarget(
       context,
       kind: kind,
-      reps: s.targetReps,
-      weightKg: s.targetWeightKg,
-      seconds: s.targetSeconds,
+      reps: set.shownReps,
+      weightKg: set.shownWeightKg,
+      seconds: set.shownSeconds,
     );
-    return s.paramText.isEmpty ? main : '$main · ${s.paramText}';
+    return set.paramText.isEmpty ? main : '$main · ${set.paramText}';
+  }
+
+  String? _missedTargetHint(BuildContext context) {
+    final actual = _isTime ? set.actualSeconds : set.actualReps;
+    final target = _isTime ? set.targetSeconds : set.targetReps;
+    if (!set.completed || actual == null || target == null) return null;
+    if (actual >= target) return null;
+    return _isTime ? '/${context.l10n.watchSecondsShort(target)}' : '/$target';
   }
 }
 
