@@ -65,12 +65,14 @@ class DriftRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) =>
       _db.addPlannedSet(
         routineExerciseId: routineExerciseId,
         targetReps: targetReps,
         targetWeightKg: targetWeightKg,
         targetSeconds: targetSeconds,
+        targetParams: targetParams,
       );
 
   @override
@@ -79,12 +81,14 @@ class DriftRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) =>
       _db.updatePlannedSet(
         id: id,
         targetReps: targetReps,
         targetWeightKg: targetWeightKg,
         targetSeconds: targetSeconds,
+        targetParams: targetParams,
       );
 
   @override
@@ -106,12 +110,14 @@ class DriftRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) =>
       _db.addAlternativePlannedSet(
         alternativeId: alternativeId,
         targetReps: targetReps,
         targetWeightKg: targetWeightKg,
         targetSeconds: targetSeconds,
+        targetParams: targetParams,
       );
 
   @override
@@ -120,12 +126,14 @@ class DriftRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) =>
       _db.updateAlternativePlannedSet(
         id: id,
         targetReps: targetReps,
         targetWeightKg: targetWeightKg,
         targetSeconds: targetSeconds,
+        targetParams: targetParams,
       );
 
   @override
@@ -180,6 +188,10 @@ class DriftExerciseRepository implements ExerciseRepository {
   @override
   Future<void> setExerciseKind(String id, String kind) =>
       _db.setExerciseKind(id, kind);
+
+  @override
+  Future<void> setExerciseParams(String id, List<ParamEntry> order) =>
+      _db.setExerciseParams(id, order);
 
   @override
   Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds) =>
@@ -282,12 +294,14 @@ class DriftWorkoutRepository implements WorkoutRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) =>
       _db.addWorkoutSet(
         workoutExerciseId: workoutExerciseId,
         targetReps: targetReps,
         targetWeightKg: targetWeightKg,
         targetSeconds: targetSeconds,
+        targetParams: targetParams,
       );
 
   @override
@@ -301,6 +315,7 @@ class DriftWorkoutRepository implements WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
   }) =>
@@ -310,6 +325,7 @@ class DriftWorkoutRepository implements WorkoutRepository {
         actualReps: actualReps,
         actualWeightKg: actualWeightKg,
         actualSeconds: actualSeconds,
+        actualParams: actualParams,
         avgHeartRate: avgHeartRate,
         maxHeartRate: maxHeartRate,
       );
@@ -320,6 +336,7 @@ class DriftWorkoutRepository implements WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     DateTime? completedAt,
   }) =>
       _db.updateCompletion(
@@ -327,6 +344,7 @@ class DriftWorkoutRepository implements WorkoutRepository {
         actualReps: actualReps,
         actualWeightKg: actualWeightKg,
         actualSeconds: actualSeconds,
+        actualParams: actualParams,
         completedAt: completedAt,
       );
 

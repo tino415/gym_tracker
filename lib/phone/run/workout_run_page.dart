@@ -68,6 +68,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
 
   int _reps = 0;
   double _weightKg = 0;
+  Map<String, double> _paramValues = {};
 
   int _timeStartTarget = 0;
   // A target changed on the run page outlives navigating away, so a hold
@@ -279,6 +280,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
     if (set == null) return;
     final ws = set.workoutSet;
     final completion = set.completion;
+    _paramValues = {...?ws.targetParams, ...?completion?.actualParams};
     if (_currentKind() == exerciseKindTime) {
       _timeStartTarget =
           _timeTargetOverrides[ws.syncId] ?? ws.targetSeconds ?? 30;
@@ -347,6 +349,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         workoutSetId: set.workoutSet.syncId,
         actualSeconds: elapsed,
         actualWeightKg: _weightKg > 0 ? _weightKg : null,
+        actualParams: _paramValues.isEmpty ? null : _paramValues,
       );
     } else {
       await repo.upsertSetCompletion(
@@ -354,6 +357,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
         workoutSetId: set.workoutSet.syncId,
         actualReps: _reps,
         actualWeightKg: _weightKg,
+        actualParams: _paramValues.isEmpty ? null : _paramValues,
       );
     }
     unawaited(HapticFeedback.heavyImpact());
@@ -882,7 +886,33 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
               : null,
           onPlus: () => setState(() => _weightKg += 2.5),
         ),
+        ..._buildParamControls(),
       ];
+
+  List<Widget> _buildParamControls() {
+    final params = _currentExercise?.workoutExercise.params ?? const [];
+    return [
+      for (final p in params.custom) ...[
+        const SizedBox(height: 12),
+        _Stepper(
+          label: p.name,
+          value: _paramValues[p.id] == null
+              ? '—'
+              : formatParamValue(_paramValues[p.id]!),
+          onMinus: (_paramValues[p.id] ?? 0) > 0
+              ? () => _stepParam(p.id, -1)
+              : null,
+          onPlus: () => _stepParam(p.id, 1),
+        ),
+      ],
+    ];
+  }
+
+  void _stepParam(String id, int direction) => setState(() {
+    final current = _paramValues[id];
+    final next = (current ?? 0) + direction * paramStep(current);
+    _paramValues = {..._paramValues, id: next < 0 ? 0 : next};
+  });
 
   List<Widget> _buildTimeControls() => [
         Center(
@@ -924,6 +954,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
               : null,
           onPlus: () => setState(() => _weightKg += 2.5),
         ),
+        ..._buildParamControls(),
       ];
 
   Widget _buildRest() {

@@ -205,6 +205,7 @@ class _Body extends ConsumerWidget {
               setIndex: i,
               plannedSet: re.plannedSets[i],
               kind: re.kind,
+              params: re.exercise.params,
               onEdit: () => _editSetDialog(
                 context,
                 ref,
@@ -420,6 +421,8 @@ void _editSetDialog(
     context: context,
     builder: (_) => SetEditorDialog(
       kind: re.kind,
+      params: re.exercise.params.custom.toList(),
+      initialParams: existing?.targetParams,
       existingId: existing?.syncId,
       initialReps: existing?.targetReps,
       initialWeightKg: existing?.targetWeightKg,
@@ -429,12 +432,14 @@ void _editSetDialog(
         targetReps: v.reps,
         targetWeightKg: v.weightKg,
         targetSeconds: v.seconds,
+        targetParams: v.params,
       ),
       onUpdate: (id, v) => db.updatePlannedSet(
         id: id,
         targetReps: v.reps,
         targetWeightKg: v.weightKg,
         targetSeconds: v.seconds,
+        targetParams: v.params,
       ),
     ),
   );
@@ -452,6 +457,8 @@ void _editAltSetDialog(
     context: context,
     builder: (_) => SetEditorDialog(
       kind: alt.exercise.kind,
+      params: alt.exercise.params.custom.toList(),
+      initialParams: existing?.targetParams,
       existingId: existing?.syncId,
       initialReps: existing?.targetReps,
       initialWeightKg: existing?.targetWeightKg,
@@ -461,12 +468,14 @@ void _editAltSetDialog(
         targetReps: v.reps,
         targetWeightKg: v.weightKg,
         targetSeconds: v.seconds,
+        targetParams: v.params,
       ),
       onUpdate: (id, v) => db.updateAlternativePlannedSet(
         id: id,
         targetReps: v.reps,
         targetWeightKg: v.weightKg,
         targetSeconds: v.seconds,
+        targetParams: v.params,
       ),
     ),
   );
@@ -523,6 +532,7 @@ class _AlternativeTile extends StatelessWidget {
             _AlternativePlannedSetRow(
               index: i,
               kind: ex.kind,
+              params: ex.params,
               set: ps[i],
               onEdit: () => onEditSet(ps[i]),
               onDelete: () => onDeleteSet(ps[i]),
@@ -545,6 +555,7 @@ class _AlternativePlannedSetRow extends StatelessWidget {
   const _AlternativePlannedSetRow({
     required this.index,
     required this.kind,
+    required this.params,
     required this.set,
     required this.onEdit,
     required this.onDelete,
@@ -552,11 +563,18 @@ class _AlternativePlannedSetRow extends StatelessWidget {
 
   final int index;
   final String kind;
+  final List<ParamEntry> params;
   final AlternativePlannedSet set;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   String _describe(BuildContext context) {
+    final main = _describeMain(context);
+    final extra = paramLabel(set.targetParams, params);
+    return extra.isEmpty ? main : '$main · $extra';
+  }
+
+  String _describeMain(BuildContext context) {
     final l10n = context.l10n;
     if (kind == exerciseKindTime) {
       final s = set.targetSeconds;

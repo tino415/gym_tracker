@@ -39,6 +39,10 @@ class WatchExercisePreviewPage extends StatelessWidget {
             targetReps: re.plannedSets[i].targetReps,
             targetWeightKg: re.plannedSets[i].targetWeightKg,
             targetSeconds: re.plannedSets[i].targetSeconds,
+            paramText: paramLabel(
+              re.plannedSets[i].targetParams,
+              re.exercise.params,
+            ),
             completed: false,
           ),
       ],
@@ -69,6 +73,10 @@ class WatchExercisePreviewPage extends StatelessWidget {
             targetReps: we.sets[i].workoutSet.targetReps,
             targetWeightKg: we.sets[i].workoutSet.targetWeightKg,
             targetSeconds: we.sets[i].workoutSet.targetSeconds,
+            paramText: paramLabel(
+              we.sets[i].workoutSet.targetParams,
+              we.workoutExercise.params,
+            ),
             completed: we.sets[i].completion != null,
           ),
       ],
@@ -238,6 +246,7 @@ class _PreviewSet {
     required this.targetReps,
     required this.targetWeightKg,
     required this.targetSeconds,
+    required this.paramText,
     required this.completed,
   });
 
@@ -245,6 +254,7 @@ class _PreviewSet {
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final String paramText;
   final bool completed;
 }
 
@@ -301,13 +311,16 @@ class _SetLine extends StatelessWidget {
     BuildContext context,
     _PreviewSet s,
     String kind,
-  ) => formatSetTarget(
-        context,
-        kind: kind,
-        reps: s.targetReps,
-        weightKg: s.targetWeightKg,
-        seconds: s.targetSeconds,
-      );
+  ) {
+    final main = formatSetTarget(
+      context,
+      kind: kind,
+      reps: s.targetReps,
+      weightKg: s.targetWeightKg,
+      seconds: s.targetSeconds,
+    );
+    return s.paramText.isEmpty ? main : '$main · ${s.paramText}';
+  }
 }
 
 class _MetaChip extends StatelessWidget {

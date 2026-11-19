@@ -48,6 +48,7 @@ class SyncRepository {
               exerciseSyncId: ex.syncId,
               exerciseName: ex.name,
               exerciseKind: ex.kind,
+              exerciseParams: ex.params,
               orderIndex: a.orderIndex,
               plannedSets: [
                 for (final p in altPs)
@@ -57,6 +58,7 @@ class SyncRepository {
                     targetReps: p.targetReps,
                     targetWeightKg: p.targetWeightKg,
                     targetSeconds: p.targetSeconds,
+                    targetParams: p.targetParams,
                   ),
               ],
             ),
@@ -69,6 +71,7 @@ class SyncRepository {
             exerciseSyncId: base.exerciseSyncId,
             exerciseName: base.exerciseName,
             exerciseKind: base.exerciseKind,
+            exerciseParams: base.exerciseParams,
             orderIndex: base.orderIndex,
             restSeconds: base.restSeconds,
             circuitGroup: base.circuitGroup,
@@ -151,6 +154,7 @@ class SyncRepository {
               name: dto.name,
               createdAt: DateTime.fromMillisecondsSinceEpoch(dto.createdAtMs),
               kind: Value(dto.kind),
+              params: Value(dto.params),
               version: Value(dto.version),
               deletedAt: Value(deletedAt),
             ),
@@ -168,6 +172,7 @@ class SyncRepository {
     final companion = ExercisesCompanion(
       name: Value(dto.name),
       kind: Value(dto.kind),
+      params: Value(dto.params),
       version: Value(dto.version),
       deletedAt: Value(deletedAt),
     );
@@ -180,6 +185,7 @@ class SyncRepository {
           .write(
         ExercisesCompanion(
           kind: Value(dto.kind),
+          params: Value(dto.params),
           version: Value(dto.version),
           deletedAt: Value(deletedAt),
         ),
@@ -323,6 +329,7 @@ class SyncRepository {
         syncId: e.exerciseSyncId,
         name: e.exerciseName,
         kind: e.exerciseKind,
+        params: e.exerciseParams,
       );
       final String reId;
       final existingForE = existingREBySync[e.syncId];
@@ -378,6 +385,7 @@ class SyncRepository {
                   targetReps: Value(s.targetReps),
                   targetWeightKg: Value(s.targetWeightKg),
                   targetSeconds: Value(s.targetSeconds),
+                  targetParams: Value(s.targetParams),
                 ),
               );
           keptPSIds.add(psId);
@@ -390,6 +398,7 @@ class SyncRepository {
               targetReps: Value(s.targetReps),
               targetWeightKg: Value(s.targetWeightKg),
               targetSeconds: Value(s.targetSeconds),
+              targetParams: Value(s.targetParams),
             ),
           );
           keptPSIds.add(existingForS.syncId);
@@ -421,6 +430,7 @@ class SyncRepository {
           syncId: a.exerciseSyncId,
           name: a.exerciseName,
           kind: a.exerciseKind,
+          params: a.exerciseParams,
         );
         final exA = existingAltsBySync[a.syncId];
         final String altRowId;
@@ -473,6 +483,7 @@ class SyncRepository {
                     targetReps: Value(s.targetReps),
                     targetWeightKg: Value(s.targetWeightKg),
                     targetSeconds: Value(s.targetSeconds),
+                    targetParams: Value(s.targetParams),
                   ),
                 );
             keptAltPsIds.add(psId);
@@ -485,6 +496,7 @@ class SyncRepository {
                     targetReps: Value(s.targetReps),
                     targetWeightKg: Value(s.targetWeightKg),
                     targetSeconds: Value(s.targetSeconds),
+                    targetParams: Value(s.targetParams),
                   ),
                 );
             keptAltPsIds.add(existingForS.syncId);
@@ -567,6 +579,7 @@ class SyncRepository {
     required String syncId,
     required String name,
     required String kind,
+    required List<ParamEntry> params,
   }) async {
     final existing = await (_db.select(
       _db.exercises,
@@ -578,6 +591,13 @@ class SyncRepository {
           _db.exercises,
         )..where((t) => t.syncId.equals(existing.syncId))).write(
           ExercisesCompanion(kind: Value(kind)),
+        );
+      }
+      if (encodeParamOrder(existing.params) != encodeParamOrder(params)) {
+        await (_db.update(
+          _db.exercises,
+        )..where((t) => t.syncId.equals(existing.syncId))).write(
+          ExercisesCompanion(params: Value(params)),
         );
       }
       // Same for the name — the authority may have renamed the exercise. A
@@ -608,6 +628,7 @@ class SyncRepository {
             name: name,
             createdAt: DateTime.now(),
             kind: Value(kind),
+            params: Value(params),
           ),
         );
     return syncId;
@@ -675,6 +696,7 @@ class SyncRepository {
           exerciseSyncId: exerciseSyncId,
           exerciseName: we.exerciseName,
           kind: we.kind,
+          params: we.params,
           orderIndex: we.orderIndex,
           restSeconds: we.restSeconds,
           circuitGroup: we.circuitGroup,
@@ -687,6 +709,7 @@ class SyncRepository {
                 targetReps: s.targetReps,
                 targetWeightKg: s.targetWeightKg,
                 targetSeconds: s.targetSeconds,
+                targetParams: s.targetParams,
               ),
           ],
         ),
@@ -704,6 +727,7 @@ class SyncRepository {
           actualReps: c.actualReps,
           actualWeightKg: c.actualWeightKg,
           actualSeconds: c.actualSeconds,
+          actualParams: c.actualParams,
           completedAtMs: c.completedAt.millisecondsSinceEpoch,
           avgHeartRate: c.avgHeartRate,
           maxHeartRate: c.maxHeartRate,
@@ -866,6 +890,7 @@ class SyncRepository {
                 restSeconds: Value(e.restSeconds),
                 circuitGroup: Value(e.circuitGroup),
                 kind: Value(e.kind),
+                params: Value(e.params),
                 routineExerciseId: Value(routineExerciseLocalId),
               ),
             );
@@ -881,6 +906,7 @@ class SyncRepository {
                   targetReps: Value(s.targetReps),
                   targetWeightKg: Value(s.targetWeightKg),
                   targetSeconds: Value(s.targetSeconds),
+                  targetParams: Value(s.targetParams),
                 ),
               );
           workoutSetIdBySync[s.syncId] = wsId;
@@ -900,6 +926,7 @@ class SyncRepository {
                 actualReps: Value(c.actualReps),
                 actualWeightKg: Value(c.actualWeightKg),
                 actualSeconds: Value(c.actualSeconds),
+                actualParams: Value(c.actualParams),
                 avgHeartRate: Value(c.avgHeartRate),
                 maxHeartRate: Value(c.maxHeartRate),
                 completedAt: DateTime.fromMillisecondsSinceEpoch(

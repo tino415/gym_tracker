@@ -9,7 +9,19 @@ void main() {
         .where((l) => RegExp(r'^\s*(import|export|part)\b').hasMatch(l))
         .toList();
 
-    expect(imports, ["import '../data/exercise_kind.dart';"]);
+    expect(imports, [
+      "import '../data/exercise_kind.dart';",
+      "import '../data/exercise_params.dart';",
+    ]);
+  });
+
+  test('exercise_params.dart imports only the Dart core', () {
+    final imports = File('lib/data/exercise_params.dart')
+        .readAsLinesSync()
+        .where((l) => l.startsWith('import '))
+        .toList();
+
+    expect(imports, ["import 'dart:convert';"]);
   });
 
   test('exercise_kind.dart has no imports', () {

@@ -1,4 +1,5 @@
 import '../data/exercise_kind.dart';
+import '../data/exercise_params.dart';
 
 const routineBundleType = 'routine_bundle';
 const workoutCompletedType = 'workout_completed';
@@ -169,12 +170,14 @@ class RoutineExerciseDto {
     required this.plannedSets,
     this.alternatives = const [],
     this.muscleSyncIds = const [],
+    this.exerciseParams = defaultParamOrder,
   });
 
   final String syncId;
   final String exerciseSyncId;
   final String exerciseName;
   final String exerciseKind;
+  final List<ParamEntry> exerciseParams;
   final int orderIndex;
   final int restSeconds;
   final int? circuitGroup;
@@ -189,6 +192,7 @@ class RoutineExerciseDto {
     'exerciseSyncId': exerciseSyncId,
     'exerciseName': exerciseName,
     'exerciseKind': exerciseKind,
+    'exerciseParams': paramOrderToJson(exerciseParams),
     'orderIndex': orderIndex,
     'restSeconds': restSeconds,
     'circuitGroup': circuitGroup,
@@ -207,6 +211,7 @@ class RoutineExerciseDto {
       exerciseName: json['exerciseName']! as String,
       exerciseKind:
           (json['exerciseKind'] as String?) ?? exerciseKindReps,
+      exerciseParams: paramOrderFromJson(json['exerciseParams']),
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
       circuitGroup: _readCircuitGroup(json),
@@ -234,12 +239,14 @@ class AlternativeRefDto {
     required this.exerciseKind,
     required this.orderIndex,
     this.plannedSets = const [],
+    this.exerciseParams = defaultParamOrder,
   });
 
   final String syncId;
   final String exerciseSyncId;
   final String exerciseName;
   final String exerciseKind;
+  final List<ParamEntry> exerciseParams;
   final int orderIndex;
   // Per-alternative planned sets. Empty list = alternative inherits the
   // primary's targets at swap time.
@@ -250,6 +257,7 @@ class AlternativeRefDto {
     'exerciseSyncId': exerciseSyncId,
     'exerciseName': exerciseName,
     'exerciseKind': exerciseKind,
+    'exerciseParams': paramOrderToJson(exerciseParams),
     'orderIndex': orderIndex,
     'plannedSets': plannedSets.map((s) => s.toJson()).toList(),
   };
@@ -261,6 +269,7 @@ class AlternativeRefDto {
       exerciseSyncId: json['exerciseSyncId']! as String,
       exerciseName: json['exerciseName']! as String,
       exerciseKind: (json['exerciseKind'] as String?) ?? exerciseKindReps,
+      exerciseParams: paramOrderFromJson(json['exerciseParams']),
       orderIndex: (json['orderIndex']! as num).toInt(),
       plannedSets: raw
           .map(
@@ -278,6 +287,7 @@ class PlannedSetDto {
     required this.targetReps,
     required this.targetWeightKg,
     required this.targetSeconds,
+    this.targetParams,
   });
 
   final String syncId;
@@ -285,6 +295,7 @@ class PlannedSetDto {
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final ParamValues? targetParams;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -292,6 +303,7 @@ class PlannedSetDto {
     'targetReps': targetReps,
     'targetWeightKg': targetWeightKg,
     'targetSeconds': targetSeconds,
+    'targetParams': targetParams,
   };
 
   factory PlannedSetDto.fromJson(Map<String, Object?> json) {
@@ -301,6 +313,7 @@ class PlannedSetDto {
       targetReps: (json['targetReps'] as num?)?.toInt(),
       targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble(),
       targetSeconds: (json['targetSeconds'] as num?)?.toInt(),
+      targetParams: paramValuesFromJson(json['targetParams']),
     );
   }
 }
@@ -317,11 +330,13 @@ class ExerciseDto {
     required this.createdAtMs,
     this.muscleSyncIds = const [],
     this.deletedAtMs,
+    this.params = defaultParamOrder,
   });
 
   final String syncId;
   final String name;
   final String kind;
+  final List<ParamEntry> params;
   final int version;
   final int createdAtMs;
   final List<String> muscleSyncIds;
@@ -331,6 +346,7 @@ class ExerciseDto {
     'syncId': syncId,
     'name': name,
     'kind': kind,
+    'params': paramOrderToJson(params),
     'version': version,
     'createdAtMs': createdAtMs,
     'muscleSyncIds': muscleSyncIds,
@@ -344,6 +360,7 @@ class ExerciseDto {
       syncId: json['syncId']! as String,
       name: json['name']! as String,
       kind: (json['kind'] as String?) ?? exerciseKindReps,
+      params: paramOrderFromJson(json['params']),
       version: (json['version']! as num).toInt(),
       createdAtMs: (json['createdAtMs']! as num).toInt(),
       deletedAtMs: (json['deletedAtMs'] as num?)?.toInt(),
@@ -539,12 +556,14 @@ class WorkoutExerciseDto {
     required this.circuitGroup,
     required this.sets,
     this.routineExerciseSyncId,
+    this.params = defaultParamOrder,
   });
 
   final String syncId;
   final String? exerciseSyncId;
   final String exerciseName;
   final String kind;
+  final List<ParamEntry> params;
   final int orderIndex;
   final int restSeconds;
   final int? circuitGroup;
@@ -559,6 +578,7 @@ class WorkoutExerciseDto {
     'exerciseSyncId': exerciseSyncId,
     'exerciseName': exerciseName,
     'kind': kind,
+    'params': paramOrderToJson(params),
     'orderIndex': orderIndex,
     'restSeconds': restSeconds,
     'circuitGroup': circuitGroup,
@@ -573,6 +593,7 @@ class WorkoutExerciseDto {
       exerciseSyncId: json['exerciseSyncId'] as String?,
       exerciseName: json['exerciseName']! as String,
       kind: (json['kind'] as String?) ?? exerciseKindReps,
+      params: paramOrderFromJson(json['params']),
       orderIndex: (json['orderIndex']! as num).toInt(),
       restSeconds: (json['restSeconds']! as num).toInt(),
       circuitGroup: _readCircuitGroup(json),
@@ -593,6 +614,7 @@ class WorkoutSetDto {
     required this.targetReps,
     required this.targetWeightKg,
     required this.targetSeconds,
+    this.targetParams,
   });
 
   final String syncId;
@@ -600,6 +622,7 @@ class WorkoutSetDto {
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final ParamValues? targetParams;
 
   Map<String, Object?> toJson() => {
     'syncId': syncId,
@@ -607,6 +630,7 @@ class WorkoutSetDto {
     'targetReps': targetReps,
     'targetWeightKg': targetWeightKg,
     'targetSeconds': targetSeconds,
+    'targetParams': targetParams,
   };
 
   factory WorkoutSetDto.fromJson(Map<String, Object?> json) {
@@ -616,6 +640,7 @@ class WorkoutSetDto {
       targetReps: (json['targetReps'] as num?)?.toInt(),
       targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble(),
       targetSeconds: (json['targetSeconds'] as num?)?.toInt(),
+      targetParams: paramValuesFromJson(json['targetParams']),
     );
   }
 }
@@ -628,6 +653,7 @@ class SetCompletionDto {
     required this.actualWeightKg,
     required this.actualSeconds,
     required this.completedAtMs,
+    this.actualParams,
     this.avgHeartRate,
     this.maxHeartRate,
   });
@@ -637,6 +663,7 @@ class SetCompletionDto {
   final int? actualReps;
   final double? actualWeightKg;
   final int? actualSeconds;
+  final ParamValues? actualParams;
   final int completedAtMs;
   final int? avgHeartRate;
   final int? maxHeartRate;
@@ -647,6 +674,7 @@ class SetCompletionDto {
     'actualReps': actualReps,
     'actualWeightKg': actualWeightKg,
     'actualSeconds': actualSeconds,
+    'actualParams': actualParams,
     'completedAtMs': completedAtMs,
     'avgHeartRate': avgHeartRate,
     'maxHeartRate': maxHeartRate,
@@ -659,6 +687,7 @@ class SetCompletionDto {
       actualReps: (json['actualReps'] as num?)?.toInt(),
       actualWeightKg: (json['actualWeightKg'] as num?)?.toDouble(),
       actualSeconds: (json['actualSeconds'] as num?)?.toInt(),
+      actualParams: paramValuesFromJson(json['actualParams']),
       completedAtMs: (json['completedAtMs']! as num).toInt(),
       avgHeartRate: (json['avgHeartRate'] as num?)?.toInt(),
       maxHeartRate: (json['maxHeartRate'] as num?)?.toInt(),

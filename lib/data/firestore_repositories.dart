@@ -34,6 +34,7 @@ Exercise _exerciseFromData(Map<String, Object?> d) => Exercise(
     (d['createdAtMs'] as num).toInt(),
   ),
   kind: (d['kind'] as String?) ?? exerciseKindReps,
+  params: paramOrderFromJson(d['params']),
   version: (d['version'] as num?)?.toInt() ?? 1,
   deletedAt: d['deletedAtMs'] == null
       ? null
@@ -232,6 +233,15 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     await _refreshEmbeddedInRoutines(id);
   }
 
+  @override
+  Future<void> setExerciseParams(String id, List<ParamEntry> order) async {
+    await _col.doc(id).update({
+      'params': paramOrderToJson(order),
+      'version': FieldValue.increment(1),
+    });
+    await _refreshEmbeddedInRoutines(id);
+  }
+
   /// Rewrite the `exerciseName` / `exerciseKind` that routine documents embed
   /// for this exercise, bumping each touched routine's version.
   ///
@@ -251,6 +261,7 @@ class FirestoreExerciseRepository implements ExerciseRepository {
     final now = (
       name: (data['name'] as String?) ?? '',
       kind: (data['kind'] as String?) ?? exerciseKindReps,
+      params: paramOrderFromJson(data['params']),
     );
     if (now.name.isEmpty) return;
 
@@ -283,8 +294,15 @@ class FirestoreExerciseRepository implements ExerciseRepository {
   });
 }
 
-/// Rewrites the `exerciseName` / `exerciseKind` a routine document embeds for
-/// every slot — and every alternative — whose exercise [current] resolves.
+typedef _EmbeddedExercise = ({
+  String name,
+  String kind,
+  List<ParamEntry> params,
+});
+
+/// Rewrites the `exerciseName` / `exerciseKind` / `exerciseParams` a routine
+/// document embeds for every slot — and every alternative — whose exercise
+/// [current] resolves. A parameter that left the list loses its set targets.
 ///
 /// Returns null when nothing changed, so callers skip both the write and the
 /// version bump: bumping a routine that was already correct would re-push it to
@@ -295,7 +313,7 @@ class FirestoreExerciseRepository implements ExerciseRepository {
 /// never disagree about what "up to date" means.
 List<Map<String, dynamic>>? _patchEmbeddedExercises(
   Object? rawSlots,
-  ({String name, String kind})? Function(String exerciseSyncId) current,
+  _EmbeddedExercise? Function(String exerciseSyncId) current,
 ) {
   var touched = false;
   Map<String, dynamic> patch(Map<String, dynamic> slot) {
@@ -310,6 +328,19 @@ List<Map<String, dynamic>>? _patchEmbeddedExercises(
     }
     if (next['exerciseKind'] != now.kind) {
       next['exerciseKind'] = now.kind;
+      touched = true;
+    }
+    final embeddedParams = encodeParamOrder(
+      paramOrderFromJson(next['exerciseParams']),
+    );
+    if (embeddedParams != encodeParamOrder(now.params)) {
+      next['exerciseParams'] = paramOrderToJson(now.params);
+      touched = true;
+    }
+    final kept = {for (final p in now.params.custom) p.id};
+    final sets = _withTargetsKept(next['plannedSets'], kept);
+    if (sets != null) {
+      next['plannedSets'] = sets;
       touched = true;
     }
     return next;
@@ -331,7 +362,29 @@ List<Map<String, dynamic>>? _patchEmbeddedExercises(
   return touched ? out : null;
 }
 
-Exercise _synthExercise(String syncId, String name, String kind) => Exercise(
+/// The sets with `targetParams` trimmed to [kept], or null when none changed.
+List<Map<String, dynamic>>? _withTargetsKept(Object? rawSets, Set<String> kept) {
+  var touched = false;
+  final out = <Map<String, dynamic>>[];
+  for (final raw in (rawSets as List?) ?? const []) {
+    final set = Map<String, dynamic>.from(raw as Map);
+    final before = paramValuesFromJson(set['targetParams']);
+    final after = keepOnly(before, kept);
+    if (encodeParamValues(before) != encodeParamValues(after)) {
+      set['targetParams'] = after;
+      touched = true;
+    }
+    out.add(set);
+  }
+  return touched ? out : null;
+}
+
+Exercise _synthExercise(
+  String syncId,
+  String name,
+  String kind,
+  List<ParamEntry> params,
+) => Exercise(
   // The routine doc denormalizes only name/kind for its slots; createdAt and
   // version aren't carried (and the routine editor never shows them), so they
   // are synthesized. The canonical exercise lives in the exercises collection.
@@ -339,6 +392,7 @@ Exercise _synthExercise(String syncId, String name, String kind) => Exercise(
   name: name,
   createdAt: DateTime.fromMillisecondsSinceEpoch(0),
   kind: kind,
+  params: params,
   version: 1,
 );
 
@@ -399,6 +453,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
             re.exerciseSyncId,
             re.exerciseName,
             re.exerciseKind,
+            re.exerciseParams,
           ),
           plannedSets: [
             for (final ps in re.plannedSets)
@@ -409,6 +464,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
                 targetReps: ps.targetReps,
                 targetWeightKg: ps.targetWeightKg,
                 targetSeconds: ps.targetSeconds,
+                targetParams: ps.targetParams,
               ),
           ],
           alternatives: [
@@ -424,6 +480,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
                   alt.exerciseSyncId,
                   alt.exerciseName,
                   alt.exerciseKind,
+                  alt.exerciseParams,
                 ),
                 plannedSets: [
                   for (final ps in alt.plannedSets)
@@ -434,6 +491,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
                       targetReps: ps.targetReps,
                       targetWeightKg: ps.targetWeightKg,
                       targetSeconds: ps.targetSeconds,
+                      targetParams: ps.targetParams,
                     ),
                 ],
               ),
@@ -513,6 +571,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
           d.id: (
             name: d.data()['name']! as String,
             kind: (d.data()['kind'] as String?) ?? exerciseKindReps,
+            params: paramOrderFromJson(d.data()['params']),
           ),
     };
     if (library.isEmpty) return 0;
@@ -570,14 +629,21 @@ class FirestoreRoutineRepository implements RoutineRepository {
     }
   }
 
-  Future<(String name, String kind, List<Object?> muscleSyncIds)> _lookupExercise(
-    String exerciseId,
-  ) async {
+  Future<
+    (
+      String name,
+      String kind,
+      List<Object?> muscleSyncIds,
+      List<Map<String, dynamic>> params,
+    )
+  >
+  _lookupExercise(String exerciseId) async {
     final d = (await _exCol.doc(exerciseId).get()).data();
     return (
       (d?['name'] as String?) ?? '',
       (d?['kind'] as String?) ?? exerciseKindReps,
       (d?['muscleSyncIds'] as List?)?.cast<Object?>() ?? const [],
+      paramOrderToJson(paramOrderFromJson(d?['params'])),
     );
   }
 
@@ -617,7 +683,9 @@ class FirestoreRoutineRepository implements RoutineRepository {
     required String routineId,
     required String exerciseId,
   }) async {
-    final (name, kind, muscleSyncIds) = await _lookupExercise(exerciseId);
+    final (name, kind, muscleSyncIds, params) = await _lookupExercise(
+      exerciseId,
+    );
     final reId = _uuid.v4();
     var order = 0;
     await _editRoutine(routineId, (m) {
@@ -633,6 +701,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
         'exerciseSyncId': exerciseId,
         'exerciseName': name,
         'exerciseKind': kind,
+        'exerciseParams': params,
         'orderIndex': order,
         'restSeconds': 90,
         'circuitGroup': null,
@@ -715,6 +784,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     final psId = _uuid.v4();
     var setIndex = 0;
@@ -729,6 +799,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
             'targetReps': targetReps,
             'targetWeightKg': targetWeightKg,
             'targetSeconds': targetSeconds,
+            'targetParams': targetParams,
           });
           e['plannedSets'] = ps;
           return true;
@@ -743,6 +814,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
       targetReps: targetReps,
       targetWeightKg: targetWeightKg,
       targetSeconds: targetSeconds,
+      targetParams: targetParams,
     );
   }
 
@@ -752,6 +824,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) => _editOwningRoutine((exs) {
     for (final e in exs) {
       final ps = _asMaps(e['plannedSets']);
@@ -760,6 +833,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
           s['targetReps'] = targetReps;
           s['targetWeightKg'] = targetWeightKg;
           s['targetSeconds'] = targetSeconds;
+          s['targetParams'] = targetParams;
           e['plannedSets'] = ps;
           return true;
         }
@@ -789,7 +863,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
     required String routineExerciseId,
     required String exerciseId,
   }) async {
-    final (name, kind, _) = await _lookupExercise(exerciseId);
+    final (name, kind, _, params) = await _lookupExercise(exerciseId);
     final altId = _uuid.v4();
     var order = 0;
     await _editOwningRoutine((exs) {
@@ -802,6 +876,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
             'exerciseSyncId': exerciseId,
             'exerciseName': name,
             'exerciseKind': kind,
+            'exerciseParams': params,
             'orderIndex': order,
             'plannedSets': <Object?>[],
           });
@@ -825,6 +900,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     final psId = _uuid.v4();
     var setIndex = 0;
@@ -841,6 +917,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
               'targetReps': targetReps,
               'targetWeightKg': targetWeightKg,
               'targetSeconds': targetSeconds,
+              'targetParams': targetParams,
             });
             a['plannedSets'] = ps;
             e['alternatives'] = alts;
@@ -857,6 +934,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
       targetReps: targetReps,
       targetWeightKg: targetWeightKg,
       targetSeconds: targetSeconds,
+      targetParams: targetParams,
     );
   }
 
@@ -866,6 +944,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) => _editOwningRoutine((exs) {
     for (final e in exs) {
       final alts = _asMaps(e['alternatives']);
@@ -876,6 +955,7 @@ class FirestoreRoutineRepository implements RoutineRepository {
             s['targetReps'] = targetReps;
             s['targetWeightKg'] = targetWeightKg;
             s['targetSeconds'] = targetSeconds;
+            s['targetParams'] = targetParams;
             a['plannedSets'] = ps;
             e['alternatives'] = alts;
             return true;
@@ -990,6 +1070,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         actualReps: c.actualReps,
         actualWeightKg: c.actualWeightKg,
         actualSeconds: c.actualSeconds,
+        actualParams: c.actualParams,
         completedAt: DateTime.fromMillisecondsSinceEpoch(c.completedAtMs),
         avgHeartRate: c.avgHeartRate,
         maxHeartRate: c.maxHeartRate,
@@ -1016,6 +1097,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
               restSeconds: we.restSeconds,
               circuitGroup: we.circuitGroup,
               kind: we.kind,
+              params: we.params,
               routineExerciseId: we.routineExerciseSyncId,
             ),
             sets: [
@@ -1028,6 +1110,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
                     targetReps: ws.targetReps,
                     targetWeightKg: ws.targetWeightKg,
                     targetSeconds: ws.targetSeconds,
+                    targetParams: ws.targetParams,
                   ),
                   completion: completionBySet[ws.syncId] == null
                       ? null
@@ -1360,6 +1443,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
               'exerciseSyncId': re.exerciseSyncId,
               'exerciseName': re.exerciseName,
               'kind': re.exerciseKind,
+              'params': paramOrderToJson(re.exerciseParams),
               'orderIndex': re.orderIndex,
               'restSeconds': re.restSeconds,
               'circuitGroup': re.circuitGroup,
@@ -1372,6 +1456,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
                     'targetReps': ps.targetReps,
                     'targetWeightKg': ps.targetWeightKg,
                     'targetSeconds': ps.targetSeconds,
+                    'targetParams': ps.targetParams,
                   },
               ],
             });
@@ -1426,6 +1511,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     final exDoc = await _exCol.doc(exerciseId).get();
     final name = (exDoc.data()?['name'] as String?) ?? '';
     final kind = (exDoc.data()?['kind'] as String?) ?? exerciseKindReps;
+    final params = paramOrderFromJson(exDoc.data()?['params']);
     final weId = _uuid.v4();
     var order = 0;
     await _editWorkout(workoutId, (m) {
@@ -1441,6 +1527,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         'exerciseSyncId': exerciseId,
         'exerciseName': name,
         'kind': kind,
+        'params': paramOrderToJson(params),
         'orderIndex': order,
         'restSeconds': 90,
         'circuitGroup': null,
@@ -1457,6 +1544,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       orderIndex: order,
       restSeconds: 90,
       kind: kind,
+      params: params,
     );
   }
 
@@ -1494,6 +1582,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     if (exDoc == null) return;
     final name = exDoc['name'] as String? ?? '';
     final kind = exDoc['kind'] as String? ?? exerciseKindReps;
+    final params = paramOrderToJson(paramOrderFromJson(exDoc['params']));
 
     final snap = await _col.get();
     for (final doc in snap.docs) {
@@ -1505,7 +1594,13 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         m['exercises'] = [
           for (final e in _asMaps(m['exercises']))
             if (e['syncId'] == workoutExerciseId)
-              {...e, 'exerciseSyncId': exerciseId, 'exerciseName': name, 'kind': kind}
+              {
+                ...e,
+                'exerciseSyncId': exerciseId,
+                'exerciseName': name,
+                'kind': kind,
+                'params': params,
+              }
             else
               e,
         ];
@@ -1542,6 +1637,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     final wsId = _uuid.v4();
     var setIndex = 0;
@@ -1557,6 +1653,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
             'targetReps': targetReps,
             'targetWeightKg': targetWeightKg,
             'targetSeconds': targetSeconds,
+            'targetParams': targetParams,
           });
           e['sets'] = sets;
           m['exercises'] = exs;
@@ -1572,6 +1669,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
       targetReps: targetReps,
       targetWeightKg: targetWeightKg,
       targetSeconds: targetSeconds,
+      targetParams: targetParams,
     );
   }
 
@@ -1606,6 +1704,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
   }) async {
@@ -1620,6 +1719,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         row['actualReps'] = actualReps;
         row['actualWeightKg'] = actualWeightKg;
         row['actualSeconds'] = actualSeconds;
+        row['actualParams'] = actualParams;
         row['completedAtMs'] = nowMs;
         if (avgHeartRate.present) row['avgHeartRate'] = avgHeartRate.value;
         if (maxHeartRate.present) row['maxHeartRate'] = maxHeartRate.value;
@@ -1630,6 +1730,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
           'actualReps': actualReps,
           'actualWeightKg': actualWeightKg,
           'actualSeconds': actualSeconds,
+          'actualParams': actualParams,
           'completedAtMs': nowMs,
           'avgHeartRate': avgHeartRate.present ? avgHeartRate.value : null,
           'maxHeartRate': maxHeartRate.present ? maxHeartRate.value : null,
@@ -1651,6 +1752,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     DateTime? completedAt,
   }) => _editOwningWorkout((m) {
     final comps = _asMaps(m['completions']);
@@ -1659,6 +1761,7 @@ class FirestoreWorkoutRepository implements WorkoutRepository {
         c['actualReps'] = actualReps;
         c['actualWeightKg'] = actualWeightKg;
         c['actualSeconds'] = actualSeconds;
+        c['actualParams'] = actualParams;
         if (completedAt != null) {
           c['completedAtMs'] = completedAt.millisecondsSinceEpoch;
         }

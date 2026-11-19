@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import '../../l10n/l10n.dart';
 import 'figure/exercise_visual.dart';
 import 'muscle_selector.dart';
+import 'param_order_editor.dart';
 
 class ExerciseEditPage extends ConsumerStatefulWidget {
   const ExerciseEditPage({
@@ -37,6 +40,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   String _kind = exerciseKindReps;
+  List<ParamEntry> _params = defaultParamOrder;
   Exercise? _loaded;
   bool _initializing = true;
   // Muscle ids currently selected for the exercise being edited. Resolved from
@@ -64,6 +68,7 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
       _loaded = found;
       _nameController.text = found?.name ?? '';
       _kind = found?.kind ?? exerciseKindReps;
+      _params = found?.params ?? defaultParamOrder;
       _selectedMuscleIds
         ..clear()
         ..addAll(mus.map((m) => m.syncId));
@@ -91,6 +96,9 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
           await db.setExerciseKind(_loaded!.syncId, _kind);
         }
         exercise = _loaded!;
+      }
+      if (!listEquals(exercise.params, _params)) {
+        await db.setExerciseParams(exercise.syncId, _params);
       }
       await db.setExerciseMuscles(exercise.syncId, _selectedMuscleIds.toList());
       if (!mounted) return;
@@ -215,6 +223,11 @@ class _ExerciseEditPageState extends ConsumerState<ExerciseEditPage> {
                 ],
                 selected: {_kind},
                 onSelectionChanged: (s) => setState(() => _kind = s.first),
+              ),
+              const SizedBox(height: 16),
+              ParamOrderEditor(
+                order: _params,
+                onChanged: (next) => setState(() => _params = next),
               ),
               const SizedBox(height: 16),
               MuscleSelector(

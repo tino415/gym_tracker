@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart' show exerciseKindTime;
+import '../../data/exercise_params.dart';
 import '../../l10n/l10n.dart';
 import '../number_format.dart';
 
 /// Values entered for a planned set. reps + weight for reps-kind; seconds +
-/// optional weight for time-kind.
+/// optional weight for time-kind; plus a value per custom parameter filled in.
 class SetValues {
-  const SetValues({this.reps, this.weightKg, this.seconds});
+  const SetValues({this.reps, this.weightKg, this.seconds, this.params});
   final int? reps;
   final double? weightKg;
   final int? seconds;
+  final ParamValues? params;
 }
 
 /// Keyboard-first planned-set editor, shared by primary and alternative sets.
@@ -31,9 +33,13 @@ class SetEditorDialog extends StatefulWidget {
     this.initialReps,
     this.initialWeightKg,
     this.initialSeconds,
+    this.params = const [],
+    this.initialParams,
   });
 
   final String kind;
+  final List<CustomParam> params;
+  final ParamValues? initialParams;
 
   /// Non-null puts the dialog in edit mode (save-and-close, no "add another").
   final String? existingId;
@@ -55,6 +61,14 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
       text: widget.initialWeightKg?.toStringAsFixed(0) ?? '20');
   late final TextEditingController _seconds =
       TextEditingController(text: widget.initialSeconds?.toString() ?? '30');
+  late final Map<String, TextEditingController> _paramFields = {
+    for (final p in widget.params)
+      p.id: TextEditingController(
+        text: widget.initialParams?[p.id] == null
+            ? ''
+            : formatParamValue(widget.initialParams![p.id]!),
+      ),
+  };
   final _firstFocus = FocusNode();
   bool _busy = false;
   int _added = 0;
@@ -67,21 +81,32 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
     _reps.dispose();
     _weight.dispose();
     _seconds.dispose();
+    for (final c in _paramFields.values) {
+      c.dispose();
+    }
     _firstFocus.dispose();
     super.dispose();
+  }
+
+  ParamValues? _readParams() {
+    final values = {
+      for (final e in _paramFields.entries) e.key: ?parseDecimal(e.value.text),
+    };
+    return values.isEmpty ? null : values;
   }
 
   /// Parse the fields, or null if invalid (leaves the dialog open).
   SetValues? _read() {
     final weight = parseDecimal(_weight.text);
+    final params = _readParams();
     if (_isTime) {
       final s = int.tryParse(_seconds.text.trim());
       if (s == null || s <= 0) return null;
-      return SetValues(seconds: s, weightKg: weight);
+      return SetValues(seconds: s, weightKg: weight, params: params);
     }
     final r = int.tryParse(_reps.text.trim());
     if (r == null || weight == null) return null;
-    return SetValues(reps: r, weightKg: weight);
+    return SetValues(reps: r, weightKg: weight, params: params);
   }
 
   Future<void> _save({required bool another}) async {
@@ -146,7 +171,8 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
       title: Text(title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
-        children: _isTime
+        children: [
+          ...(_isTime
             ? [
                 _field(_seconds,
                     label: context.l10n.commonSeconds, suffix: context.l10n.commonUnitSeconds, autofocus: true),
@@ -162,7 +188,16 @@ class _SetEditorDialogState extends State<SetEditorDialog> {
                     autofocus: true),
                 const SizedBox(height: 8),
                 _field(_reps, label: context.l10n.commonReps),
-              ],
+              ]),
+          for (final p in widget.params) ...[
+            const SizedBox(height: 8),
+            _field(
+              _paramFields[p.id]!,
+              label: context.l10n.paramsValueOptional(p.name),
+              decimal: true,
+            ),
+          ],
+        ],
       ),
       actions: _isEdit
           ? [

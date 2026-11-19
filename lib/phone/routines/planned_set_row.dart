@@ -13,6 +13,7 @@ class PlannedSetRow extends StatelessWidget {
     required this.setIndex,
     required this.plannedSet,
     required this.kind,
+    required this.params,
     required this.onEdit,
     required this.onDelete,
   });
@@ -20,10 +21,17 @@ class PlannedSetRow extends StatelessWidget {
   final int setIndex;
   final PlannedSet plannedSet;
   final String kind;
+  final List<ParamEntry> params;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   String _describe(BuildContext context) {
+    final main = _describeMain(context);
+    final extra = paramLabel(plannedSet.targetParams, params);
+    return extra.isEmpty ? main : '$main · $extra';
+  }
+
+  String _describeMain(BuildContext context) {
     if (kind == exerciseKindTime) {
       final s = plannedSet.targetSeconds ?? 0;
       final w = plannedSet.targetWeightKg;

@@ -35,6 +35,7 @@ Future<void> seedDemoData({
     int? reps,
     double? weightKg,
     int? seconds,
+    ParamValues? targetParams,
     int restSeconds = 90,
     int? circuitGroup,
   }) async {
@@ -52,6 +53,7 @@ Future<void> seedDemoData({
         targetReps: reps,
         targetWeightKg: weightKg,
         targetSeconds: seconds,
+        targetParams: targetParams,
       );
     }
   }
@@ -61,6 +63,11 @@ Future<void> seedDemoData({
   final pushdown = await exercise('Triceps Pushdown');
   final plank = await exercise('Plank', kind: exerciseKindTime);
   final legRaise = await exercise('Hanging Leg Raise');
+  final bike = await exercise('Stationary bike', kind: exerciseKindTime);
+  await exercises.setExerciseParams(bike, const [
+    CustomParam(id: 'level', name: 'Level'),
+    WeightEntry(),
+  ]);
 
   // A standalone exercise followed by a circuit pair — enough to see the
   // walker alternate between members. Rest 0 on the first member is what makes
@@ -77,4 +84,6 @@ Future<void> seedDemoData({
   final core = await routines.createRoutine('Demo Core');
   await slot(core.syncId, plank, sets: 3, seconds: 45, restSeconds: 30);
   await slot(core.syncId, legRaise, sets: 3, reps: 12, restSeconds: 30);
+  await slot(core.syncId, bike,
+      sets: 1, seconds: 600, targetParams: {'level': 8}, restSeconds: 30);
 }

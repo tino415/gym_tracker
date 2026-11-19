@@ -4,9 +4,12 @@ import 'package:uuid/uuid.dart';
 
 import 'circuit_rest_v15.dart';
 import 'exercise_kind.dart';
+import 'exercise_params.dart';
+import 'exercise_params_converters.dart';
 import 'muscle_seeds.dart';
 
 export 'exercise_kind.dart';
+export 'exercise_params.dart';
 
 part 'database.g.dart';
 
@@ -57,6 +60,11 @@ class Exercises extends Table {
   // routine/workout joins deliberately do NOT, so a routine that still
   // references a deleted exercise keeps rendering its name.
   DateTimeColumn get deletedAt => dateTime().nullable()();
+  // Ordered list of the exercise's parameters, Weight included. Literal default
+  // for the schema-dump reason on [kind]; '[]' reads as [weight].
+  TextColumn get params => text()
+      .map(const ParamOrderConverter())
+      .withDefault(const Constant('[]'))();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -109,6 +117,8 @@ class PlannedSets extends Table {
   RealColumn get targetWeightKg => real().nullable()();
   // For time-kind exercises:
   IntColumn get targetSeconds => integer().nullable()();
+  TextColumn get targetParams =>
+      text().map(const ParamValuesConverter()).nullable()();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -144,6 +154,8 @@ class AlternativePlannedSets extends Table {
   IntColumn get targetReps => integer().nullable()();
   RealColumn get targetWeightKg => real().nullable()();
   IntColumn get targetSeconds => integer().nullable()();
+  TextColumn get targetParams =>
+      text().map(const ParamValuesConverter()).nullable()();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -215,6 +227,11 @@ class WorkoutExercises extends Table {
   IntColumn get circuitGroup => integer().nullable()();
   // Literal, for the schema-dump reason on `Exercises.kind`.
   TextColumn get kind => text().withDefault(const Constant('reps'))();
+  // The exercise's parameter names and order as they were when the workout
+  // started, so history keeps the names the values were logged under.
+  TextColumn get params => text()
+      .map(const ParamOrderConverter())
+      .withDefault(const Constant('[]'))();
   // Back-pointer to the routine slot this workout exercise was created from.
   // SET NULL on delete so a routine edit that removes the slot mid-workout
   // gracefully disables mid-workout swap without breaking the workout itself.
@@ -236,6 +253,8 @@ class WorkoutSets extends Table {
   IntColumn get targetReps => integer().nullable()();
   RealColumn get targetWeightKg => real().nullable()();
   IntColumn get targetSeconds => integer().nullable()();
+  TextColumn get targetParams =>
+      text().map(const ParamValuesConverter()).nullable()();
   @override
   Set<Column> get primaryKey => {syncId};
 }
@@ -250,6 +269,8 @@ class SetCompletions extends Table {
   IntColumn get actualReps => integer().nullable()();
   RealColumn get actualWeightKg => real().nullable()();
   IntColumn get actualSeconds => integer().nullable()();
+  TextColumn get actualParams =>
+      text().map(const ParamValuesConverter()).nullable()();
   DateTimeColumn get completedAt => dateTime()();
   // Per-set heart-rate aggregates over the time the set was active. Nullable
   // because earlier rows / sets recorded without HR permission won't have them.
@@ -443,7 +464,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -517,6 +538,16 @@ class AppDatabase extends _$AppDatabase {
       // is what they are, the label having been discarded at capture until now.
       if (from < 16) {
         await m.addColumn(heartRateSamples, heartRateSamples.accuracy);
+      }
+      // v16 → v17: custom parameters. Every column is additive; existing rows
+      // read as an exercise with weight alone and sets without parameter values.
+      if (from < 17) {
+        await m.addColumn(exercises, exercises.params);
+        await m.addColumn(plannedSets, plannedSets.targetParams);
+        await m.addColumn(alternativePlannedSets, alternativePlannedSets.targetParams);
+        await m.addColumn(workoutExercises, workoutExercises.params);
+        await m.addColumn(workoutSets, workoutSets.targetParams);
+        await m.addColumn(setCompletions, setCompletions.actualParams);
       }
     },
   );
@@ -725,6 +756,63 @@ class AppDatabase extends _$AppDatabase {
       exercises,
     )..where((t) => t.syncId.equals(id))).write(ExercisesCompanion(kind: Value(kind)));
     await _bumpExerciseVersion(id);
+  }
+
+  /// Replace the exercise's parameter list. A parameter that left the list
+  /// loses its targets on every routine set that carries it; workouts keep the
+  /// values they snapshotted.
+  Future<void> setExerciseParams(String id, List<ParamEntry> order) async {
+    await transaction(() async {
+      await (update(exercises)..where((t) => t.syncId.equals(id))).write(
+        ExercisesCompanion(params: Value(order)),
+      );
+      await _bumpExerciseVersion(id);
+      await _dropRoutineTargetsOutside(id, {for (final p in order.custom) p.id});
+    });
+  }
+
+  Future<void> _dropRoutineTargetsOutside(
+    String exerciseId,
+    Set<String> kept,
+  ) async {
+    final affectedRoutines = <String>{};
+    final slots = await (select(routineExercises)
+          ..where((t) => t.exerciseId.equals(exerciseId)))
+        .get();
+    for (final slot in slots) {
+      final sets = await (select(plannedSets)
+            ..where((t) => t.routineExerciseId.equals(slot.syncId)))
+          .get();
+      for (final set in sets) {
+        final trimmed = keepOnly(set.targetParams, kept);
+        if (encodeParamValues(trimmed) == encodeParamValues(set.targetParams)) continue;
+        await (update(plannedSets)..where((t) => t.syncId.equals(set.syncId)))
+            .write(PlannedSetsCompanion(targetParams: Value(trimmed)));
+        affectedRoutines.add(slot.routineId);
+      }
+    }
+    final alternatives = await (select(routineExerciseAlternatives)
+          ..where((t) => t.exerciseId.equals(exerciseId)))
+        .get();
+    for (final alt in alternatives) {
+      final sets = await (select(alternativePlannedSets)
+            ..where((t) => t.alternativeId.equals(alt.syncId)))
+          .get();
+      for (final set in sets) {
+        final trimmed = keepOnly(set.targetParams, kept);
+        if (encodeParamValues(trimmed) == encodeParamValues(set.targetParams)) continue;
+        await (update(alternativePlannedSets)
+              ..where((t) => t.syncId.equals(set.syncId)))
+            .write(AlternativePlannedSetsCompanion(targetParams: Value(trimmed)));
+        final slot = await (select(routineExercises)
+              ..where((t) => t.syncId.equals(alt.routineExerciseId)))
+            .getSingle();
+        affectedRoutines.add(slot.routineId);
+      }
+    }
+    for (final routineId in affectedRoutines) {
+      await _bumpRoutineVersion(routineId);
+    }
   }
 
   /// Soft-delete: leave a versioned tombstone (`deletedAt` set + bumped
@@ -1065,6 +1153,7 @@ class AppDatabase extends _$AppDatabase {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     return transaction(() async {
       final re = await (select(
@@ -1080,6 +1169,7 @@ class AppDatabase extends _$AppDatabase {
           targetReps: Value(targetReps),
           targetWeightKg: Value(targetWeightKg),
           targetSeconds: Value(targetSeconds),
+          targetParams: Value(targetParams),
         ),
       );
       await _bumpRoutineVersion(re.routineId);
@@ -1092,6 +1182,7 @@ class AppDatabase extends _$AppDatabase {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     await transaction(() async {
       final ps = await (select(
@@ -1106,6 +1197,7 @@ class AppDatabase extends _$AppDatabase {
           targetReps: Value(targetReps),
           targetWeightKg: Value(targetWeightKg),
           targetSeconds: Value(targetSeconds),
+          targetParams: Value(targetParams),
         ),
       );
       await _bumpRoutineVersion(re.routineId);
@@ -1194,6 +1286,7 @@ class AppDatabase extends _$AppDatabase {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     return transaction(() async {
       final alt = await (select(
@@ -1217,6 +1310,7 @@ class AppDatabase extends _$AppDatabase {
           targetReps: Value(targetReps),
           targetWeightKg: Value(targetWeightKg),
           targetSeconds: Value(targetSeconds),
+          targetParams: Value(targetParams),
         ),
       );
       await _bumpRoutineVersion(re.routineId);
@@ -1231,6 +1325,7 @@ class AppDatabase extends _$AppDatabase {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     await transaction(() async {
       final ps = await (select(
@@ -1249,6 +1344,7 @@ class AppDatabase extends _$AppDatabase {
               targetReps: Value(targetReps),
               targetWeightKg: Value(targetWeightKg),
               targetSeconds: Value(targetSeconds),
+              targetParams: Value(targetParams),
             ),
           );
       await _bumpRoutineVersion(re.routineId);
@@ -1413,6 +1509,7 @@ class AppDatabase extends _$AppDatabase {
           restSeconds: Value(re.routineExercise.restSeconds),
           circuitGroup: Value(re.routineExercise.circuitGroup),
           kind: Value(re.exercise.kind),
+          params: Value(re.exercise.params),
           routineExerciseId: Value(re.routineExercise.syncId),
         ),
       );
@@ -1425,6 +1522,7 @@ class AppDatabase extends _$AppDatabase {
             targetReps: Value(ps.targetReps),
             targetWeightKg: Value(ps.targetWeightKg),
             targetSeconds: Value(ps.targetSeconds),
+            targetParams: Value(ps.targetParams),
           ),
         );
       }
@@ -1812,18 +1910,26 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       for (final imp in improvements) {
         if (imp.targetIsAlternative) {
+          final existing = await (select(alternativePlannedSets)
+                ..where((t) => t.syncId.equals(imp.targetPlannedSetId)))
+              .getSingle();
           await updateAlternativePlannedSet(
             id: imp.targetPlannedSetId,
             targetReps: imp.newReps,
             targetWeightKg: imp.newWeightKg,
             targetSeconds: imp.newSeconds,
+            targetParams: existing.targetParams,
           );
         } else {
+          final existing = await (select(plannedSets)
+                ..where((t) => t.syncId.equals(imp.targetPlannedSetId)))
+              .getSingle();
           await updatePlannedSet(
             id: imp.targetPlannedSetId,
             targetReps: imp.newReps,
             targetWeightKg: imp.newWeightKg,
             targetSeconds: imp.newSeconds,
+            targetParams: existing.targetParams,
           );
         }
       }
@@ -1850,6 +1956,7 @@ class AppDatabase extends _$AppDatabase {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
   }) async {
@@ -1868,6 +1975,7 @@ class AppDatabase extends _$AppDatabase {
             actualReps: Value(actualReps),
             actualWeightKg: Value(actualWeightKg),
             actualSeconds: Value(actualSeconds),
+            actualParams: Value(actualParams),
             avgHeartRate: avgHeartRate,
             maxHeartRate: maxHeartRate,
             completedAt: Value(DateTime.now()),
@@ -1887,6 +1995,7 @@ class AppDatabase extends _$AppDatabase {
           actualReps: Value(actualReps),
           actualWeightKg: Value(actualWeightKg),
           actualSeconds: Value(actualSeconds),
+          actualParams: Value(actualParams),
           avgHeartRate: avgHeartRate,
           maxHeartRate: maxHeartRate,
           completedAt: DateTime.now(),
@@ -1905,6 +2014,7 @@ class AppDatabase extends _$AppDatabase {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     DateTime? completedAt,
   }) async {
     await transaction(() async {
@@ -1914,6 +2024,7 @@ class AppDatabase extends _$AppDatabase {
           actualReps: Value(actualReps),
           actualWeightKg: Value(actualWeightKg),
           actualSeconds: Value(actualSeconds),
+          actualParams: Value(actualParams),
           completedAt: completedAt == null
               ? const Value.absent()
               : Value(completedAt),
@@ -1973,6 +2084,7 @@ class AppDatabase extends _$AppDatabase {
           exerciseName: ex.name,
           orderIndex: next,
           kind: Value(ex.kind),
+          params: Value(ex.params),
         ),
       );
       await _bumpWorkoutVersion(workoutId);
@@ -2023,6 +2135,7 @@ class AppDatabase extends _$AppDatabase {
           exerciseId: Value(ex.syncId),
           exerciseName: Value(ex.name),
           kind: Value(ex.kind),
+          params: Value(ex.params),
         ),
       );
       if (workoutId != null) await _bumpWorkoutVersion(workoutId);
@@ -2034,6 +2147,7 @@ class AppDatabase extends _$AppDatabase {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   }) async {
     return transaction(() async {
       final maxIndexExpr = workoutSets.setIndex.max();
@@ -2052,6 +2166,7 @@ class AppDatabase extends _$AppDatabase {
           targetReps: Value(targetReps),
           targetWeightKg: Value(targetWeightKg),
           targetSeconds: Value(targetSeconds),
+          targetParams: Value(targetParams),
         ),
       );
       final workoutId = await _workoutIdOfWorkoutExercise(workoutExerciseId);
@@ -2120,6 +2235,7 @@ class AppDatabase extends _$AppDatabase {
                 targetReps: Value(aps.targetReps),
                 targetWeightKg: Value(aps.targetWeightKg),
                 targetSeconds: Value(aps.targetSeconds),
+                targetParams: Value(aps.targetParams),
               ),
             );
             continue;
@@ -2131,6 +2247,7 @@ class AppDatabase extends _$AppDatabase {
                   targetReps: Value(aps.targetReps),
                   targetWeightKg: Value(aps.targetWeightKg),
                   targetSeconds: Value(aps.targetSeconds),
+                  targetParams: Value(aps.targetParams),
                 ),
               );
         }
@@ -2143,6 +2260,7 @@ class AppDatabase extends _$AppDatabase {
               exerciseId: Value(ex.syncId),
               exerciseName: Value(ex.name),
               kind: Value(ex.kind),
+              params: Value(ex.params),
             ),
           );
       await _bumpWorkoutVersion(we.workoutId);
@@ -2169,6 +2287,7 @@ class AppDatabase extends _$AppDatabase {
             targetReps: s.targetReps,
             targetWeightKg: s.targetWeightKg,
             targetSeconds: s.targetSeconds,
+            targetParams: s.targetParams,
           ),
         ];
       }
@@ -2177,6 +2296,10 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) => t.routineExerciseId.equals(routineExerciseId))
           ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
         .get();
+    final slot = await (select(routineExercises)
+          ..where((t) => t.syncId.equals(routineExerciseId)))
+        .getSingle();
+    final sameExercise = slot.exerciseId == newExerciseId;
     return [
       for (final s in primary)
         (
@@ -2184,6 +2307,7 @@ class AppDatabase extends _$AppDatabase {
             targetReps: s.targetReps,
             targetWeightKg: s.targetWeightKg,
             targetSeconds: s.targetSeconds,
+            targetParams: sameExercise ? s.targetParams : null,
           ),
     ];
   }
@@ -2238,4 +2362,5 @@ typedef _SwapTarget = ({
   int? targetReps,
   double? targetWeightKg,
   int? targetSeconds,
+  ParamValues? targetParams,
 });

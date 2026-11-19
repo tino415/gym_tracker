@@ -1,3 +1,4 @@
+import 'package:gym_tracker/data/exercise_params.dart';
 import 'package:gym_tracker/sync/sync_dtos.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
@@ -74,10 +75,16 @@ Map<String, Object?> workoutJson(WorkoutDto w) {
                 if (s.targetWeightKg != null)
                   'targetWeightKg': s.targetWeightKg,
                 if (s.targetSeconds != null) 'targetSeconds': s.targetSeconds,
+                if (namedParamValues(s.targetParams, e.params)
+                    case final named?)
+                  'targetParameters': named,
                 if (done[s.syncId] case final c?) ...{
                   if (c.actualReps != null) 'reps': c.actualReps,
                   if (c.actualWeightKg != null) 'weightKg': c.actualWeightKg,
                   if (c.actualSeconds != null) 'seconds': c.actualSeconds,
+                  if (namedParamValues(c.actualParams, e.params)
+                      case final named?)
+                    'parameters': named,
                   'completedAt': isoUtc(c.completedAtMs),
                 },
               },

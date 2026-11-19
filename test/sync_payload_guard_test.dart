@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gym_tracker/data/exercise_params.dart';
 import 'package:gym_tracker/sync/sync_codec.dart';
 
 /// A guard on *what leaves the device*.
@@ -49,6 +50,10 @@ void main() {
           orderIndex: 0,
           restSeconds: 90,
           circuitGroup: 1,
+          params: const [
+            WeightEntry(),
+            CustomParam(id: 'p1', name: 'Level'),
+          ],
           routineExerciseSyncId: 're1',
           sets: [
             WorkoutSetDto(
@@ -57,6 +62,7 @@ void main() {
               targetReps: 8,
               targetWeightKg: 60,
               targetSeconds: null,
+              targetParams: {'p1': 8},
             ),
           ],
         ),
@@ -68,6 +74,7 @@ void main() {
           actualReps: 8,
           actualWeightKg: 60,
           actualSeconds: null,
+          actualParams: {'p1': 8},
           completedAtMs: 1800,
           avgHeartRate: 128,
           maxHeartRate: 150,
@@ -95,6 +102,9 @@ void main() {
       'exercises[].exerciseSyncId',
       'exercises[].exerciseName',
       'exercises[].kind',
+      'exercises[].params[].builtin',
+      'exercises[].params[].id',
+      'exercises[].params[].name',
       'exercises[].orderIndex',
       'exercises[].restSeconds',
       'exercises[].circuitGroup',
@@ -104,11 +114,14 @@ void main() {
       'exercises[].sets[].targetReps',
       'exercises[].sets[].targetWeightKg',
       'exercises[].sets[].targetSeconds',
+      // Keyed by parameter id, so the id is the last path segment.
+      'exercises[].sets[].targetParams.p1',
       'completions[].syncId',
       'completions[].workoutSetSyncId',
       'completions[].actualReps',
       'completions[].actualWeightKg',
       'completions[].actualSeconds',
+      'completions[].actualParams.p1',
       'completions[].completedAtMs',
       'completions[].avgHeartRate',
       'completions[].maxHeartRate',

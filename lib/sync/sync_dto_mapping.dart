@@ -18,6 +18,7 @@ RoutineExerciseDto routineExerciseToDto(FullRoutineExercise re) {
     exerciseSyncId: re.exercise.syncId,
     exerciseName: re.exercise.name,
     exerciseKind: re.exercise.kind,
+    exerciseParams: re.exercise.params,
     orderIndex: re.routineExercise.orderIndex,
     restSeconds: re.routineExercise.restSeconds,
     circuitGroup: re.routineExercise.circuitGroup,
@@ -34,6 +35,7 @@ PlannedSetDto plannedSetToDto(PlannedSet ps) {
     targetReps: ps.targetReps,
     targetWeightKg: ps.targetWeightKg,
     targetSeconds: ps.targetSeconds,
+    targetParams: ps.targetParams,
   );
 }
 
@@ -42,6 +44,7 @@ ExerciseDto exerciseToDto(Exercise e, List<String> muscleSyncIds) {
     syncId: e.syncId,
     name: e.name,
     kind: e.kind,
+    params: e.params,
     version: e.version,
     createdAtMs: e.createdAt.millisecondsSinceEpoch,
     muscleSyncIds: muscleSyncIds,
