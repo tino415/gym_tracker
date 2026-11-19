@@ -21,9 +21,26 @@ import 'settings/theme_controller.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
 
-final _router = GoRouter(
+/// The route the platform opened the app at, such as an assistant's
+/// `/connect?request=…` link, as `main()` read it before the first frame.
+final launchRouteProvider = Provider<String>((_) => Navigator.defaultRouteName);
+
+final _routerProvider = Provider<GoRouter>((ref) {
+  final launchRoute = ref.watch(launchRouteProvider);
+  final router = _buildRouter(
+    initialLocation: launchRoute == Navigator.defaultRouteName
+        ? '/routines'
+        : launchRoute,
+  );
+  ref.onDispose(router.dispose);
+  return router;
+});
+
+GoRouter _buildRouter({required String initialLocation}) => GoRouter(
   navigatorKey: _rootKey,
-  initialLocation: '/routines',
+  initialLocation: initialLocation,
+  overridePlatformDefaultLocation: true,
+  onException: (context, state, router) => router.go('/routines'),
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
@@ -43,17 +60,15 @@ final _router = GoRouter(
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => RoutineEditPage(
-                    routineId: state.pathParameters['id']!,
-                  ),
+                  builder: (context, state) =>
+                      RoutineEditPage(routineId: state.pathParameters['id']!),
                   routes: [
                     GoRoute(
                       path: 'exercises/:reId',
                       parentNavigatorKey: _rootKey,
                       builder: (context, state) => RoutineExerciseDetailPage(
                         routineId: state.pathParameters['id']!,
-                        routineExerciseId:
-                            state.pathParameters['reId']!,
+                        routineExerciseId: state.pathParameters['reId']!,
                       ),
                     ),
                   ],
@@ -76,9 +91,8 @@ final _router = GoRouter(
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => ExerciseEditPage(
-                    exerciseId: state.pathParameters['id']!,
-                  ),
+                  builder: (context, state) =>
+                      ExerciseEditPage(exerciseId: state.pathParameters['id']!),
                 ),
               ],
             ),
@@ -93,9 +107,8 @@ final _router = GoRouter(
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (context, state) => WorkoutDetailPage(
-                    workoutId: state.pathParameters['id']!,
-                  ),
+                  builder: (context, state) =>
+                      WorkoutDetailPage(workoutId: state.pathParameters['id']!),
                 ),
               ],
             ),
@@ -121,16 +134,14 @@ final _router = GoRouter(
     GoRoute(
       path: '/run/resume/:workoutId',
       parentNavigatorKey: _rootKey,
-      builder: (context, state) => WorkoutRunPage(
-        resumeWorkoutId: state.pathParameters['workoutId']!,
-      ),
+      builder: (context, state) =>
+          WorkoutRunPage(resumeWorkoutId: state.pathParameters['workoutId']!),
     ),
     GoRoute(
       path: '/run/:routineId',
       parentNavigatorKey: _rootKey,
-      builder: (context, state) => WorkoutRunPage(
-        routineId: state.pathParameters['routineId']!,
-      ),
+      builder: (context, state) =>
+          WorkoutRunPage(routineId: state.pathParameters['routineId']!),
     ),
   ],
 );
@@ -157,7 +168,7 @@ class PhoneApp extends ConsumerWidget {
         useMaterial3: true,
       ),
       themeMode: ref.watch(themeModeProvider),
-      routerConfig: _router,
+      routerConfig: ref.watch(_routerProvider),
       // Cap every route to a centered max-width column so the app reads as a
       // focused editor on wide desktop/web windows instead of stretching edge
       // to edge; a no-op on phones (viewport < maxWidth). The margins take a

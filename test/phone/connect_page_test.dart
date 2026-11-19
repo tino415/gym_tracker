@@ -1,11 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/l10n/l10n.dart';
 import 'package:gym_tracker/phone/connect/connect_page.dart';
 import 'package:gym_tracker/sync/connect_gateway.dart';
+
+import '../../integration_test/support/connect_request.dart';
 
 class _FakeGateway implements ConnectGateway {
   _FakeGateway({
@@ -23,12 +23,6 @@ class _FakeGateway implements ConnectGateway {
     if (refuse) throw ConnectRefused(400);
     return Uri.parse(redirect);
   }
-}
-
-String _request(String clientName) {
-  String part(Object json) =>
-      base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
-  return '${part({'alg': 'HS256'})}.${part({'client_name': clientName})}.sig';
 }
 
 Future<void> _pump(
@@ -62,7 +56,11 @@ void main() {
   testWidgets('names the assistant and warns before anything is allowed', (
     tester,
   ) async {
-    await _pump(tester, request: _request('Claude'), gateway: _FakeGateway());
+    await _pump(
+      tester,
+      request: fakeConnectRequest('Claude'),
+      gateway: _FakeGateway(),
+    );
 
     expect(find.text('Connect Claude to GymTracker?'), findsOneWidget);
     expect(find.byKey(const Key('connect-warning')), findsOneWidget);
@@ -76,7 +74,7 @@ void main() {
     final redirects = <Uri>[];
     await _pump(
       tester,
-      request: _request('Claude'),
+      request: fakeConnectRequest('Claude'),
       gateway: gateway,
       redirects: redirects,
     );
@@ -97,7 +95,7 @@ void main() {
     final redirects = <Uri>[];
     await _pump(
       tester,
-      request: _request('Claude'),
+      request: fakeConnectRequest('Claude'),
       gateway: gateway,
       redirects: redirects,
     );
@@ -113,7 +111,7 @@ void main() {
     final redirects = <Uri>[];
     await _pump(
       tester,
-      request: _request('Claude'),
+      request: fakeConnectRequest('Claude'),
       gateway: _FakeGateway(refuse: true),
       redirects: redirects,
     );
@@ -131,7 +129,7 @@ void main() {
     final redirects = <Uri>[];
     await _pump(
       tester,
-      request: _request('Claude'),
+      request: fakeConnectRequest('Claude'),
       gateway: _FakeGateway(redirect: 'javascript:alert(1)'),
       redirects: redirects,
     );
@@ -152,7 +150,7 @@ void main() {
       await _pump(tester, request: 'garbage', gateway: _FakeGateway());
       expect(find.byKey(const Key('connect-invalid')), findsOneWidget);
 
-      await _pump(tester, request: _request('Claude'), gateway: null);
+      await _pump(tester, request: fakeConnectRequest('Claude'), gateway: null);
       expect(find.byKey(const Key('connect-invalid')), findsOneWidget);
       expect(find.byKey(const Key('connect-allow')), findsNothing);
     },
