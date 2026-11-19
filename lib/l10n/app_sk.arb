@@ -338,5 +338,13 @@
   "runRestPlus": "+15 s",
   "runSkipRest": "Preskočiť odpočinok",
   "runDecrease": "Znížiť: {label}",
-  "runIncrease": "Zvýšiť: {label}"
+  "runIncrease": "Zvýšiť: {label}",
+  "paramsTitle": "Parametre",
+  "paramsAdd": "Pridať parameter",
+  "paramsName": "Názov parametra",
+  "paramsOnWatchFace": "Na ciferníku hodiniek",
+  "paramsSwipePage": "Stránka po potiahnutí",
+  "paramsMore": "Viac",
+  "paramsRemove": "Odstrániť parameter",
+  "paramsValueOptional": "{name} (voliteľné)"
 }

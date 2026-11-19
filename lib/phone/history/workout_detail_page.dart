@@ -344,6 +344,8 @@ class _BodyState extends ConsumerState<_Body> {
       reps: null,
       weightKg: null,
       seconds: null,
+      params: ex.workoutExercise.params,
+      paramValues: null,
       title: finished
           ? context.l10n.historyAddCompletedSet
           : context.l10n.historyAddSet,
@@ -355,6 +357,7 @@ class _BodyState extends ConsumerState<_Body> {
       targetReps: values.$1,
       targetWeightKg: values.$2,
       targetSeconds: values.$3,
+      targetParams: values.$4,
     );
     if (!finished) return;
     await db.upsertSetCompletion(
@@ -363,6 +366,7 @@ class _BodyState extends ConsumerState<_Body> {
       actualReps: values.$1,
       actualWeightKg: values.$2,
       actualSeconds: values.$3,
+      actualParams: values.$4,
     );
   }
 
@@ -407,6 +411,8 @@ class _BodyState extends ConsumerState<_Body> {
       reps: c?.actualReps ?? set.workoutSet.targetReps,
       weightKg: c?.actualWeightKg ?? set.workoutSet.targetWeightKg,
       seconds: c?.actualSeconds ?? set.workoutSet.targetSeconds,
+      params: ex.workoutExercise.params,
+      paramValues: c?.actualParams ?? set.workoutSet.targetParams,
       title: c == null
           ? context.l10n.historyAddCompletion
           : context.l10n.historyEditCompletion,
@@ -420,6 +426,7 @@ class _BodyState extends ConsumerState<_Body> {
         actualReps: values.$1,
         actualWeightKg: values.$2,
         actualSeconds: values.$3,
+        actualParams: values.$4,
       );
     } else {
       await db.updateCompletion(
@@ -427,6 +434,7 @@ class _BodyState extends ConsumerState<_Body> {
         actualReps: values.$1,
         actualWeightKg: values.$2,
         actualSeconds: values.$3,
+        actualParams: values.$4,
       );
     }
   }
@@ -658,6 +666,7 @@ class _ExerciseSection extends ConsumerWidget {
                 index: i,
                 set: ex.sets[i],
                 kind: ex.kind,
+                params: ex.workoutExercise.params,
                 onEdit: () => onEditCompletion(ex.sets[i]),
                 onRemoveCompletion: ex.sets[i].completion == null
                     ? null
@@ -730,6 +739,7 @@ class _SetRow extends StatelessWidget {
     required this.index,
     required this.set,
     required this.kind,
+    required this.params,
     required this.onEdit,
     required this.onRemoveCompletion,
     required this.onRemoveSet,
@@ -738,6 +748,7 @@ class _SetRow extends StatelessWidget {
   final int index;
   final FullWorkoutSet set;
   final String kind;
+  final List<ParamEntry> params;
   final VoidCallback onEdit;
   final VoidCallback? onRemoveCompletion;
   final VoidCallback onRemoveSet;
@@ -793,6 +804,12 @@ class _SetRow extends StatelessWidget {
         descTarget =
             l10n.historyWeightRepsTarget(formatKg(context, tw), tr);
       }
+    }
+    final actualExtra = paramLabel(completion?.actualParams, params);
+    if (actualExtra.isNotEmpty) descActual = '$descActual · $actualExtra';
+    final targetExtra = paramLabel(set.workoutSet.targetParams, params);
+    if (targetExtra.isNotEmpty && descTarget.isNotEmpty) {
+      descTarget = '$descTarget · $targetExtra';
     }
     return InkWell(
       onTap: onEdit,
@@ -954,14 +971,24 @@ class _StampChip extends StatelessWidget {
   }
 }
 
-Future<(int?, double?, int?)?> _showSetEditDialog(
+Future<(int?, double?, int?, ParamValues?)?> _showSetEditDialog(
   BuildContext context, {
   required String kind,
   required int? reps,
   required double? weightKg,
   required int? seconds,
+  required List<ParamEntry> params,
+  required ParamValues? paramValues,
   required String title,
 }) async {
+  final paramControllers = {
+    for (final p in params.custom)
+      p.id: TextEditingController(
+        text: paramValues?[p.id] == null
+            ? ''
+            : formatParamValue(paramValues![p.id]!),
+      ),
+  };
   final repsController = TextEditingController(text: reps?.toString() ?? '');
   final weightController = TextEditingController(
     text: weightKg == null
@@ -979,7 +1006,8 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
       title: Text(title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
-        children: kind == exerciseKindTime
+        children: [
+          ...(kind == exerciseKindTime
             ? [
                 TextField(
                   controller: secondsController,
@@ -1021,7 +1049,20 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
                   decoration:
                       InputDecoration(labelText: context.l10n.historyReps),
                 ),
-              ],
+              ]),
+          for (final p in params.custom) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: paramControllers[p.id],
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: context.l10n.paramsValueOptional(p.name),
+              ),
+            ),
+          ],
+        ],
       ),
       actions: [
         TextButton(
@@ -1036,16 +1077,21 @@ Future<(int?, double?, int?)?> _showSetEditDialog(
     ),
   );
   if (result != true) return null;
+  final entered = {
+    for (final e in paramControllers.entries)
+      e.key: ?parseDecimal(e.value.text),
+  };
+  final extra = entered.isEmpty ? null : entered;
   if (kind == exerciseKindTime) {
     final s = int.tryParse(secondsController.text.trim());
     if (s == null) return null;
     final w = parseDecimal(weightController.text);
-    return (null, w, s);
+    return (null, w, s, extra);
   }
   final r = int.tryParse(repsController.text.trim());
   final w = parseDecimal(weightController.text);
   if (r == null || w == null) return null;
-  return (r, w, null);
+  return (r, w, null, extra);
 }
 
 class _ImprovementsBanner extends ConsumerStatefulWidget {

@@ -630,6 +630,52 @@ void main() {
       expect((result.content.single as TextContent).text, 'Push: Squat');
     });
 
+    test('a set with a custom parameter shows it by name', () async {
+      final uid = await emulators.createAccount();
+      await emulators.putDocument(uid, 'routines', 'r-bike', {
+        'syncId': 'r-bike',
+        'name': 'Cardio',
+        'version': 1,
+        'createdAtMs': 1,
+        'deletedAtMs': null,
+        'exercises': [
+          {
+            'syncId': 'r-bike-e1',
+            'exerciseSyncId': 'ex-bike',
+            'exerciseName': 'Stationary bike',
+            'exerciseKind': 'time',
+            'exerciseParams': [
+              {'id': 'level-id', 'name': 'Level'},
+              {'builtin': 'weight'},
+            ],
+            'orderIndex': 0,
+            'restSeconds': 30,
+            'alternatives': <Object?>[],
+            'muscleSyncIds': <Object?>[],
+            'plannedSets': [
+              {
+                'syncId': 'r-bike-s1',
+                'setIndex': 0,
+                'targetSeconds': 600,
+                'targetParams': {'level-id': 8},
+              },
+            ],
+          },
+        ],
+      });
+      final client = await connect(await serverFor(uid));
+
+      final routines = (await listRoutines(client))['routines'] as List;
+
+      final exercise = ((routines.single as Map)['exercises'] as List).single;
+      expect((exercise as Map)['sets'], [
+        {
+          'seconds': 600,
+          'parameters': {'Level': 8.0},
+        },
+      ]);
+    });
+
     test('user A cannot reach the routines of user B', () async {
       final a = await emulators.createAccount();
       final b = await emulators.createAccount();

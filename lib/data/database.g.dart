@@ -73,6 +73,16 @@ class $ExercisesTable extends Exercises
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<List<ParamEntry>, String> params =
+      GeneratedColumn<String>(
+        'params',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      ).withConverter<List<ParamEntry>>($ExercisesTable.$converterparams);
+  @override
   List<GeneratedColumn> get $columns => [
     syncId,
     name,
@@ -80,6 +90,7 @@ class $ExercisesTable extends Exercises
     kind,
     version,
     deletedAt,
+    params,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -168,6 +179,12 @@ class $ExercisesTable extends Exercises
         DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
       ),
+      params: $ExercisesTable.$converterparams.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}params'],
+        )!,
+      ),
     );
   }
 
@@ -175,6 +192,9 @@ class $ExercisesTable extends Exercises
   $ExercisesTable createAlias(String alias) {
     return $ExercisesTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<List<ParamEntry>, String> $converterparams =
+      const ParamOrderConverter();
 }
 
 class Exercise extends DataClass implements Insertable<Exercise> {
@@ -184,6 +204,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final String kind;
   final int version;
   final DateTime? deletedAt;
+  final List<ParamEntry> params;
   const Exercise({
     required this.syncId,
     required this.name,
@@ -191,6 +212,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.kind,
     required this.version,
     this.deletedAt,
+    required this.params,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -202,6 +224,11 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     map['version'] = Variable<int>(version);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    {
+      map['params'] = Variable<String>(
+        $ExercisesTable.$converterparams.toSql(params),
+      );
     }
     return map;
   }
@@ -216,6 +243,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
+      params: Value(params),
     );
   }
 
@@ -231,6 +259,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       kind: serializer.fromJson<String>(json['kind']),
       version: serializer.fromJson<int>(json['version']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      params: serializer.fromJson<List<ParamEntry>>(json['params']),
     );
   }
   @override
@@ -243,6 +272,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'kind': serializer.toJson<String>(kind),
       'version': serializer.toJson<int>(version),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'params': serializer.toJson<List<ParamEntry>>(params),
     };
   }
 
@@ -253,6 +283,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     String? kind,
     int? version,
     Value<DateTime?> deletedAt = const Value.absent(),
+    List<ParamEntry>? params,
   }) => Exercise(
     syncId: syncId ?? this.syncId,
     name: name ?? this.name,
@@ -260,6 +291,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     kind: kind ?? this.kind,
     version: version ?? this.version,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    params: params ?? this.params,
   );
   Exercise copyWithCompanion(ExercisesCompanion data) {
     return Exercise(
@@ -269,6 +301,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       kind: data.kind.present ? data.kind.value : this.kind,
       version: data.version.present ? data.version.value : this.version,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      params: data.params.present ? data.params.value : this.params,
     );
   }
 
@@ -280,14 +313,15 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('createdAt: $createdAt, ')
           ..write('kind: $kind, ')
           ..write('version: $version, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('params: $params')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(syncId, name, createdAt, kind, version, deletedAt);
+      Object.hash(syncId, name, createdAt, kind, version, deletedAt, params);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -297,7 +331,8 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.createdAt == this.createdAt &&
           other.kind == this.kind &&
           other.version == this.version &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.params == this.params);
 }
 
 class ExercisesCompanion extends UpdateCompanion<Exercise> {
@@ -307,6 +342,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<String> kind;
   final Value<int> version;
   final Value<DateTime?> deletedAt;
+  final Value<List<ParamEntry>> params;
   final Value<int> rowid;
   const ExercisesCompanion({
     this.syncId = const Value.absent(),
@@ -315,6 +351,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.kind = const Value.absent(),
     this.version = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.params = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExercisesCompanion.insert({
@@ -324,6 +361,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.kind = const Value.absent(),
     this.version = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.params = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        name = Value(name),
@@ -335,6 +373,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<String>? kind,
     Expression<int>? version,
     Expression<DateTime>? deletedAt,
+    Expression<String>? params,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -344,6 +383,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (kind != null) 'kind': kind,
       if (version != null) 'version': version,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (params != null) 'params': params,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -355,6 +395,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<String>? kind,
     Value<int>? version,
     Value<DateTime?>? deletedAt,
+    Value<List<ParamEntry>>? params,
     Value<int>? rowid,
   }) {
     return ExercisesCompanion(
@@ -364,6 +405,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       kind: kind ?? this.kind,
       version: version ?? this.version,
       deletedAt: deletedAt ?? this.deletedAt,
+      params: params ?? this.params,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -389,6 +431,11 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (params.present) {
+      map['params'] = Variable<String>(
+        $ExercisesTable.$converterparams.toSql(params.value),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -404,6 +451,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('kind: $kind, ')
           ..write('version: $version, ')
           ..write('deletedAt: $deletedAt, ')
+          ..write('params: $params, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1284,6 +1332,15 @@ class $PlannedSetsTable extends PlannedSets
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<ParamValues?, String>
+  targetParams = GeneratedColumn<String>(
+    'target_params',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<ParamValues?>($PlannedSetsTable.$convertertargetParamsn);
+  @override
   List<GeneratedColumn> get $columns => [
     syncId,
     routineExerciseId,
@@ -1291,6 +1348,7 @@ class $PlannedSetsTable extends PlannedSets
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1388,6 +1446,12 @@ class $PlannedSetsTable extends PlannedSets
         DriftSqlType.int,
         data['${effectivePrefix}target_seconds'],
       ),
+      targetParams: $PlannedSetsTable.$convertertargetParamsn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}target_params'],
+        ),
+      ),
     );
   }
 
@@ -1395,6 +1459,11 @@ class $PlannedSetsTable extends PlannedSets
   $PlannedSetsTable createAlias(String alias) {
     return $PlannedSetsTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<ParamValues, String> $convertertargetParams =
+      const ParamValuesConverter();
+  static TypeConverter<ParamValues?, String?> $convertertargetParamsn =
+      NullAwareTypeConverter.wrap($convertertargetParams);
 }
 
 class PlannedSet extends DataClass implements Insertable<PlannedSet> {
@@ -1404,6 +1473,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final ParamValues? targetParams;
   const PlannedSet({
     required this.syncId,
     required this.routineExerciseId,
@@ -1411,6 +1481,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
     this.targetReps,
     this.targetWeightKg,
     this.targetSeconds,
+    this.targetParams,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1426,6 +1497,11 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
     }
     if (!nullToAbsent || targetSeconds != null) {
       map['target_seconds'] = Variable<int>(targetSeconds);
+    }
+    if (!nullToAbsent || targetParams != null) {
+      map['target_params'] = Variable<String>(
+        $PlannedSetsTable.$convertertargetParamsn.toSql(targetParams),
+      );
     }
     return map;
   }
@@ -1444,6 +1520,9 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
       targetSeconds: targetSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(targetSeconds),
+      targetParams: targetParams == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetParams),
     );
   }
 
@@ -1459,6 +1538,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
       targetReps: serializer.fromJson<int?>(json['targetReps']),
       targetWeightKg: serializer.fromJson<double?>(json['targetWeightKg']),
       targetSeconds: serializer.fromJson<int?>(json['targetSeconds']),
+      targetParams: serializer.fromJson<ParamValues?>(json['targetParams']),
     );
   }
   @override
@@ -1471,6 +1551,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
       'targetReps': serializer.toJson<int?>(targetReps),
       'targetWeightKg': serializer.toJson<double?>(targetWeightKg),
       'targetSeconds': serializer.toJson<int?>(targetSeconds),
+      'targetParams': serializer.toJson<ParamValues?>(targetParams),
     };
   }
 
@@ -1481,6 +1562,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
     Value<int?> targetReps = const Value.absent(),
     Value<double?> targetWeightKg = const Value.absent(),
     Value<int?> targetSeconds = const Value.absent(),
+    Value<ParamValues?> targetParams = const Value.absent(),
   }) => PlannedSet(
     syncId: syncId ?? this.syncId,
     routineExerciseId: routineExerciseId ?? this.routineExerciseId,
@@ -1492,6 +1574,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
     targetSeconds: targetSeconds.present
         ? targetSeconds.value
         : this.targetSeconds,
+    targetParams: targetParams.present ? targetParams.value : this.targetParams,
   );
   PlannedSet copyWithCompanion(PlannedSetsCompanion data) {
     return PlannedSet(
@@ -1509,6 +1592,9 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
       targetSeconds: data.targetSeconds.present
           ? data.targetSeconds.value
           : this.targetSeconds,
+      targetParams: data.targetParams.present
+          ? data.targetParams.value
+          : this.targetParams,
     );
   }
 
@@ -1520,7 +1606,8 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
           ..write('setIndex: $setIndex, ')
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
-          ..write('targetSeconds: $targetSeconds')
+          ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams')
           ..write(')'))
         .toString();
   }
@@ -1533,6 +1620,7 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   );
   @override
   bool operator ==(Object other) =>
@@ -1543,7 +1631,8 @@ class PlannedSet extends DataClass implements Insertable<PlannedSet> {
           other.setIndex == this.setIndex &&
           other.targetReps == this.targetReps &&
           other.targetWeightKg == this.targetWeightKg &&
-          other.targetSeconds == this.targetSeconds);
+          other.targetSeconds == this.targetSeconds &&
+          other.targetParams == this.targetParams);
 }
 
 class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
@@ -1553,6 +1642,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
   final Value<int?> targetReps;
   final Value<double?> targetWeightKg;
   final Value<int?> targetSeconds;
+  final Value<ParamValues?> targetParams;
   final Value<int> rowid;
   const PlannedSetsCompanion({
     this.syncId = const Value.absent(),
@@ -1561,6 +1651,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PlannedSetsCompanion.insert({
@@ -1570,6 +1661,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        routineExerciseId = Value(routineExerciseId),
@@ -1581,6 +1673,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
     Expression<int>? targetReps,
     Expression<double>? targetWeightKg,
     Expression<int>? targetSeconds,
+    Expression<String>? targetParams,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1590,6 +1683,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
       if (targetReps != null) 'target_reps': targetReps,
       if (targetWeightKg != null) 'target_weight_kg': targetWeightKg,
       if (targetSeconds != null) 'target_seconds': targetSeconds,
+      if (targetParams != null) 'target_params': targetParams,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1601,6 +1695,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
     Value<int?>? targetReps,
     Value<double?>? targetWeightKg,
     Value<int?>? targetSeconds,
+    Value<ParamValues?>? targetParams,
     Value<int>? rowid,
   }) {
     return PlannedSetsCompanion(
@@ -1610,6 +1705,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
       targetReps: targetReps ?? this.targetReps,
       targetWeightKg: targetWeightKg ?? this.targetWeightKg,
       targetSeconds: targetSeconds ?? this.targetSeconds,
+      targetParams: targetParams ?? this.targetParams,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1635,6 +1731,11 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
     if (targetSeconds.present) {
       map['target_seconds'] = Variable<int>(targetSeconds.value);
     }
+    if (targetParams.present) {
+      map['target_params'] = Variable<String>(
+        $PlannedSetsTable.$convertertargetParamsn.toSql(targetParams.value),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1650,6 +1751,7 @@ class PlannedSetsCompanion extends UpdateCompanion<PlannedSet> {
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
           ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2076,6 +2178,18 @@ class $AlternativePlannedSetsTable extends AlternativePlannedSets
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<ParamValues?, String>
+  targetParams =
+      GeneratedColumn<String>(
+        'target_params',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<ParamValues?>(
+        $AlternativePlannedSetsTable.$convertertargetParamsn,
+      );
+  @override
   List<GeneratedColumn> get $columns => [
     syncId,
     alternativeId,
@@ -2083,6 +2197,7 @@ class $AlternativePlannedSetsTable extends AlternativePlannedSets
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2180,6 +2295,13 @@ class $AlternativePlannedSetsTable extends AlternativePlannedSets
         DriftSqlType.int,
         data['${effectivePrefix}target_seconds'],
       ),
+      targetParams: $AlternativePlannedSetsTable.$convertertargetParamsn
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.string,
+              data['${effectivePrefix}target_params'],
+            ),
+          ),
     );
   }
 
@@ -2187,6 +2309,11 @@ class $AlternativePlannedSetsTable extends AlternativePlannedSets
   $AlternativePlannedSetsTable createAlias(String alias) {
     return $AlternativePlannedSetsTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<ParamValues, String> $convertertargetParams =
+      const ParamValuesConverter();
+  static TypeConverter<ParamValues?, String?> $convertertargetParamsn =
+      NullAwareTypeConverter.wrap($convertertargetParams);
 }
 
 class AlternativePlannedSet extends DataClass
@@ -2197,6 +2324,7 @@ class AlternativePlannedSet extends DataClass
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final ParamValues? targetParams;
   const AlternativePlannedSet({
     required this.syncId,
     required this.alternativeId,
@@ -2204,6 +2332,7 @@ class AlternativePlannedSet extends DataClass
     this.targetReps,
     this.targetWeightKg,
     this.targetSeconds,
+    this.targetParams,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2219,6 +2348,13 @@ class AlternativePlannedSet extends DataClass
     }
     if (!nullToAbsent || targetSeconds != null) {
       map['target_seconds'] = Variable<int>(targetSeconds);
+    }
+    if (!nullToAbsent || targetParams != null) {
+      map['target_params'] = Variable<String>(
+        $AlternativePlannedSetsTable.$convertertargetParamsn.toSql(
+          targetParams,
+        ),
+      );
     }
     return map;
   }
@@ -2237,6 +2373,9 @@ class AlternativePlannedSet extends DataClass
       targetSeconds: targetSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(targetSeconds),
+      targetParams: targetParams == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetParams),
     );
   }
 
@@ -2252,6 +2391,7 @@ class AlternativePlannedSet extends DataClass
       targetReps: serializer.fromJson<int?>(json['targetReps']),
       targetWeightKg: serializer.fromJson<double?>(json['targetWeightKg']),
       targetSeconds: serializer.fromJson<int?>(json['targetSeconds']),
+      targetParams: serializer.fromJson<ParamValues?>(json['targetParams']),
     );
   }
   @override
@@ -2264,6 +2404,7 @@ class AlternativePlannedSet extends DataClass
       'targetReps': serializer.toJson<int?>(targetReps),
       'targetWeightKg': serializer.toJson<double?>(targetWeightKg),
       'targetSeconds': serializer.toJson<int?>(targetSeconds),
+      'targetParams': serializer.toJson<ParamValues?>(targetParams),
     };
   }
 
@@ -2274,6 +2415,7 @@ class AlternativePlannedSet extends DataClass
     Value<int?> targetReps = const Value.absent(),
     Value<double?> targetWeightKg = const Value.absent(),
     Value<int?> targetSeconds = const Value.absent(),
+    Value<ParamValues?> targetParams = const Value.absent(),
   }) => AlternativePlannedSet(
     syncId: syncId ?? this.syncId,
     alternativeId: alternativeId ?? this.alternativeId,
@@ -2285,6 +2427,7 @@ class AlternativePlannedSet extends DataClass
     targetSeconds: targetSeconds.present
         ? targetSeconds.value
         : this.targetSeconds,
+    targetParams: targetParams.present ? targetParams.value : this.targetParams,
   );
   AlternativePlannedSet copyWithCompanion(
     AlternativePlannedSetsCompanion data,
@@ -2304,6 +2447,9 @@ class AlternativePlannedSet extends DataClass
       targetSeconds: data.targetSeconds.present
           ? data.targetSeconds.value
           : this.targetSeconds,
+      targetParams: data.targetParams.present
+          ? data.targetParams.value
+          : this.targetParams,
     );
   }
 
@@ -2315,7 +2461,8 @@ class AlternativePlannedSet extends DataClass
           ..write('setIndex: $setIndex, ')
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
-          ..write('targetSeconds: $targetSeconds')
+          ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams')
           ..write(')'))
         .toString();
   }
@@ -2328,6 +2475,7 @@ class AlternativePlannedSet extends DataClass
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   );
   @override
   bool operator ==(Object other) =>
@@ -2338,7 +2486,8 @@ class AlternativePlannedSet extends DataClass
           other.setIndex == this.setIndex &&
           other.targetReps == this.targetReps &&
           other.targetWeightKg == this.targetWeightKg &&
-          other.targetSeconds == this.targetSeconds);
+          other.targetSeconds == this.targetSeconds &&
+          other.targetParams == this.targetParams);
 }
 
 class AlternativePlannedSetsCompanion
@@ -2349,6 +2498,7 @@ class AlternativePlannedSetsCompanion
   final Value<int?> targetReps;
   final Value<double?> targetWeightKg;
   final Value<int?> targetSeconds;
+  final Value<ParamValues?> targetParams;
   final Value<int> rowid;
   const AlternativePlannedSetsCompanion({
     this.syncId = const Value.absent(),
@@ -2357,6 +2507,7 @@ class AlternativePlannedSetsCompanion
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlternativePlannedSetsCompanion.insert({
@@ -2366,6 +2517,7 @@ class AlternativePlannedSetsCompanion
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        alternativeId = Value(alternativeId),
@@ -2377,6 +2529,7 @@ class AlternativePlannedSetsCompanion
     Expression<int>? targetReps,
     Expression<double>? targetWeightKg,
     Expression<int>? targetSeconds,
+    Expression<String>? targetParams,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2386,6 +2539,7 @@ class AlternativePlannedSetsCompanion
       if (targetReps != null) 'target_reps': targetReps,
       if (targetWeightKg != null) 'target_weight_kg': targetWeightKg,
       if (targetSeconds != null) 'target_seconds': targetSeconds,
+      if (targetParams != null) 'target_params': targetParams,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2397,6 +2551,7 @@ class AlternativePlannedSetsCompanion
     Value<int?>? targetReps,
     Value<double?>? targetWeightKg,
     Value<int?>? targetSeconds,
+    Value<ParamValues?>? targetParams,
     Value<int>? rowid,
   }) {
     return AlternativePlannedSetsCompanion(
@@ -2406,6 +2561,7 @@ class AlternativePlannedSetsCompanion
       targetReps: targetReps ?? this.targetReps,
       targetWeightKg: targetWeightKg ?? this.targetWeightKg,
       targetSeconds: targetSeconds ?? this.targetSeconds,
+      targetParams: targetParams ?? this.targetParams,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2431,6 +2587,13 @@ class AlternativePlannedSetsCompanion
     if (targetSeconds.present) {
       map['target_seconds'] = Variable<int>(targetSeconds.value);
     }
+    if (targetParams.present) {
+      map['target_params'] = Variable<String>(
+        $AlternativePlannedSetsTable.$convertertargetParamsn.toSql(
+          targetParams.value,
+        ),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2446,6 +2609,7 @@ class AlternativePlannedSetsCompanion
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
           ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3568,6 +3732,18 @@ class $WorkoutExercisesTable extends WorkoutExercises
     requiredDuringInsert: false,
     defaultValue: const Constant('reps'),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<List<ParamEntry>, String> params =
+      GeneratedColumn<String>(
+        'params',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      ).withConverter<List<ParamEntry>>(
+        $WorkoutExercisesTable.$converterparams,
+      );
   static const VerificationMeta _routineExerciseIdMeta = const VerificationMeta(
     'routineExerciseId',
   );
@@ -3593,6 +3769,7 @@ class $WorkoutExercisesTable extends WorkoutExercises
     restSeconds,
     circuitGroup,
     kind,
+    params,
     routineExerciseId,
   ];
   @override
@@ -3722,6 +3899,12 @@ class $WorkoutExercisesTable extends WorkoutExercises
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       )!,
+      params: $WorkoutExercisesTable.$converterparams.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}params'],
+        )!,
+      ),
       routineExerciseId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}routine_exercise_id'],
@@ -3733,6 +3916,9 @@ class $WorkoutExercisesTable extends WorkoutExercises
   $WorkoutExercisesTable createAlias(String alias) {
     return $WorkoutExercisesTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<List<ParamEntry>, String> $converterparams =
+      const ParamOrderConverter();
 }
 
 class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
@@ -3744,6 +3930,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
   final int restSeconds;
   final int? circuitGroup;
   final String kind;
+  final List<ParamEntry> params;
   final String? routineExerciseId;
   const WorkoutExercise({
     required this.syncId,
@@ -3754,6 +3941,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     required this.restSeconds,
     this.circuitGroup,
     required this.kind,
+    required this.params,
     this.routineExerciseId,
   });
   @override
@@ -3771,6 +3959,11 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       map['circuit_group'] = Variable<int>(circuitGroup);
     }
     map['kind'] = Variable<String>(kind);
+    {
+      map['params'] = Variable<String>(
+        $WorkoutExercisesTable.$converterparams.toSql(params),
+      );
+    }
     if (!nullToAbsent || routineExerciseId != null) {
       map['routine_exercise_id'] = Variable<String>(routineExerciseId);
     }
@@ -3791,6 +3984,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           ? const Value.absent()
           : Value(circuitGroup),
       kind: Value(kind),
+      params: Value(params),
       routineExerciseId: routineExerciseId == null && nullToAbsent
           ? const Value.absent()
           : Value(routineExerciseId),
@@ -3811,6 +4005,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       restSeconds: serializer.fromJson<int>(json['restSeconds']),
       circuitGroup: serializer.fromJson<int?>(json['circuitGroup']),
       kind: serializer.fromJson<String>(json['kind']),
+      params: serializer.fromJson<List<ParamEntry>>(json['params']),
       routineExerciseId: serializer.fromJson<String?>(
         json['routineExerciseId'],
       ),
@@ -3828,6 +4023,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
       'restSeconds': serializer.toJson<int>(restSeconds),
       'circuitGroup': serializer.toJson<int?>(circuitGroup),
       'kind': serializer.toJson<String>(kind),
+      'params': serializer.toJson<List<ParamEntry>>(params),
       'routineExerciseId': serializer.toJson<String?>(routineExerciseId),
     };
   }
@@ -3841,6 +4037,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     int? restSeconds,
     Value<int?> circuitGroup = const Value.absent(),
     String? kind,
+    List<ParamEntry>? params,
     Value<String?> routineExerciseId = const Value.absent(),
   }) => WorkoutExercise(
     syncId: syncId ?? this.syncId,
@@ -3851,6 +4048,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     restSeconds: restSeconds ?? this.restSeconds,
     circuitGroup: circuitGroup.present ? circuitGroup.value : this.circuitGroup,
     kind: kind ?? this.kind,
+    params: params ?? this.params,
     routineExerciseId: routineExerciseId.present
         ? routineExerciseId.value
         : this.routineExerciseId,
@@ -3875,6 +4073,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           ? data.circuitGroup.value
           : this.circuitGroup,
       kind: data.kind.present ? data.kind.value : this.kind,
+      params: data.params.present ? data.params.value : this.params,
       routineExerciseId: data.routineExerciseId.present
           ? data.routineExerciseId.value
           : this.routineExerciseId,
@@ -3892,6 +4091,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           ..write('restSeconds: $restSeconds, ')
           ..write('circuitGroup: $circuitGroup, ')
           ..write('kind: $kind, ')
+          ..write('params: $params, ')
           ..write('routineExerciseId: $routineExerciseId')
           ..write(')'))
         .toString();
@@ -3907,6 +4107,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
     restSeconds,
     circuitGroup,
     kind,
+    params,
     routineExerciseId,
   );
   @override
@@ -3921,6 +4122,7 @@ class WorkoutExercise extends DataClass implements Insertable<WorkoutExercise> {
           other.restSeconds == this.restSeconds &&
           other.circuitGroup == this.circuitGroup &&
           other.kind == this.kind &&
+          other.params == this.params &&
           other.routineExerciseId == this.routineExerciseId);
 }
 
@@ -3933,6 +4135,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
   final Value<int> restSeconds;
   final Value<int?> circuitGroup;
   final Value<String> kind;
+  final Value<List<ParamEntry>> params;
   final Value<String?> routineExerciseId;
   final Value<int> rowid;
   const WorkoutExercisesCompanion({
@@ -3944,6 +4147,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     this.restSeconds = const Value.absent(),
     this.circuitGroup = const Value.absent(),
     this.kind = const Value.absent(),
+    this.params = const Value.absent(),
     this.routineExerciseId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3956,6 +4160,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     this.restSeconds = const Value.absent(),
     this.circuitGroup = const Value.absent(),
     this.kind = const Value.absent(),
+    this.params = const Value.absent(),
     this.routineExerciseId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
@@ -3971,6 +4176,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     Expression<int>? restSeconds,
     Expression<int>? circuitGroup,
     Expression<String>? kind,
+    Expression<String>? params,
     Expression<String>? routineExerciseId,
     Expression<int>? rowid,
   }) {
@@ -3983,6 +4189,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
       if (restSeconds != null) 'rest_seconds': restSeconds,
       if (circuitGroup != null) 'circuit_group': circuitGroup,
       if (kind != null) 'kind': kind,
+      if (params != null) 'params': params,
       if (routineExerciseId != null) 'routine_exercise_id': routineExerciseId,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3997,6 +4204,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     Value<int>? restSeconds,
     Value<int?>? circuitGroup,
     Value<String>? kind,
+    Value<List<ParamEntry>>? params,
     Value<String?>? routineExerciseId,
     Value<int>? rowid,
   }) {
@@ -4009,6 +4217,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
       restSeconds: restSeconds ?? this.restSeconds,
       circuitGroup: circuitGroup ?? this.circuitGroup,
       kind: kind ?? this.kind,
+      params: params ?? this.params,
       routineExerciseId: routineExerciseId ?? this.routineExerciseId,
       rowid: rowid ?? this.rowid,
     );
@@ -4041,6 +4250,11 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
+    if (params.present) {
+      map['params'] = Variable<String>(
+        $WorkoutExercisesTable.$converterparams.toSql(params.value),
+      );
+    }
     if (routineExerciseId.present) {
       map['routine_exercise_id'] = Variable<String>(routineExerciseId.value);
     }
@@ -4061,6 +4275,7 @@ class WorkoutExercisesCompanion extends UpdateCompanion<WorkoutExercise> {
           ..write('restSeconds: $restSeconds, ')
           ..write('circuitGroup: $circuitGroup, ')
           ..write('kind: $kind, ')
+          ..write('params: $params, ')
           ..write('routineExerciseId: $routineExerciseId, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4143,6 +4358,15 @@ class $WorkoutSetsTable extends WorkoutSets
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<ParamValues?, String>
+  targetParams = GeneratedColumn<String>(
+    'target_params',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<ParamValues?>($WorkoutSetsTable.$convertertargetParamsn);
+  @override
   List<GeneratedColumn> get $columns => [
     syncId,
     workoutExerciseId,
@@ -4150,6 +4374,7 @@ class $WorkoutSetsTable extends WorkoutSets
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4247,6 +4472,12 @@ class $WorkoutSetsTable extends WorkoutSets
         DriftSqlType.int,
         data['${effectivePrefix}target_seconds'],
       ),
+      targetParams: $WorkoutSetsTable.$convertertargetParamsn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}target_params'],
+        ),
+      ),
     );
   }
 
@@ -4254,6 +4485,11 @@ class $WorkoutSetsTable extends WorkoutSets
   $WorkoutSetsTable createAlias(String alias) {
     return $WorkoutSetsTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<ParamValues, String> $convertertargetParams =
+      const ParamValuesConverter();
+  static TypeConverter<ParamValues?, String?> $convertertargetParamsn =
+      NullAwareTypeConverter.wrap($convertertargetParams);
 }
 
 class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
@@ -4263,6 +4499,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
   final int? targetReps;
   final double? targetWeightKg;
   final int? targetSeconds;
+  final ParamValues? targetParams;
   const WorkoutSet({
     required this.syncId,
     required this.workoutExerciseId,
@@ -4270,6 +4507,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     this.targetReps,
     this.targetWeightKg,
     this.targetSeconds,
+    this.targetParams,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4285,6 +4523,11 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     }
     if (!nullToAbsent || targetSeconds != null) {
       map['target_seconds'] = Variable<int>(targetSeconds);
+    }
+    if (!nullToAbsent || targetParams != null) {
+      map['target_params'] = Variable<String>(
+        $WorkoutSetsTable.$convertertargetParamsn.toSql(targetParams),
+      );
     }
     return map;
   }
@@ -4303,6 +4546,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       targetSeconds: targetSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(targetSeconds),
+      targetParams: targetParams == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetParams),
     );
   }
 
@@ -4318,6 +4564,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       targetReps: serializer.fromJson<int?>(json['targetReps']),
       targetWeightKg: serializer.fromJson<double?>(json['targetWeightKg']),
       targetSeconds: serializer.fromJson<int?>(json['targetSeconds']),
+      targetParams: serializer.fromJson<ParamValues?>(json['targetParams']),
     );
   }
   @override
@@ -4330,6 +4577,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       'targetReps': serializer.toJson<int?>(targetReps),
       'targetWeightKg': serializer.toJson<double?>(targetWeightKg),
       'targetSeconds': serializer.toJson<int?>(targetSeconds),
+      'targetParams': serializer.toJson<ParamValues?>(targetParams),
     };
   }
 
@@ -4340,6 +4588,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     Value<int?> targetReps = const Value.absent(),
     Value<double?> targetWeightKg = const Value.absent(),
     Value<int?> targetSeconds = const Value.absent(),
+    Value<ParamValues?> targetParams = const Value.absent(),
   }) => WorkoutSet(
     syncId: syncId ?? this.syncId,
     workoutExerciseId: workoutExerciseId ?? this.workoutExerciseId,
@@ -4351,6 +4600,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     targetSeconds: targetSeconds.present
         ? targetSeconds.value
         : this.targetSeconds,
+    targetParams: targetParams.present ? targetParams.value : this.targetParams,
   );
   WorkoutSet copyWithCompanion(WorkoutSetsCompanion data) {
     return WorkoutSet(
@@ -4368,6 +4618,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       targetSeconds: data.targetSeconds.present
           ? data.targetSeconds.value
           : this.targetSeconds,
+      targetParams: data.targetParams.present
+          ? data.targetParams.value
+          : this.targetParams,
     );
   }
 
@@ -4379,7 +4632,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           ..write('setIndex: $setIndex, ')
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
-          ..write('targetSeconds: $targetSeconds')
+          ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams')
           ..write(')'))
         .toString();
   }
@@ -4392,6 +4646,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     targetReps,
     targetWeightKg,
     targetSeconds,
+    targetParams,
   );
   @override
   bool operator ==(Object other) =>
@@ -4402,7 +4657,8 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           other.setIndex == this.setIndex &&
           other.targetReps == this.targetReps &&
           other.targetWeightKg == this.targetWeightKg &&
-          other.targetSeconds == this.targetSeconds);
+          other.targetSeconds == this.targetSeconds &&
+          other.targetParams == this.targetParams);
 }
 
 class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
@@ -4412,6 +4668,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
   final Value<int?> targetReps;
   final Value<double?> targetWeightKg;
   final Value<int?> targetSeconds;
+  final Value<ParamValues?> targetParams;
   final Value<int> rowid;
   const WorkoutSetsCompanion({
     this.syncId = const Value.absent(),
@@ -4420,6 +4677,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   WorkoutSetsCompanion.insert({
@@ -4429,6 +4687,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.targetReps = const Value.absent(),
     this.targetWeightKg = const Value.absent(),
     this.targetSeconds = const Value.absent(),
+    this.targetParams = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : syncId = Value(syncId),
        workoutExerciseId = Value(workoutExerciseId),
@@ -4440,6 +4699,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Expression<int>? targetReps,
     Expression<double>? targetWeightKg,
     Expression<int>? targetSeconds,
+    Expression<String>? targetParams,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4449,6 +4709,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       if (targetReps != null) 'target_reps': targetReps,
       if (targetWeightKg != null) 'target_weight_kg': targetWeightKg,
       if (targetSeconds != null) 'target_seconds': targetSeconds,
+      if (targetParams != null) 'target_params': targetParams,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4460,6 +4721,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Value<int?>? targetReps,
     Value<double?>? targetWeightKg,
     Value<int?>? targetSeconds,
+    Value<ParamValues?>? targetParams,
     Value<int>? rowid,
   }) {
     return WorkoutSetsCompanion(
@@ -4469,6 +4731,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       targetReps: targetReps ?? this.targetReps,
       targetWeightKg: targetWeightKg ?? this.targetWeightKg,
       targetSeconds: targetSeconds ?? this.targetSeconds,
+      targetParams: targetParams ?? this.targetParams,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4494,6 +4757,11 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     if (targetSeconds.present) {
       map['target_seconds'] = Variable<int>(targetSeconds.value);
     }
+    if (targetParams.present) {
+      map['target_params'] = Variable<String>(
+        $WorkoutSetsTable.$convertertargetParamsn.toSql(targetParams.value),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4509,6 +4777,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
           ..write('targetReps: $targetReps, ')
           ..write('targetWeightKg: $targetWeightKg, ')
           ..write('targetSeconds: $targetSeconds, ')
+          ..write('targetParams: $targetParams, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4591,6 +4860,15 @@ class $SetCompletionsTable extends SetCompletions
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<ParamValues?, String>
+  actualParams = GeneratedColumn<String>(
+    'actual_params',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<ParamValues?>($SetCompletionsTable.$converteractualParamsn);
   static const VerificationMeta _completedAtMeta = const VerificationMeta(
     'completedAt',
   );
@@ -4632,6 +4910,7 @@ class $SetCompletionsTable extends SetCompletions
     actualReps,
     actualWeightKg,
     actualSeconds,
+    actualParams,
     completedAt,
     avgHeartRate,
     maxHeartRate,
@@ -4761,6 +5040,12 @@ class $SetCompletionsTable extends SetCompletions
         DriftSqlType.int,
         data['${effectivePrefix}actual_seconds'],
       ),
+      actualParams: $SetCompletionsTable.$converteractualParamsn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}actual_params'],
+        ),
+      ),
       completedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
@@ -4780,6 +5065,11 @@ class $SetCompletionsTable extends SetCompletions
   $SetCompletionsTable createAlias(String alias) {
     return $SetCompletionsTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<ParamValues, String> $converteractualParams =
+      const ParamValuesConverter();
+  static TypeConverter<ParamValues?, String?> $converteractualParamsn =
+      NullAwareTypeConverter.wrap($converteractualParams);
 }
 
 class SetCompletion extends DataClass implements Insertable<SetCompletion> {
@@ -4789,6 +5079,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
   final int? actualReps;
   final double? actualWeightKg;
   final int? actualSeconds;
+  final ParamValues? actualParams;
   final DateTime completedAt;
   final int? avgHeartRate;
   final int? maxHeartRate;
@@ -4799,6 +5090,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     this.actualReps,
     this.actualWeightKg,
     this.actualSeconds,
+    this.actualParams,
     required this.completedAt,
     this.avgHeartRate,
     this.maxHeartRate,
@@ -4817,6 +5109,11 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     }
     if (!nullToAbsent || actualSeconds != null) {
       map['actual_seconds'] = Variable<int>(actualSeconds);
+    }
+    if (!nullToAbsent || actualParams != null) {
+      map['actual_params'] = Variable<String>(
+        $SetCompletionsTable.$converteractualParamsn.toSql(actualParams),
+      );
     }
     map['completed_at'] = Variable<DateTime>(completedAt);
     if (!nullToAbsent || avgHeartRate != null) {
@@ -4842,6 +5139,9 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       actualSeconds: actualSeconds == null && nullToAbsent
           ? const Value.absent()
           : Value(actualSeconds),
+      actualParams: actualParams == null && nullToAbsent
+          ? const Value.absent()
+          : Value(actualParams),
       completedAt: Value(completedAt),
       avgHeartRate: avgHeartRate == null && nullToAbsent
           ? const Value.absent()
@@ -4864,6 +5164,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       actualReps: serializer.fromJson<int?>(json['actualReps']),
       actualWeightKg: serializer.fromJson<double?>(json['actualWeightKg']),
       actualSeconds: serializer.fromJson<int?>(json['actualSeconds']),
+      actualParams: serializer.fromJson<ParamValues?>(json['actualParams']),
       completedAt: serializer.fromJson<DateTime>(json['completedAt']),
       avgHeartRate: serializer.fromJson<int?>(json['avgHeartRate']),
       maxHeartRate: serializer.fromJson<int?>(json['maxHeartRate']),
@@ -4879,6 +5180,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       'actualReps': serializer.toJson<int?>(actualReps),
       'actualWeightKg': serializer.toJson<double?>(actualWeightKg),
       'actualSeconds': serializer.toJson<int?>(actualSeconds),
+      'actualParams': serializer.toJson<ParamValues?>(actualParams),
       'completedAt': serializer.toJson<DateTime>(completedAt),
       'avgHeartRate': serializer.toJson<int?>(avgHeartRate),
       'maxHeartRate': serializer.toJson<int?>(maxHeartRate),
@@ -4892,6 +5194,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     Value<int?> actualReps = const Value.absent(),
     Value<double?> actualWeightKg = const Value.absent(),
     Value<int?> actualSeconds = const Value.absent(),
+    Value<ParamValues?> actualParams = const Value.absent(),
     DateTime? completedAt,
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
@@ -4906,6 +5209,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     actualSeconds: actualSeconds.present
         ? actualSeconds.value
         : this.actualSeconds,
+    actualParams: actualParams.present ? actualParams.value : this.actualParams,
     completedAt: completedAt ?? this.completedAt,
     avgHeartRate: avgHeartRate.present ? avgHeartRate.value : this.avgHeartRate,
     maxHeartRate: maxHeartRate.present ? maxHeartRate.value : this.maxHeartRate,
@@ -4926,6 +5230,9 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
       actualSeconds: data.actualSeconds.present
           ? data.actualSeconds.value
           : this.actualSeconds,
+      actualParams: data.actualParams.present
+          ? data.actualParams.value
+          : this.actualParams,
       completedAt: data.completedAt.present
           ? data.completedAt.value
           : this.completedAt,
@@ -4947,6 +5254,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
           ..write('actualReps: $actualReps, ')
           ..write('actualWeightKg: $actualWeightKg, ')
           ..write('actualSeconds: $actualSeconds, ')
+          ..write('actualParams: $actualParams, ')
           ..write('completedAt: $completedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
           ..write('maxHeartRate: $maxHeartRate')
@@ -4962,6 +5270,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
     actualReps,
     actualWeightKg,
     actualSeconds,
+    actualParams,
     completedAt,
     avgHeartRate,
     maxHeartRate,
@@ -4976,6 +5285,7 @@ class SetCompletion extends DataClass implements Insertable<SetCompletion> {
           other.actualReps == this.actualReps &&
           other.actualWeightKg == this.actualWeightKg &&
           other.actualSeconds == this.actualSeconds &&
+          other.actualParams == this.actualParams &&
           other.completedAt == this.completedAt &&
           other.avgHeartRate == this.avgHeartRate &&
           other.maxHeartRate == this.maxHeartRate);
@@ -4988,6 +5298,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
   final Value<int?> actualReps;
   final Value<double?> actualWeightKg;
   final Value<int?> actualSeconds;
+  final Value<ParamValues?> actualParams;
   final Value<DateTime> completedAt;
   final Value<int?> avgHeartRate;
   final Value<int?> maxHeartRate;
@@ -4999,6 +5310,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     this.actualReps = const Value.absent(),
     this.actualWeightKg = const Value.absent(),
     this.actualSeconds = const Value.absent(),
+    this.actualParams = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.avgHeartRate = const Value.absent(),
     this.maxHeartRate = const Value.absent(),
@@ -5011,6 +5323,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     this.actualReps = const Value.absent(),
     this.actualWeightKg = const Value.absent(),
     this.actualSeconds = const Value.absent(),
+    this.actualParams = const Value.absent(),
     required DateTime completedAt,
     this.avgHeartRate = const Value.absent(),
     this.maxHeartRate = const Value.absent(),
@@ -5026,6 +5339,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     Expression<int>? actualReps,
     Expression<double>? actualWeightKg,
     Expression<int>? actualSeconds,
+    Expression<String>? actualParams,
     Expression<DateTime>? completedAt,
     Expression<int>? avgHeartRate,
     Expression<int>? maxHeartRate,
@@ -5038,6 +5352,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
       if (actualReps != null) 'actual_reps': actualReps,
       if (actualWeightKg != null) 'actual_weight_kg': actualWeightKg,
       if (actualSeconds != null) 'actual_seconds': actualSeconds,
+      if (actualParams != null) 'actual_params': actualParams,
       if (completedAt != null) 'completed_at': completedAt,
       if (avgHeartRate != null) 'avg_heart_rate': avgHeartRate,
       if (maxHeartRate != null) 'max_heart_rate': maxHeartRate,
@@ -5052,6 +5367,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     Value<int?>? actualReps,
     Value<double?>? actualWeightKg,
     Value<int?>? actualSeconds,
+    Value<ParamValues?>? actualParams,
     Value<DateTime>? completedAt,
     Value<int?>? avgHeartRate,
     Value<int?>? maxHeartRate,
@@ -5064,6 +5380,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
       actualReps: actualReps ?? this.actualReps,
       actualWeightKg: actualWeightKg ?? this.actualWeightKg,
       actualSeconds: actualSeconds ?? this.actualSeconds,
+      actualParams: actualParams ?? this.actualParams,
       completedAt: completedAt ?? this.completedAt,
       avgHeartRate: avgHeartRate ?? this.avgHeartRate,
       maxHeartRate: maxHeartRate ?? this.maxHeartRate,
@@ -5092,6 +5409,11 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
     if (actualSeconds.present) {
       map['actual_seconds'] = Variable<int>(actualSeconds.value);
     }
+    if (actualParams.present) {
+      map['actual_params'] = Variable<String>(
+        $SetCompletionsTable.$converteractualParamsn.toSql(actualParams.value),
+      );
+    }
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
@@ -5116,6 +5438,7 @@ class SetCompletionsCompanion extends UpdateCompanion<SetCompletion> {
           ..write('actualReps: $actualReps, ')
           ..write('actualWeightKg: $actualWeightKg, ')
           ..write('actualSeconds: $actualSeconds, ')
+          ..write('actualParams: $actualParams, ')
           ..write('completedAt: $completedAt, ')
           ..write('avgHeartRate: $avgHeartRate, ')
           ..write('maxHeartRate: $maxHeartRate, ')
@@ -5833,6 +6156,7 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       Value<String> kind,
       Value<int> version,
       Value<DateTime?> deletedAt,
+      Value<List<ParamEntry>> params,
       Value<int> rowid,
     });
 typedef $$ExercisesTableUpdateCompanionBuilder =
@@ -5843,6 +6167,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<int> version,
       Value<DateTime?> deletedAt,
+      Value<List<ParamEntry>> params,
       Value<int> rowid,
     });
 
@@ -5994,6 +6319,12 @@ class $$ExercisesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<List<ParamEntry>, List<ParamEntry>, String>
+  get params => $composableBuilder(
+    column: $table.params,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   Expression<bool> routineExercisesRefs(
     Expression<bool> Function($$RoutineExercisesTableFilterComposer f) f,
   ) {
@@ -6137,6 +6468,11 @@ class $$ExercisesTableOrderingComposer
     column: $table.deletedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get params => $composableBuilder(
+    column: $table.params,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExercisesTableAnnotationComposer
@@ -6165,6 +6501,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<List<ParamEntry>, String> get params =>
+      $composableBuilder(column: $table.params, builder: (column) => column);
 
   Expression<T> routineExercisesRefs<T extends Object>(
     Expression<T> Function($$RoutineExercisesTableAnnotationComposer a) f,
@@ -6310,6 +6649,7 @@ class $$ExercisesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<List<ParamEntry>> params = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion(
                 syncId: syncId,
@@ -6318,6 +6658,7 @@ class $$ExercisesTableTableManager
                 kind: kind,
                 version: version,
                 deletedAt: deletedAt,
+                params: params,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -6328,6 +6669,7 @@ class $$ExercisesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<int> version = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<List<ParamEntry>> params = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExercisesCompanion.insert(
                 syncId: syncId,
@@ -6336,6 +6678,7 @@ class $$ExercisesTableTableManager
                 kind: kind,
                 version: version,
                 deletedAt: deletedAt,
+                params: params,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -7658,6 +8001,7 @@ typedef $$PlannedSetsTableCreateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 typedef $$PlannedSetsTableUpdateCompanionBuilder =
@@ -7668,6 +8012,7 @@ typedef $$PlannedSetsTableUpdateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 
@@ -7732,6 +8077,12 @@ class $$PlannedSetsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<ParamValues?, ParamValues, String>
+  get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   $$RoutineExercisesTableFilterComposer get routineExerciseId {
     final $$RoutineExercisesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -7790,6 +8141,11 @@ class $$PlannedSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$RoutineExercisesTableOrderingComposer get routineExerciseId {
     final $$RoutineExercisesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7843,6 +8199,12 @@ class $$PlannedSetsTableAnnotationComposer
     column: $table.targetSeconds,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<ParamValues?, String> get targetParams =>
+      $composableBuilder(
+        column: $table.targetParams,
+        builder: (column) => column,
+      );
 
   $$RoutineExercisesTableAnnotationComposer get routineExerciseId {
     final $$RoutineExercisesTableAnnotationComposer composer = $composerBuilder(
@@ -7902,6 +8264,7 @@ class $$PlannedSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlannedSetsCompanion(
                 syncId: syncId,
@@ -7910,6 +8273,7 @@ class $$PlannedSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7920,6 +8284,7 @@ class $$PlannedSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlannedSetsCompanion.insert(
                 syncId: syncId,
@@ -7928,6 +8293,7 @@ class $$PlannedSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -8554,6 +8920,7 @@ typedef $$AlternativePlannedSetsTableCreateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 typedef $$AlternativePlannedSetsTableUpdateCompanionBuilder =
@@ -8564,6 +8931,7 @@ typedef $$AlternativePlannedSetsTableUpdateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 
@@ -8638,6 +9006,12 @@ class $$AlternativePlannedSetsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<ParamValues?, ParamValues, String>
+  get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   $$RoutineExerciseAlternativesTableFilterComposer get alternativeId {
     final $$RoutineExerciseAlternativesTableFilterComposer composer =
         $composerBuilder(
@@ -8697,6 +9071,11 @@ class $$AlternativePlannedSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$RoutineExerciseAlternativesTableOrderingComposer get alternativeId {
     final $$RoutineExerciseAlternativesTableOrderingComposer composer =
         $composerBuilder(
@@ -8751,6 +9130,12 @@ class $$AlternativePlannedSetsTableAnnotationComposer
     column: $table.targetSeconds,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<ParamValues?, String> get targetParams =>
+      $composableBuilder(
+        column: $table.targetParams,
+        builder: (column) => column,
+      );
 
   $$RoutineExerciseAlternativesTableAnnotationComposer get alternativeId {
     final $$RoutineExerciseAlternativesTableAnnotationComposer composer =
@@ -8822,6 +9207,7 @@ class $$AlternativePlannedSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlternativePlannedSetsCompanion(
                 syncId: syncId,
@@ -8830,6 +9216,7 @@ class $$AlternativePlannedSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8840,6 +9227,7 @@ class $$AlternativePlannedSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlternativePlannedSetsCompanion.insert(
                 syncId: syncId,
@@ -8848,6 +9236,7 @@ class $$AlternativePlannedSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10243,6 +10632,7 @@ typedef $$WorkoutExercisesTableCreateCompanionBuilder =
       Value<int> restSeconds,
       Value<int?> circuitGroup,
       Value<String> kind,
+      Value<List<ParamEntry>> params,
       Value<String?> routineExerciseId,
       Value<int> rowid,
     });
@@ -10256,6 +10646,7 @@ typedef $$WorkoutExercisesTableUpdateCompanionBuilder =
       Value<int> restSeconds,
       Value<int?> circuitGroup,
       Value<String> kind,
+      Value<List<ParamEntry>> params,
       Value<String?> routineExerciseId,
       Value<int> rowid,
     });
@@ -10395,6 +10786,12 @@ class $$WorkoutExercisesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<List<ParamEntry>, List<ParamEntry>, String>
+  get params => $composableBuilder(
+    column: $table.params,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   $$WorkoutsTableFilterComposer get workoutId {
     final $$WorkoutsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -10529,6 +10926,11 @@ class $$WorkoutExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get params => $composableBuilder(
+    column: $table.params,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutsTableOrderingComposer get workoutId {
     final $$WorkoutsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10633,6 +11035,9 @@ class $$WorkoutExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<List<ParamEntry>, String> get params =>
+      $composableBuilder(column: $table.params, builder: (column) => column);
 
   $$WorkoutsTableAnnotationComposer get workoutId {
     final $$WorkoutsTableAnnotationComposer composer = $composerBuilder(
@@ -10772,6 +11177,7 @@ class $$WorkoutExercisesTableTableManager
                 Value<int> restSeconds = const Value.absent(),
                 Value<int?> circuitGroup = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<List<ParamEntry>> params = const Value.absent(),
                 Value<String?> routineExerciseId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutExercisesCompanion(
@@ -10783,6 +11189,7 @@ class $$WorkoutExercisesTableTableManager
                 restSeconds: restSeconds,
                 circuitGroup: circuitGroup,
                 kind: kind,
+                params: params,
                 routineExerciseId: routineExerciseId,
                 rowid: rowid,
               ),
@@ -10796,6 +11203,7 @@ class $$WorkoutExercisesTableTableManager
                 Value<int> restSeconds = const Value.absent(),
                 Value<int?> circuitGroup = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<List<ParamEntry>> params = const Value.absent(),
                 Value<String?> routineExerciseId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutExercisesCompanion.insert(
@@ -10807,6 +11215,7 @@ class $$WorkoutExercisesTableTableManager
                 restSeconds: restSeconds,
                 circuitGroup: circuitGroup,
                 kind: kind,
+                params: params,
                 routineExerciseId: routineExerciseId,
                 rowid: rowid,
               ),
@@ -10952,6 +11361,7 @@ typedef $$WorkoutSetsTableCreateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 typedef $$WorkoutSetsTableUpdateCompanionBuilder =
@@ -10962,6 +11372,7 @@ typedef $$WorkoutSetsTableUpdateCompanionBuilder =
       Value<int?> targetReps,
       Value<double?> targetWeightKg,
       Value<int?> targetSeconds,
+      Value<ParamValues?> targetParams,
       Value<int> rowid,
     });
 
@@ -11048,6 +11459,12 @@ class $$WorkoutSetsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<ParamValues?, ParamValues, String>
+  get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   $$WorkoutExercisesTableFilterComposer get workoutExerciseId {
     final $$WorkoutExercisesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11131,6 +11548,11 @@ class $$WorkoutSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get targetParams => $composableBuilder(
+    column: $table.targetParams,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WorkoutExercisesTableOrderingComposer get workoutExerciseId {
     final $$WorkoutExercisesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11184,6 +11606,12 @@ class $$WorkoutSetsTableAnnotationComposer
     column: $table.targetSeconds,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<ParamValues?, String> get targetParams =>
+      $composableBuilder(
+        column: $table.targetParams,
+        builder: (column) => column,
+      );
 
   $$WorkoutExercisesTableAnnotationComposer get workoutExerciseId {
     final $$WorkoutExercisesTableAnnotationComposer composer = $composerBuilder(
@@ -11271,6 +11699,7 @@ class $$WorkoutSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutSetsCompanion(
                 syncId: syncId,
@@ -11279,6 +11708,7 @@ class $$WorkoutSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11289,6 +11719,7 @@ class $$WorkoutSetsTableTableManager
                 Value<int?> targetReps = const Value.absent(),
                 Value<double?> targetWeightKg = const Value.absent(),
                 Value<int?> targetSeconds = const Value.absent(),
+                Value<ParamValues?> targetParams = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WorkoutSetsCompanion.insert(
                 syncId: syncId,
@@ -11297,6 +11728,7 @@ class $$WorkoutSetsTableTableManager
                 targetReps: targetReps,
                 targetWeightKg: targetWeightKg,
                 targetSeconds: targetSeconds,
+                targetParams: targetParams,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11401,6 +11833,7 @@ typedef $$SetCompletionsTableCreateCompanionBuilder =
       Value<int?> actualReps,
       Value<double?> actualWeightKg,
       Value<int?> actualSeconds,
+      Value<ParamValues?> actualParams,
       required DateTime completedAt,
       Value<int?> avgHeartRate,
       Value<int?> maxHeartRate,
@@ -11414,6 +11847,7 @@ typedef $$SetCompletionsTableUpdateCompanionBuilder =
       Value<int?> actualReps,
       Value<double?> actualWeightKg,
       Value<int?> actualSeconds,
+      Value<ParamValues?> actualParams,
       Value<DateTime> completedAt,
       Value<int?> avgHeartRate,
       Value<int?> maxHeartRate,
@@ -11497,6 +11931,12 @@ class $$SetCompletionsTableFilterComposer
   ColumnFilters<int> get actualSeconds => $composableBuilder(
     column: $table.actualSeconds,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ParamValues?, ParamValues, String>
+  get actualParams => $composableBuilder(
+    column: $table.actualParams,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<DateTime> get completedAt => $composableBuilder(
@@ -11590,6 +12030,11 @@ class $$SetCompletionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get actualParams => $composableBuilder(
+    column: $table.actualParams,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
     builder: (column) => ColumnOrderings(column),
@@ -11678,6 +12123,12 @@ class $$SetCompletionsTableAnnotationComposer
     column: $table.actualSeconds,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<ParamValues?, String> get actualParams =>
+      $composableBuilder(
+        column: $table.actualParams,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
@@ -11777,6 +12228,7 @@ class $$SetCompletionsTableTableManager
                 Value<int?> actualReps = const Value.absent(),
                 Value<double?> actualWeightKg = const Value.absent(),
                 Value<int?> actualSeconds = const Value.absent(),
+                Value<ParamValues?> actualParams = const Value.absent(),
                 Value<DateTime> completedAt = const Value.absent(),
                 Value<int?> avgHeartRate = const Value.absent(),
                 Value<int?> maxHeartRate = const Value.absent(),
@@ -11788,6 +12240,7 @@ class $$SetCompletionsTableTableManager
                 actualReps: actualReps,
                 actualWeightKg: actualWeightKg,
                 actualSeconds: actualSeconds,
+                actualParams: actualParams,
                 completedAt: completedAt,
                 avgHeartRate: avgHeartRate,
                 maxHeartRate: maxHeartRate,
@@ -11801,6 +12254,7 @@ class $$SetCompletionsTableTableManager
                 Value<int?> actualReps = const Value.absent(),
                 Value<double?> actualWeightKg = const Value.absent(),
                 Value<int?> actualSeconds = const Value.absent(),
+                Value<ParamValues?> actualParams = const Value.absent(),
                 required DateTime completedAt,
                 Value<int?> avgHeartRate = const Value.absent(),
                 Value<int?> maxHeartRate = const Value.absent(),
@@ -11812,6 +12266,7 @@ class $$SetCompletionsTableTableManager
                 actualReps: actualReps,
                 actualWeightKg: actualWeightKg,
                 actualSeconds: actualSeconds,
+                actualParams: actualParams,
                 completedAt: completedAt,
                 avgHeartRate: avgHeartRate,
                 maxHeartRate: maxHeartRate,

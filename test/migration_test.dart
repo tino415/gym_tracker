@@ -7,6 +7,7 @@ import 'drift_schemas/schema.dart';
 import 'drift_schemas/schema_v14.dart' as v14;
 import 'drift_schemas/schema_v15.dart' as v15;
 import 'drift_schemas/schema_v16.dart' as v16;
+import 'drift_schemas/schema_v17.dart' as v17;
 
 /// Schema migrations, against databases actually created at the old version.
 ///
@@ -32,8 +33,51 @@ void main() {
     // v16 schema, column by column.
     final connection = await verifier.startAt(14);
     final db = AppDatabase.forTesting(connection);
-    await verifier.migrateAndValidate(db, 16);
+    await verifier.migrateAndValidate(db, 17);
     await db.close();
+  });
+
+  test('v16 → v17 leaves existing exercises with weight alone in the list',
+      () async {
+    final schema = await verifier.schemaAt(16);
+    final oldDb = v16.DatabaseAtV16(schema.newConnection());
+    await oldDb.into(oldDb.exercises).insert(
+          v16.ExercisesCompanion.insert(
+            syncId: 'e1',
+            name: 'Bench Press',
+            createdAt: 1,
+          ),
+        );
+    await oldDb.into(oldDb.routines).insert(
+          v16.RoutinesCompanion.insert(syncId: 'r1', name: 'Push', createdAt: 1),
+        );
+    await oldDb.into(oldDb.routineExercises).insert(
+          v16.RoutineExercisesCompanion.insert(
+            syncId: 're1',
+            routineId: 'r1',
+            exerciseId: 'e1',
+            orderIndex: 0,
+          ),
+        );
+    await oldDb.into(oldDb.plannedSets).insert(
+          v16.PlannedSetsCompanion.insert(
+            syncId: 'ps1',
+            routineExerciseId: 're1',
+            setIndex: 0,
+          ),
+        );
+    await oldDb.close();
+
+    final db = AppDatabase.forTesting(schema.newConnection());
+    await verifier.migrateAndValidate(db, 17);
+    await db.close();
+
+    final checkDb = v17.DatabaseAtV17(schema.newConnection());
+    final exercise = await checkDb.select(checkDb.exercises).getSingle();
+    final plannedSet = await checkDb.select(checkDb.plannedSets).getSingle();
+    await checkDb.close();
+    expect(exercise.params, '[]');
+    expect(plannedSet.targetParams, null);
   });
 
   test('v15 → v16 keeps existing samples, with no recorded accuracy', () async {
@@ -57,10 +101,10 @@ void main() {
     await oldDb.close();
 
     final db = AppDatabase.forTesting(schema.newConnection());
-    await verifier.migrateAndValidate(db, 16);
+    await verifier.migrateAndValidate(db, 17);
     await db.close();
 
-    final checkDb = v16.DatabaseAtV16(schema.newConnection());
+    final checkDb = v17.DatabaseAtV17(schema.newConnection());
     final rows = await checkDb.select(checkDb.heartRateSamples).get();
     await checkDb.close();
     expect(rows, hasLength(1));
@@ -72,7 +116,7 @@ void main() {
   group('v14 → v15 rest translation', () {
     /// Seeds a v14 database with [exercises] as `(syncId, group, rest)` under
     /// one routine, runs the real migration, and returns the v15 rows in order.
-    Future<List<v16.RoutineExercisesData>> migrateRoutine(
+    Future<List<v17.RoutineExercisesData>> migrateRoutine(
       List<(String, int?, int)> exercises, {
       int startVersion = 1,
     }) async {
@@ -108,10 +152,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 16);
+      await verifier.migrateAndValidate(migrated, 17);
       await migrated.close();
 
-      final checkDb = v16.DatabaseAtV16(schema.newConnection());
+      final checkDb = v17.DatabaseAtV17(schema.newConnection());
       final rows = await (checkDb.select(checkDb.routineExercises)
             ..orderBy([(t) => OrderingTerm(expression: t.orderIndex)]))
           .get();
@@ -194,10 +238,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 16);
+      await verifier.migrateAndValidate(migrated, 17);
       await migrated.close();
 
-      final checkDb = v16.DatabaseAtV16(schema.newConnection());
+      final checkDb = v17.DatabaseAtV17(schema.newConnection());
       final byId = {
         for (final r in await checkDb.select(checkDb.routines).get())
           r.syncId: r.version,
@@ -235,10 +279,10 @@ void main() {
       await oldDb.close();
 
       final migrated = AppDatabase.forTesting(schema.newConnection());
-      await verifier.migrateAndValidate(migrated, 16);
+      await verifier.migrateAndValidate(migrated, 17);
       await migrated.close();
 
-      final checkDb = v16.DatabaseAtV16(schema.newConnection());
+      final checkDb = v17.DatabaseAtV17(schema.newConnection());
       final rows = await (checkDb.select(checkDb.workoutExercises)
             ..orderBy([(t) => OrderingTerm(expression: t.orderIndex)]))
           .get();

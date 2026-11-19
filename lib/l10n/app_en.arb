@@ -1033,5 +1033,20 @@
         "type": "String"
       }
     }
+  },
+  "paramsTitle": "Parameters",
+  "paramsAdd": "Add parameter",
+  "paramsName": "Parameter name",
+  "paramsOnWatchFace": "On the watch face",
+  "paramsSwipePage": "Swipe page",
+  "paramsMore": "More",
+  "paramsRemove": "Remove parameter",
+  "paramsValueOptional": "{name} (optional)",
+  "@paramsValueOptional": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

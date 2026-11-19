@@ -17,6 +17,7 @@ import 'set_target_format.dart';
 import 'circuit_nav.dart';
 import 'watch_alternative_picker_page.dart';
 import 'watch_exercise_preview_page.dart';
+import 'watch_param_list_page.dart';
 import 'watch_workout_done_page.dart';
 import 'widgets/countdown_pill.dart';
 import 'widgets/discard_dialog.dart';
@@ -54,7 +55,6 @@ class WatchRunPage extends ConsumerStatefulWidget {
 enum _Phase { logSet, rest }
 
 const _timeTargetStep = 5;
-const _weightStep = 2.5;
 const _setActionHeight = 44.0;
 
 class _WatchRunPageState extends ConsumerState<WatchRunPage>
@@ -71,6 +71,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
   // Reps-kind input buffer.
   int _reps = 0;
   double _weightKg = 0;
+  ParamValues _paramValues = {};
 
   // Time-kind input buffer: the current set's countdown while no hold runs on
   // it. elapsed = startTarget - remaining on Done.
@@ -419,6 +420,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     return widget.routine!.exercises[_exerciseIdx].kind;
   }
 
+  List<ParamEntry> _currentParamOrder() {
+    if (_snapshot != null) {
+      return _snapshot!.exercises[_exerciseIdx].workoutExercise.params;
+    }
+    return widget.routine!.exercises[_exerciseIdx].exercise.params;
+  }
+
   String _currentExerciseName() {
     if (_snapshot != null) {
       return _snapshot!.exercises[_exerciseIdx].workoutExercise.exerciseName;
@@ -491,6 +499,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     final completion = _currentCompletion();
     if (_snapshot != null) {
       final ws = _snapshot!.exercises[_exerciseIdx].sets[_setIdx].workoutSet;
+      _paramValues = {...?ws.targetParams, ...?completion?.actualParams};
       if (kind == exerciseKindTime) {
         _timeStartTarget =
             _timeTargetOverrides[ws.syncId] ?? ws.targetSeconds ?? 30;
@@ -511,6 +520,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     } else {
       // Preview before Start.
       final ps = widget.routine!.exercises[_exerciseIdx].plannedSets[_setIdx];
+      _paramValues = {...?ps.targetParams};
       if (kind == exerciseKindTime) {
         _timeStartTarget = ps.targetSeconds ?? 30;
         _timeRemaining = _timeStartTarget;
@@ -595,6 +605,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         workoutSetId: wsId,
         actualSeconds: elapsed,
         actualWeightKg: _weightKg > 0 ? _weightKg : null,
+        actualParams: _paramValues.isEmpty ? null : _paramValues,
         avgHeartRate: avgHr,
         maxHeartRate: maxHr,
       );
@@ -604,6 +615,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         workoutSetId: wsId,
         actualReps: _reps,
         actualWeightKg: _weightKg,
+        actualParams: _paramValues.isEmpty ? null : _paramValues,
         avgHeartRate: avgHr,
         maxHeartRate: maxHr,
       );
@@ -636,6 +648,11 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
     _saveCorrectionToCompletion();
   }
 
+  void _changeParam(String id, double value) {
+    setState(() => _paramValues = {..._paramValues, id: value});
+    _saveCorrectionToCompletion();
+  }
+
   void _saveCorrectionToCompletion() {
     final completion = _currentCompletion();
     if (completion == null) return;
@@ -646,6 +663,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         actualReps: isTime ? completion.actualReps : _reps,
         actualWeightKg: isTime && _weightKg == 0 ? null : _weightKg,
         actualSeconds: completion.actualSeconds,
+        actualParams: _paramValues.isEmpty ? null : _paramValues,
       ),
     );
   }
@@ -1167,8 +1185,9 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       canPop: _workoutId == null || onExerciseList || widget.ambient,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        final onParamsPage = (_pageController.page ?? 1) > 1.5;
         _pageController.animateToPage(
-          0,
+          onParamsPage ? 1 : 0,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
@@ -1193,10 +1212,75 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
                       onDiscard: _confirmDiscard,
                     ),
                     _buildRunPane(context),
+                    if (_workoutId != null && _hasParamsPage)
+                      WatchParamListPage(
+                        entries: _currentParamOrder().onSwipePage,
+                        weightKg: _weightKg,
+                        values: _paramValues,
+                        onWeightChanged: _changeWeight,
+                        onParamChanged: _changeParam,
+                      ),
                   ],
                 ),
         ),
       ),
+    );
+  }
+
+  bool get _hasParamsPage => _currentParamOrder().length > 1;
+
+  void _openParamsPage() => _pageController.animateToPage(
+    2,
+    duration: const Duration(milliseconds: 250),
+    curve: Curves.easeOut,
+  );
+
+  Widget _faceChip(BuildContext context) {
+    final locale = Localizations.localeOf(context).toString();
+    final order = _currentParamOrder();
+    final chip = switch (order.onFace) {
+      WeightEntry() => ActionChip(
+        onPressed: () => editWeight(
+          context,
+          weightKg: _weightKg,
+          onChanged: _changeWeight,
+        ),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        label: Text(
+          '${formatWeight(_weightKg, locale: locale)} '
+          '${context.l10n.watchUnitKg}',
+        ),
+      ),
+      final CustomParam param => ActionChip(
+        onPressed: () => editParam(
+          context,
+          param: param,
+          value: _paramValues[param.id],
+          onChanged: (v) => _changeParam(param.id, v),
+        ),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        label: Text(
+          _paramValues[param.id] == null
+              ? '${param.name} —'
+              : '${formatParamValue(_paramValues[param.id]!)} ${param.name}',
+        ),
+      ),
+    };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        chip,
+        if (order.length > 1)
+          IconButton(
+            onPressed: _openParamsPage,
+            icon: const Icon(Icons.more_horiz),
+            tooltip: context.l10n.paramsMore,
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+          ),
+      ],
     );
   }
 
@@ -1281,14 +1365,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
         secondsRemaining: _shownTimeRemaining,
         targetSeconds: _timeStartTarget,
         running: _holdingHere,
-        weightKg: _weightKg,
+        chip: _faceChip(context),
         completed: _currentIsCompleted,
         hasPrev: hasPrev,
         hasNext: hasNext,
         heartRateBpm: bpm,
         lastTimeText: _formatLastTimeText(context, _lastCompletion, exerciseKindTime),
         onTargetSecondsChanged: _changeTimeTarget,
-        onWeightChanged: _changeWeight,
         onToggleRun: _toggleTimeRun,
         onToggleDone: _toggleDone,
         onPrev: () {
@@ -1309,14 +1392,13 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       setIndex: _setIdx,
       totalSets: _setCount(_exerciseIdx),
       reps: _reps,
-      weightKg: _weightKg,
+      chip: _faceChip(context),
       completed: _currentIsCompleted,
       hasPrev: hasPrev,
       hasNext: hasNext,
       heartRateBpm: bpm,
       lastTimeText: _formatLastTimeText(context, _lastCompletion, exerciseKindReps),
       onRepsChanged: _changeReps,
-      onWeightChanged: _changeWeight,
       onToggleDone: _toggleDone,
       onPrev: () {
         final p = _prevBefore(_exerciseIdx, _setIdx);
@@ -1436,12 +1518,11 @@ class _RepsSetView extends StatelessWidget {
     required this.setIndex,
     required this.totalSets,
     required this.reps,
-    required this.weightKg,
+    required this.chip,
     required this.completed,
     required this.hasPrev,
     required this.hasNext,
     required this.onRepsChanged,
-    required this.onWeightChanged,
     required this.onToggleDone,
     required this.onPrev,
     required this.onNext,
@@ -1456,12 +1537,11 @@ class _RepsSetView extends StatelessWidget {
   final int setIndex;
   final int totalSets;
   final int reps;
-  final double weightKg;
+  final Widget chip;
   final bool completed;
   final bool hasPrev;
   final bool hasNext;
   final ValueChanged<int> onRepsChanged;
-  final ValueChanged<double> onWeightChanged;
   final VoidCallback onToggleDone;
   final VoidCallback onPrev;
   final VoidCallback onNext;
@@ -1529,7 +1609,7 @@ class _RepsSetView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _WeightChip(weightKg: weightKg, onChanged: onWeightChanged),
+                  chip,
                 ],
               ),
             ),
@@ -1553,12 +1633,11 @@ class _TimeSetView extends StatelessWidget {
     required this.secondsRemaining,
     required this.targetSeconds,
     required this.running,
-    required this.weightKg,
+    required this.chip,
     required this.completed,
     required this.hasPrev,
     required this.hasNext,
     required this.onTargetSecondsChanged,
-    required this.onWeightChanged,
     required this.onToggleRun,
     required this.onToggleDone,
     required this.onPrev,
@@ -1576,12 +1655,11 @@ class _TimeSetView extends StatelessWidget {
   final int secondsRemaining;
   final int targetSeconds;
   final bool running;
-  final double weightKg;
+  final Widget chip;
   final bool completed;
   final bool hasPrev;
   final bool hasNext;
   final ValueChanged<int> onTargetSecondsChanged;
-  final ValueChanged<double> onWeightChanged;
   final VoidCallback onToggleRun;
   final VoidCallback onToggleDone;
   final VoidCallback onPrev;
@@ -1657,7 +1735,7 @@ class _TimeSetView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _WeightChip(weightKg: weightKg, onChanged: onWeightChanged),
+                  chip,
                 ],
               ),
             ),
@@ -1709,39 +1787,6 @@ class _SetValueButton extends StatelessWidget {
             child: FittedBox(fit: BoxFit.scaleDown, child: child),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _WeightChip extends StatelessWidget {
-  const _WeightChip({required this.weightKg, required this.onChanged});
-
-  final double weightKg;
-  final ValueChanged<double> onChanged;
-
-  Future<void> _edit(BuildContext context) async {
-    final locale = Localizations.localeOf(context).toString();
-    final edited = await editSetValue<double>(
-      context,
-      value: weightKg,
-      step: _weightStep,
-      min: 0,
-      formatter: (w) => formatWeight(w, locale: locale),
-      unit: context.l10n.watchUnitKg,
-    );
-    if (edited != null) onChanged(edited);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context).toString();
-    return ActionChip(
-      onPressed: () => _edit(context),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      label: Text(
-        '${formatWeight(weightKg, locale: locale)} ${context.l10n.watchUnitKg}',
       ),
     );
   }

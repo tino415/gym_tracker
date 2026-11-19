@@ -1,3 +1,4 @@
+import 'package:gym_tracker/data/exercise_params.dart';
 import 'package:gym_tracker/sync/sync_dtos.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
@@ -41,13 +42,17 @@ Map<String, Object?> routineJson(RoutineTemplateDto routine) => {
         'kind': e.exerciseKind,
         'restSeconds': e.restSeconds,
         if (e.circuitGroup != null) 'circuitGroup': e.circuitGroup,
-        'sets': [for (final s in e.plannedSets) _setJson(s)],
+        'sets': [
+          for (final s in e.plannedSets) _setJson(s, e.exerciseParams),
+        ],
       },
   ],
 };
 
-Map<String, Object?> _setJson(PlannedSetDto set) => {
+Map<String, Object?> _setJson(PlannedSetDto set, List<ParamEntry> order) => {
   if (set.targetReps != null) 'reps': set.targetReps,
   if (set.targetWeightKg != null) 'weightKg': set.targetWeightKg,
   if (set.targetSeconds != null) 'seconds': set.targetSeconds,
+  if (namedParamValues(set.targetParams, order) case final named?)
+    'parameters': named,
 };

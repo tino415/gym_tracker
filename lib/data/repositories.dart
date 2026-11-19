@@ -41,12 +41,14 @@ abstract class RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   });
   Future<void> updatePlannedSet({
     required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   });
   Future<void> deletePlannedSet(String id);
 
@@ -60,12 +62,14 @@ abstract class RoutineRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   });
   Future<void> updateAlternativePlannedSet({
     required String id,
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   });
   Future<void> deleteAlternativePlannedSet(String id);
   Future<void> removeRoutineExerciseAlternative(String alternativeId);
@@ -108,6 +112,10 @@ abstract class ExerciseRepository {
   Future<void> renameExercise(String id, String name);
   Future<void> deleteExercise(String id);
   Future<void> setExerciseKind(String id, String kind);
+
+  /// Replace the exercise's ordered parameter list. Parameters that leave it
+  /// lose their targets on routine sets; workout history keeps its values.
+  Future<void> setExerciseParams(String id, List<ParamEntry> order);
   Future<void> setExerciseMuscles(String exerciseId, List<String> muscleIds);
 }
 
@@ -170,6 +178,7 @@ abstract class WorkoutRepository {
     int? targetReps,
     double? targetWeightKg,
     int? targetSeconds,
+    ParamValues? targetParams,
   });
   Future<void> removeWorkoutSet(String workoutSetId);
   Future<SetCompletion> upsertSetCompletion({
@@ -178,6 +187,7 @@ abstract class WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     Value<int?> avgHeartRate = const Value.absent(),
     Value<int?> maxHeartRate = const Value.absent(),
   });
@@ -186,6 +196,7 @@ abstract class WorkoutRepository {
     int? actualReps,
     double? actualWeightKg,
     int? actualSeconds,
+    ParamValues? actualParams,
     DateTime? completedAt,
   });
   Future<void> deleteCompletion(String id);
