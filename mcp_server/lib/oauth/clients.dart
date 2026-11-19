@@ -71,6 +71,11 @@ class ClientRegistry {
   static const _allowlist = [
     OAuthClient('gym-tracker-claude-ai', 'Claude', _claudeAi),
     OAuthClient(
+      'https://claude.ai/oauth/mcp-oauth-client-metadata',
+      'Claude',
+      _claudeAi,
+    ),
+    OAuthClient(
       'https://claude.ai/oauth/claude-code-client-metadata',
       'Claude Code',
       _claudeCode,
