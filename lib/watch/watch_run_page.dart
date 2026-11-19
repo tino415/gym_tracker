@@ -1811,26 +1811,22 @@ class _SetViewScaffold extends StatelessWidget {
             top: 0,
             bottom: 0,
             width: 28,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${setIndex + 1}/$totalSets',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _RailChevron(
-                    icon: Icons.chevron_left,
-                    enabled: prevEnabled,
-                    onPressed: onPrev,
-                    tooltip: context.l10n.watchPreviousSet,
-                  ),
-                ],
+            child: _Rail(
+              chevron: _RailChevron(
+                icon: Icons.chevron_left,
+                enabled: prevEnabled,
+                onPressed: onPrev,
+                tooltip: context.l10n.watchPreviousSet,
               ),
+              labels: [
+                Text(
+                  '${setIndex + 1}/$totalSets',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
           Positioned(
@@ -1838,43 +1834,65 @@ class _SetViewScaffold extends StatelessWidget {
             top: 0,
             bottom: 0,
             width: 28,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Always render the HR slot so the rail height doesn't
-                  // jump when the sensor warms up. Greyed placeholder when
-                  // we don't have a live sample.
-                  Icon(
-                    Icons.favorite,
-                    size: 12,
+            child: _Rail(
+              chevron: _RailChevron(
+                icon: Icons.chevron_right,
+                enabled: nextEnabled,
+                onPressed: onNext,
+                tooltip: context.l10n.watchNextSet,
+              ),
+              labels: [
+                // Always render the HR slot so the labels don't jump when
+                // the sensor warms up. Greyed placeholder when we don't have
+                // a live sample.
+                Icon(
+                  Icons.favorite,
+                  size: 12,
+                  color: heartRateBpm != null
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.outlineVariant,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  heartRateBpm?.toString() ?? '—',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                     color: heartRateBpm != null
-                        ? theme.colorScheme.error
+                        ? null
                         : theme.colorScheme.outlineVariant,
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    heartRateBpm?.toString() ?? '—',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: heartRateBpm != null
-                          ? null
-                          : theme.colorScheme.outlineVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _RailChevron(
-                    icon: Icons.chevron_right,
-                    enabled: nextEnabled,
-                    onPressed: onNext,
-                    tooltip: context.l10n.watchNextSet,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Rail extends StatelessWidget {
+  const _Rail({required this.chevron, required this.labels});
+
+  final Widget chevron;
+  final List<Widget> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(mainAxisSize: MainAxisSize.min, children: labels),
+            ),
+          ),
+        ),
+        chevron,
+        const Expanded(child: SizedBox()),
+      ],
     );
   }
 }
