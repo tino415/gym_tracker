@@ -1272,7 +1272,7 @@ class _WatchRunPageState extends ConsumerState<WatchRunPage>
       mainAxisSize: MainAxisSize.min,
       children: [
         chip,
-        if (order.length > 1)
+        if (_workoutId != null && order.length > 1)
           IconButton(
             onPressed: _openParamsPage,
             icon: const Icon(Icons.more_horiz),

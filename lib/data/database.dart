@@ -2296,6 +2296,10 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) => t.routineExerciseId.equals(routineExerciseId))
           ..orderBy([(t) => OrderingTerm.asc(t.setIndex)]))
         .get();
+    final slot = await (select(routineExercises)
+          ..where((t) => t.syncId.equals(routineExerciseId)))
+        .getSingle();
+    final sameExercise = slot.exerciseId == newExerciseId;
     return [
       for (final s in primary)
         (
@@ -2303,7 +2307,7 @@ class AppDatabase extends _$AppDatabase {
             targetReps: s.targetReps,
             targetWeightKg: s.targetWeightKg,
             targetSeconds: s.targetSeconds,
-            targetParams: s.targetParams,
+            targetParams: sameExercise ? s.targetParams : null,
           ),
     ];
   }

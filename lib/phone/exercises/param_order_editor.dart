@@ -124,7 +124,6 @@ class ParamOrderEditor extends StatelessWidget {
         ],
       ),
     );
-    controller.dispose();
     return name == null || name.isEmpty ? null : name;
   }
 }
