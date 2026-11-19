@@ -264,6 +264,22 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets('the previous and next arrows sit level on the face',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(226, 226));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _pumpRun(tester, db: db, routine: await seedSquats(db));
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
+
+      final left = tester.getCenter(find.byIcon(Icons.chevron_left));
+      final right = tester.getCenter(find.byIcon(Icons.chevron_right));
+      expect(right.dy, left.dy);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('the rest pill leaves the reps controls clear of Done',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(226, 226));
