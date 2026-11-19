@@ -17,6 +17,7 @@ const _mcpUrl = '$_issuer/mcp';
 const _appUrl = 'http://app.test';
 const _claudeAi = 'gym-tracker-claude-ai';
 const _claudeAiRedirect = 'https://claude.ai/api/mcp/auth_callback';
+const _claudeAiPublished = 'https://claude.ai/oauth/mcp-oauth-client-metadata';
 const _claudeCode = 'https://claude.ai/oauth/claude-code-client-metadata';
 const _chatGpt = 'gym-tracker-chatgpt';
 const _chatGptRedirect =
@@ -397,6 +398,18 @@ void main() {
       expect(await mcpStatus(server, tokens['access_token'] as String), 200);
     });
 
+    test('claude.ai connects with its published identity', () async {
+      final server = await serve();
+      final user = await emulators.signUp();
+      final tokens = await tokensFor(
+        server,
+        user.idToken,
+        clientId: _claudeAiPublished,
+        redirectUri: _claudeAiRedirect,
+      );
+      expect(await mcpStatus(server, tokens['access_token'] as String), 200);
+    });
+
     test(
       'the consent screen can read the client name from the request',
       () async {
@@ -450,15 +463,22 @@ void main() {
 
     test('a redirect that is not the client\'s gets an error page', () async {
       final server = await serve();
-      for (final redirect in [
-        'https://evil.test/callback',
-        'https://claude.ai/api/mcp/auth_callback/../evil',
-        'https://claude.ai.evil.test/api/mcp/auth_callback',
-        'http://localhost/callback',
-      ]) {
-        final response = await authorize(server, redirectUri: redirect);
-        expect(response.statusCode, 400, reason: redirect);
-        expect(response.headers, isNot(contains('location')), reason: redirect);
+      for (final clientId in [_claudeAi, _claudeAiPublished]) {
+        for (final redirect in [
+          'https://evil.test/callback',
+          'https://claude.ai/api/mcp/auth_callback/../evil',
+          'https://claude.ai.evil.test/api/mcp/auth_callback',
+          'http://localhost/callback',
+        ]) {
+          final response = await authorize(
+            server,
+            clientId: clientId,
+            redirectUri: redirect,
+          );
+          final reason = '$clientId $redirect';
+          expect(response.statusCode, 400, reason: reason);
+          expect(response.headers, isNot(contains('location')), reason: reason);
+        }
       }
       for (final redirect in [
         'http://localhost.evil.test:1/callback',
