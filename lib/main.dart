@@ -57,6 +57,9 @@ void main() async {
     ProviderScope(
       overrides: [
         isWatchProvider.overrideWithValue(isWatch),
+        launchRouteProvider.overrideWithValue(
+          WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+        ),
         initialThemeModeProvider.overrideWithValue(initialTheme),
         initialLocaleProvider.overrideWithValue(initialLocale),
         initialHealthConnectEnabledProvider.overrideWithValue(
@@ -123,19 +126,16 @@ class _FirestoreDirectApp extends ConsumerWidget {
     final ready = ref.watch(firebaseReadyProvider);
     return ready.when(
       loading: () => const _BootScreen(),
-      error: (e, _) => _BootScreen(message: (l10n) => l10n.bootBackendError('$e')),
+      error: (e, _) =>
+          _BootScreen(message: (l10n) => l10n.bootBackendError('$e')),
       data: (ok) {
         if (!ok) {
           return _BootScreen(message: (l10n) => l10n.bootBackendUnavailable);
         }
         final user = ref.watch(authStateProvider).valueOrNull;
         if (user == null) {
-          return MaterialApp(
-            title: 'GymTracker',
-            locale: ref.watch(localeProvider),
-            localizationsDelegates: appLocalizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: const SelectableOnWeb(child: SignInScreen()),
+          return const _PreRouterApp(
+            page: SelectableOnWeb(child: SignInScreen()),
           );
         }
         return const PhoneApp();
@@ -144,20 +144,46 @@ class _FirestoreDirectApp extends ConsumerWidget {
   }
 }
 
-class _BootScreen extends ConsumerWidget {
-  const _BootScreen({this.message});
-  final String Function(AppLocalizations l10n)? message;
+/// Shown before [PhoneApp] takes over. It shows [page] under the name of the
+/// route the platform opened, which stays in the address bar for the router to
+/// open later, through [launchRouteProvider].
+class _PreRouterApp extends ConsumerStatefulWidget {
+  const _PreRouterApp({required this.page});
+  final Widget page;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PreRouterApp> createState() => _PreRouterAppState();
+}
+
+class _PreRouterAppState extends ConsumerState<_PreRouterApp> {
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GymTracker',
       locale: ref.watch(localeProvider),
       localizationsDelegates: appLocalizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      onGenerateRoute: (_) => _currentPageRoute(),
+      onGenerateInitialRoutes: (_) => [_currentPageRoute()],
+    );
+  }
+
+  Route<void> _currentPageRoute() => MaterialPageRoute(
+    settings: RouteSettings(name: ref.read(launchRouteProvider)),
+    builder: (_) => widget.page,
+  );
+}
+
+class _BootScreen extends StatelessWidget {
+  const _BootScreen({this.message});
+  final String Function(AppLocalizations l10n)? message;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PreRouterApp(
       // Selectable so a backend error can be copied out of a screen that
       // offers nothing else — it is the only thing here worth reporting.
-      home: SelectableOnWeb(
+      page: SelectableOnWeb(
         child: Builder(
           builder: (context) => Scaffold(
             body: Center(

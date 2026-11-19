@@ -298,6 +298,10 @@ e2e-web-delete:
 e2e-web-dialogs:
     @just _web-drive integration_test/dialog_width_web_test.dart
 
+[doc('/connect deep link through sign-in, in headless Chrome (needs the emulator suite)')]
+e2e-web-connect:
+    @just _web-drive integration_test/connect_deep_link_web_test.dart
+
 # Shared driver invocation for the web e2e targets.
 [private]
 _web-drive target:
