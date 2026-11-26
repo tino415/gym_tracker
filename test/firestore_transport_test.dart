@@ -360,6 +360,129 @@ void main() {
       await sub.cancel();
     });
   });
+
+  // The phone pushes every routine the moment the transport attaches, on top
+  // of documents the web or the assistant may have edited while the app was
+  // closed, so the routine push has to arbitrate as the exercise push does.
+  group('routines', () {
+    CollectionReferenceLike rcol() =>
+        fs.collection('users').doc('u1').collection('routines');
+
+    Map<String, Object?> routine({
+      required int version,
+      String syncId = 'r1',
+      String name = 'Walk',
+    }) => RoutineTemplateDto(
+          syncId: syncId,
+          name: name,
+          version: version,
+          createdAtMs: 1000,
+          exercises: const [],
+        ).toJson();
+
+    Future<void> pushRoutines(
+      FirestoreSyncTransport t,
+      List<Map<String, Object?>> rows,
+    ) => t.send(type: routineBundleType, payload: {'routines': rows});
+
+    Future<void> connected() async {
+      transport.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+
+    late _CommitCountingFirestore counted;
+
+    setUp(() {
+      counted = _CommitCountingFirestore();
+      fs = counted;
+      transport = FirestoreSyncTransport(uid: 'u1', firestore: fs);
+    });
+
+    /// Counted by commit, not by snapshot event: the fake's `snapshots()` drops
+    /// a snapshot equal to the previous one, so an identical rewrite raises no
+    /// event at all.
+    Future<int> commitsDuring(Future<void> Function() action) async {
+      final before = counted.commits;
+      await action();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      return counted.commits - before;
+    }
+
+    test('a stale push does not clobber a newer server doc', () async {
+      await rcol().doc('r1').set(routine(version: 3, name: 'Edited elsewhere'));
+      await connected();
+      await pushRoutines(transport, [routine(version: 2, name: 'Phone copy')]);
+
+      final doc = await rcol().doc('r1').get();
+      expect(doc.data()!['version'], 3);
+      expect(doc.data()!['name'], 'Edited elsewhere');
+    });
+
+    test('an unreadable server holds the push back, then replays it', () async {
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+      t.failRoutineReads = true;
+
+      await pushRoutines(t, [routine(version: 1)]);
+      expect((await rcol().doc('r1').get()).exists, isFalse,
+          reason: 'nothing may be written while the server is unreadable');
+
+      t.failRoutineReads = false;
+      await t.retryGuard();
+
+      expect((await rcol().doc('r1').get()).exists, isTrue,
+          reason: 'the held bundle replays');
+    });
+
+    test('a held push still loses to a newer server doc when it replays',
+        () async {
+      await rcol().doc('r1').set(routine(version: 5, name: 'Server copy'));
+      final t = _FailableReadTransport(uid: 'u1', firestore: fs);
+      addTearDown(t.dispose);
+      t.failRoutineReads = true;
+
+      await pushRoutines(t, [routine(version: 1)]);
+      t.failRoutineReads = false;
+      await t.retryGuard();
+
+      final doc = await rcol().doc('r1').get();
+      expect(doc.data()!['version'], 5);
+      expect(doc.data()!['name'], 'Server copy');
+    });
+
+    test('an equal-version push with different content writes', () async {
+      await rcol().doc('r1').set(routine(version: 2, name: 'Old'));
+      await connected();
+      await pushRoutines(transport, [routine(version: 2, name: 'Edited')]);
+
+      final doc = await rcol().doc('r1').get();
+      expect(doc.data()!['name'], 'Edited');
+    });
+
+    test('a push identical to the server doc writes nothing', () async {
+      await rcol().doc('r1').set(routine(version: 1));
+      await connected();
+
+      final commits = await commitsDuring(
+        () => pushRoutines(transport, [routine(version: 1)]),
+      );
+      expect(commits, 0);
+    });
+
+    test('a routine seen from the server is not written back', () async {
+      await connected();
+      await rcol().doc('r1').set(routine(version: 3, name: 'Edited elsewhere'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final commits = await commitsDuring(
+        () => pushRoutines(
+          transport,
+          [routine(version: 3, name: 'Edited elsewhere')],
+        ),
+      );
+      expect(commits, 0);
+    });
+  });
 }
 
 /// fake_cloud_firestore returns its own collection type; this alias keeps the
@@ -395,6 +518,18 @@ class _FailableReadTransport extends FirestoreSyncTransport {
     return super.readServerExercises();
   }
 
+  bool failRoutineReads = false;
+
+  @override
+  Future<QuerySnapshot<Map<String, Object?>>> readServerRoutines() {
+    if (failRoutineReads) {
+      return Future.error(
+        FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
+      );
+    }
+    return super.readServerRoutines();
+  }
+
   /// Drives exactly what the transport's own retry timer runs, without the
   /// 30 seconds of wall clock.
   ///
@@ -412,6 +547,34 @@ class _FailableReadTransport extends FirestoreSyncTransport {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
   }
+}
+
+class _CommitCountingFirestore extends FakeFirebaseFirestore {
+  int commits = 0;
+
+  @override
+  WriteBatch batch() => _CountingBatch(super.batch(), () => commits++);
+}
+
+class _CountingBatch implements WriteBatch {
+  _CountingBatch(this._inner, this._onCommit);
+
+  final WriteBatch _inner;
+  final void Function() _onCommit;
+
+  @override
+  void set<T>(DocumentReference<T> document, T data, [SetOptions? options]) =>
+      _inner.set(document, data, options);
+
+  @override
+  Future<void> commit() {
+    _onCommit();
+    return _inner.commit();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
 }
 
 /// An empty snapshot flagged as cache-served, which is what `Source.server`

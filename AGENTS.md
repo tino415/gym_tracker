@@ -89,6 +89,10 @@ emulator writes to real data.
 `just fs-get <path>` reads emulator documents (rules are enforced even locally;
 the recipe carries the admin bypass header).
 
+A phone emulator runs against the same suite with `just phone-apk-emulator` and
+`just phone-install phone`, then `just phone-emulator-ports phone` before the
+app starts, since the build dials the phone's own localhost.
+
 ### Phone UI conventions
 - Routine creation is **deferred**: `_ensurePersisted()` only writes the `Routines` row on first save or first add-exercise. The explicit ✓ in the app bar is the save action; on-blur autosave was removed.
 - `lib/phone/history/workout_detail_page.dart` is the editable workout view — reps/weights/seconds, started/ended, add/remove completions and exercises, delete workout. It edits the workout's snapshot, never the routine.

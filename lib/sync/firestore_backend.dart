@@ -15,8 +15,10 @@ const _backend = String.fromEnvironment('SYNC_BACKEND');
 const bool syncBackendEnabled = _backend == 'firestore';
 
 /// Emulator target. Defaults match `firebase.json`. Host is `localhost` so a
-/// web build served from the machine reaches the loopback-bound emulator; an
-/// Android device would need the host's LAN address instead.
+/// web build served from the machine reaches the loopback-bound emulator. On
+/// Android it is the device's own loopback, which `just phone-emulator-ports`
+/// reverses onto the emulators: the SDKs' automatic host mapping is off, since
+/// it would send `localhost` to 10.0.2.2 instead.
 const _emulatorHost = String.fromEnvironment(
   'FIREBASE_EMULATOR_HOST',
   defaultValue: 'localhost',
@@ -82,7 +84,11 @@ Future<bool> initFirebaseApp() async {
     // the same try/catch, ahead of this call) must never prevent it from
     // running. Log failures instead of swallowing them.
     try {
-      await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, _authPort);
+      await FirebaseAuth.instance.useAuthEmulator(
+        _emulatorHost,
+        _authPort,
+        automaticHostMapping: false,
+      );
     } catch (e, st) {
       debugPrint('useAuthEmulator($_emulatorHost:$_authPort) failed: $e\n$st');
     }
@@ -90,6 +96,7 @@ Future<bool> initFirebaseApp() async {
       FirebaseFirestore.instance.useFirestoreEmulator(
         _emulatorHost,
         _firestorePort,
+        automaticHostMapping: false,
       );
     } catch (e, st) {
       debugPrint(

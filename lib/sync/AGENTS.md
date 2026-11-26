@@ -8,6 +8,7 @@ Read `docs/sync.md` before changing a file here; each line below is argued there
 - An apply never clobbers a live local session, one with `endedAt` null.
 - The watch never pushes routines.
 - A Firestore push is upsert-only: no doc is deleted for being absent locally.
+- A routine push writes nothing before the server's routines were read, and never over a strictly newer doc.
 - A deletion is a versioned tombstone; its Firestore doc is rewritten, not removed.
 - `start()` drains the pending queue before it sends the `syncRequest`.
 - `stripHealthData` gates at the transport and in the web repository, never at
