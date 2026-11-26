@@ -59,7 +59,7 @@ class _WorkoutRunPageState extends ConsumerState<WorkoutRunPage>
   /// Only the *first* snapshot emission seeds the position and loads targets.
   /// Later emissions refresh the display only — reloading targets on every
   /// emission would let a concurrent sync write cancel a running rest timer.
-  /// Same invariant as the watch run page; see CLAUDE.md.
+  /// Same invariant as the watch run page; see docs/watch.md.
   bool _initialLoadDone = false;
 
   int _exerciseIdx = 0;

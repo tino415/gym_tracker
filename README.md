@@ -106,9 +106,11 @@ https://gym-tracker-44a5f.web.app/privacy.html and its source is
 
 ## Internals
 
-`CLAUDE.md` documents how the thing actually works and which invariants break if
+`docs/` documents how the thing actually works and which invariants break if
 you ignore them: the workout snapshot model, migration ordering, why heart-rate
 capture has to stay native, how sync arbitrates and avoids loops, and the
-service-worker traps in the web build. It is written for someone changing the
-code, not for someone meeting the app, which is why this README does not repeat
-it.
+service-worker traps in the web build. `CONTRIBUTING.md` holds the rules for
+tests, schema changes and pull requests, and `AGENTS.md`, in the root and beside
+the code, the short rules an agent must not break. All of it is written for
+someone changing the code, not for someone meeting the app, which is why this
+README does not repeat it.

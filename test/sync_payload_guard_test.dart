@@ -10,7 +10,7 @@ import 'package:gym_tracker/sync/sync_codec.dart';
 /// (the heart-rate series) is health data, which Play treats as personal and
 /// sensitive.
 ///
-/// This is deliberately a test rather than a paragraph in CLAUDE.md: prose
+/// This is deliberately a test rather than a paragraph in docs/sync.md: prose
 /// describing a data flow goes stale silently, while a failing test arrives at
 /// the moment the decision is being made. Adding a field to a workout DTO is
 /// allowed — it just has to be a decision, not a side effect.
