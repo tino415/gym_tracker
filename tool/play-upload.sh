@@ -8,9 +8,9 @@
 #   tool/play-upload.sh --next-code <service-account.json> <package>
 #   tool/play-upload.sh --verify-signing <service-account.json> <package> <versionCode>
 #
-# An upload commits its release as a draft, then releases it with
-# PLAY_RELEASE_STATUS (default completed) only when Play's app-signing cert
-# equals the package's pin in play-app-signing.sha256; draft stops after the check.
+# An upload commits its release as a draft, then releases it only when Play's
+# app-signing cert equals the package's pin in play-app-signing.sha256.
+# PLAY_RELEASE_STATUS=draft stops after the check; completed is the default.
 # --check opens an edit and deletes it again: proves the account may touch the
 # app without releasing anything.
 # --next-code prints the highest versionCode Play knows (the edit's bundles and
@@ -69,6 +69,10 @@ next_code() {
 
 upload() {
   local version status=${PLAY_RELEASE_STATUS:-completed}
+  case $status in
+    completed | draft) ;;
+    *) echo "PLAY_RELEASE_STATUS must be completed or draft, not $status" >&2; return 1 ;;
+  esac
   pinned_hash > /dev/null
   version=$(upload_as_draft)
   echo "committed versionCode $version to $track as a draft"
@@ -86,7 +90,7 @@ upload_as_draft() {
   local edit response
   edit=$(open_edit)
   response=$(call -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$bundle" \
-    "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media") || { echo "$response" >&2; return 1; }
+    "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media") || { call -X DELETE "$api/$package/edits/$edit"; return 1; }
   put_release "$edit" "$(jq -r .versionCode <<<"$response")" draft
   call -X POST "$api/$package/edits/$edit:commit" > /dev/null
   jq -r .versionCode <<<"$response"
@@ -126,7 +130,10 @@ pinned_hash() {
 await_signing_hashes() {
   local version=$1 found deadline=$((SECONDS + 600))
   until found=$(signing_hashes "$version" 2> /dev/null) && [ -n "$found" ]; do
-    [ "$SECONDS" -lt "$deadline" ] || return 0
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      signing_hashes "$version" || true
+      return
+    fi
     sleep 30
   done
   printf '%s\n' "$found"
