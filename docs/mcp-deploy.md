@@ -31,6 +31,10 @@ its own. To rotate the signing key, add a second kid to `mcp-signing-keys`,
 deploy with `MCP_SIGNING_KID` pointing at it, and drop the old kid after an
 hour (the access token lifetime) plus the 10 minutes a pending request lives.
 
+Each deploy replaces the service's env vars and secrets with the workflow's
+lists: a name dropped from the workflow, or a value set by hand in the
+console, is gone after the next deploy.
+
 The deploy sets `MCP_PUBLIC_URL` (the Cloud Run URL, also the issuer),
 `MCP_APP_URL` (the origin that serves `/connect`) and `MCP_FIREBASE_API_KEY`
 (the public web key, which Identity Toolkit asks for when it checks a sign-in).
@@ -46,7 +50,8 @@ gh workflow run mcp-deploy.yml --ref main
 ```
 
 It refuses a commit whose `ci.yml` push run did not pass. The run summary
-shows the URL, `<url>` below.
+lists the secrets the service mounts, only `MCP_SIGNING_KEYS=mcp-signing-keys`,
+and shows the URL, `<url>` below.
 
 ## Checking it
 
