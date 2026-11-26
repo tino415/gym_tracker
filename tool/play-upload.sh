@@ -10,7 +10,8 @@
 #   tool/play-upload.sh --release-draft <service-account.json> <package> <track> <versionCode>
 #
 # An upload commits its release as a draft, then releases it only when Play's
-# app-signing cert equals the package's pin in play-app-signing.sha256.
+# app-signing cert equals the package's pin in play-app-signing.local.sha256,
+# untracked in the main checkout's root.
 # PLAY_RELEASE_STATUS=draft stops after the check; completed is the default.
 # --check opens an edit and deletes it again: proves the account may touch the
 # app without releasing anything.
@@ -25,7 +26,8 @@ shopt -s inherit_errexit
 
 api=https://androidpublisher.googleapis.com/androidpublisher/v3/applications
 scope=https://www.googleapis.com/auth/androidpublisher
-pins=$(dirname "${BASH_SOURCE[0]}")/play-app-signing.sha256
+main_checkout=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --path-format=absolute --git-common-dir)/..
+pins=$(realpath "$main_checkout")/play-app-signing.local.sha256
 
 base64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
@@ -139,8 +141,8 @@ signing_matches_pin() {
 }
 
 pinned_hash() {
-  local hash
-  hash=$(awk -v package="$package" '$1 == package { print $2 }' "$pins")
+  local hash=
+  [ ! -f "$pins" ] || hash=$(awk -v package="$package" '$1 == package { print $2 }' "$pins")
   [ -n "$hash" ] || { echo "no app-signing pin for $package in $pins: refusing" >&2; return 1; }
   printf %s "$hash"
 }
