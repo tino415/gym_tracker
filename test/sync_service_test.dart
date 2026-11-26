@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
+import 'package:gym_tracker/sync/firestore_transport.dart';
 import 'package:gym_tracker/sync/sync_codec.dart';
 import 'package:gym_tracker/sync/sync_repository.dart';
 import 'package:gym_tracker/sync/sync_service.dart';
@@ -607,6 +609,40 @@ void main() {
 
     expect(late.started, isTrue);
     expect(late.sent.where((m) => m.type == routineBundleType), isNotEmpty);
+    await svc.dispose();
+  });
+
+  test(
+      'a routine edited on the server while the app was closed keeps the '
+      'server copy after the transport attaches', () async {
+    final routineId = await _seedRoutine(db);
+    await (db.update(db.routines)..where((r) => r.syncId.equals(routineId)))
+        .write(const RoutinesCompanion(version: Value(2)));
+    final local = (await repo.exportAllRoutines()).single.toJson();
+    final fs = FakeFirebaseFirestore();
+    final serverDoc = fs.doc('users/u1/routines/$routineId');
+    await serverDoc.set({...local, 'name': 'Edited elsewhere', 'version': 3});
+
+    final svc = serviceWith([FakeTransport()], isRoutineAuthority: true);
+    svc.start();
+    svc.addTransport(FirestoreSyncTransport(uid: 'u1', firestore: fs));
+
+    Future<Routine> localRow() => (db.select(db.routines)
+          ..where((r) => r.syncId.equals(routineId)))
+        .getSingle();
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while ((await localRow()).version < 3 && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    // The attach push is debounced behind the start push; let both run out.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    final server = (await serverDoc.get()).data()!;
+    expect(server['version'], 3);
+    expect(server['name'], 'Edited elsewhere');
+    final row = await localRow();
+    expect(row.version, 3);
+    expect(row.name, 'Edited elsewhere');
     await svc.dispose();
   });
 

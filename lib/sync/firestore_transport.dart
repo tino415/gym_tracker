@@ -49,12 +49,16 @@ class FirestoreSyncTransport implements SyncTransport {
   bool _started = false;
   bool _disposed = false;
 
-  /// Last content we wrote per routine doc, so an idempotent re-push writes
+  /// Last routine doc written or seen from the server, per sync id. It is both
+  /// the echo suppression and the version guard, so it changes only on what
+  /// the server is known to hold: a committed write, the gate's server read,
+  /// or a server snapshot with no pending writes. Anything weaker would let a
+  /// stale phone copy look identical to, or newer than, the server's.
+  final Map<String, Map<String, Object?>> _serverRoutines = {};
+
+  /// Last content we wrote per exercise doc, so an idempotent re-push writes
   /// nothing (echo suppression) without re-reading the collection from the
   /// server on every push.
-  final Map<String, Map<String, Object?>> _lastWrittenRoutine = {};
-
-  /// Same echo-suppression cache for exercise-library docs.
   final Map<String, Map<String, Object?>> _lastWrittenExercise = {};
 
   /// Server version per exercise doc, so a push can refuse to overwrite a
@@ -64,45 +68,27 @@ class FirestoreSyncTransport implements SyncTransport {
   /// believe it had already written every doc.
   final Map<String, int> _serverExerciseVersions = {};
 
-  /// Whether [_serverExerciseVersions] reflects the server rather than nothing
-  /// at all. Until it does, [_pushExercises] writes nothing: pushing blind is
-  /// what lets a freshly seeded library at version 1 flatten an account that
-  /// has been edited for months.
-  bool _serverExerciseVersionsLoaded = false;
-  Future<void>? _serverExerciseVersionsLoad;
+  /// Pushing blind is what lets a freshly seeded library at version 1 flatten
+  /// an account that has been edited for months.
+  late final _ServerReadGate _exerciseGate = _ServerReadGate(
+    collection: 'exercises',
+    readServer: () => readServerExercises(),
+    recordServerDocs: _recordServerExerciseVersions,
+    write: _writeExercises,
+  );
 
-  /// Counts guard reads so a failure that is usually permanent can still get a
-  /// couple of goes. The transport attaches and reads the moment the user signs
-  /// in, which is exactly when a token has not reached the backend yet and the
-  /// read comes back permission-denied for a second.
-  int _guardReadAttempts = 0;
-
-  /// Retries the guard read while a push is waiting on it. Nothing else would:
-  /// every route into a push needs an external trigger, and the snapshot
-  /// listener cannot be relied on either (see [_loadServerExerciseVersions]).
-  Timer? _guardRetry;
-
-  /// The bundle [_pushExercises] held back because the guard had no server
-  /// data yet, replayed when it arrives. Holding rather than dropping matters
-  /// because every other route back into a push needs an external trigger (an
-  /// edit, a peer's sync request, "Sync now"): a user who signs in with no
-  /// network and then simply does not touch the app would otherwise never
-  /// upload their library, however long they are online afterwards.
-  Map<String, Object?>? _deferredExercisePush;
-
-  /// Exercise pushes run one at a time.
-  ///
-  /// Dropping a held bundle when a fresher one arrives only helps while the
-  /// held one is still held. Once its commit is in flight nothing supersedes
-  /// it, so a slow replay and a quick edit-triggered push become two batch
-  /// writes over the same documents with no ordering between them, and if the
-  /// older lands last the server keeps the pre-edit content while the local
-  /// row is newer. The inbound snapshot is then correctly rejected on version,
-  /// so the two stay diverged with nothing scheduled to repair it.
-  Future<void> _exercisePushLock = Future<void>.value();
+  /// Pushing blind is what lets the phone's copy of a routine, pushed in full
+  /// the moment the transport attaches, revert an edit the web or the
+  /// assistant made while the app was closed.
+  late final _ServerReadGate _routineGate = _ServerReadGate(
+    collection: 'routines',
+    readServer: () => readServerRoutines(),
+    recordServerDocs: _recordServerRoutines,
+    write: _writeRoutines,
+  );
 
   /// Last workout doc we wrote or observed, per sync id. Doubles as the echo
-  /// suppression cache (like [_lastWrittenRoutine]) and the server-version
+  /// suppression cache (like [_lastWrittenExercise]) and the server-version
   /// guard, so a push neither rewrites an identical doc nor clobbers a newer
   /// one, without a read per push.
   final Map<String, Map<String, Object?>> _serverWorkouts = {};
@@ -124,127 +110,39 @@ class FirestoreSyncTransport implements SyncTransport {
     _subs.add(_routines.snapshots().listen(_onRoutinesSnapshot));
     _subs.add(_workouts.snapshots().listen(_onWorkoutsSnapshot));
     _subs.add(_exercises.snapshots().listen(_onExercisesSnapshot));
-    // Head start on the guard. Not awaited: start() is synchronous by
-    // contract, and _pushExercises awaits it properly.
-    unawaited(_ensureServerExerciseVersionsLoaded());
+    // Head start on both gates. Not awaited: start() is synchronous by
+    // contract, and each gate awaits its read properly.
+    _exerciseGate.warmUp();
+    _routineGate.warmUp();
   }
 
-  Future<void> _ensureServerExerciseVersionsLoaded() async {
-    if (_serverExerciseVersionsLoaded || _disposed) return;
-    await (_serverExerciseVersionsLoad ??= _loadServerExerciseVersions());
-  }
-
-  /// The one read the guard makes, as its own method so a test can fail it.
-  /// `fake_cloud_firestore` routes neither `mock_exceptions` nor its security
-  /// rules through a collection `get`, so the offline path is otherwise
-  /// unreachable from outside, and it is the path the guard exists for.
+  /// The one read the exercise gate makes, as its own method so a test can
+  /// fail it. `fake_cloud_firestore` routes neither `mock_exceptions` nor its
+  /// security rules through a collection `get`, so the offline path is
+  /// otherwise unreachable from outside, and it is the path the gate exists
+  /// for.
   @visibleForTesting
   Future<QuerySnapshot<Map<String, Object?>>> readServerExercises() =>
       _exercises.get(const GetOptions(source: Source.server));
 
-  /// Loads server versions with an explicit read rather than waiting for the
-  /// snapshot listener to report a non-cached snapshot.
-  ///
-  /// The listener cannot carry this. Firestore suppresses an event whose only
-  /// change is metadata unless the subscription opts into metadata changes, so
-  /// the `isFromCache` true-to-false transition raises nothing when the server
-  /// documents match the cache. That is the steady state, and it is trivially
-  /// true for a new account where both are empty, which is exactly the offline
-  /// sign-in this guard was built for: the flag would never flip and every
-  /// exercise push would be held for the life of the process.
-  Future<void> _loadServerExerciseVersions() async {
-    try {
-      final snap = await readServerExercises();
-      // A cache-served snapshot says nothing about the server. The SDK falls
-      // back to cache without throwing, and offline that is an empty snapshot,
-      // which would read as "the server holds nothing" and disable the guard.
-      if (snap.metadata.isFromCache) return;
-      for (final doc in snap.docs) {
-        final v = (doc.data()['version'] as num?)?.toInt();
-        if (v != null) _serverExerciseVersions[doc.id] = v;
-      }
-      _serverExerciseVersionsLoaded = true;
-    } catch (e) {
-      // Counted here rather than per call, so only failures spend the budget.
-      // Charging every attempt let an offline stretch — which returns above
-      // without failing at all — exhaust it, and the first permission-denied
-      // afterwards would then be judged permanent on its first occurrence.
-      // That is the token-catching-up race the budget exists to survive.
-      _guardReadAttempts++;
-      // Stays unloaded, so nothing is pushed blind. A permanent failure stops
-      // the retry as well: rules that reject this read reject it every time,
-      // and re-issuing a whole-collection read every 30 seconds forever learns
-      // nothing. Pushes stay blocked, which is the right way to be stuck —
-      // writing without knowing what the server holds is the thing the guard
-      // exists to prevent.
-      if (!isRetryableFirestoreFailure(e, attempt: _guardReadAttempts)) {
-        _guardRetry?.cancel();
-        _guardRetry = null;
-        debugPrint('exercise guard read failed permanently: $e');
-      }
-    } finally {
-      _serverExerciseVersionsLoad = null;
-    }
-    // Not awaited. The flush commits a batch, and offline a Firestore write
-    // resolves only on reconnection, so awaiting it here would hang the
-    // original send() and stall _pushContext's fan-out for this transport.
-    if (_serverExerciseVersionsLoaded) unawaited(_flushDeferredExercisePush());
-  }
+  /// The routine gate's read, overridable for the same reason.
+  @visibleForTesting
+  Future<QuerySnapshot<Map<String, Object?>>> readServerRoutines() =>
+      _routines.get(const GetOptions(source: Source.server));
 
-  /// One timer covering both ways a push can be stuck: the guard has never
-  /// loaded, or it has loaded and a replay failed. It has to cover the second
-  /// as well, or restoring the payload on a failed replay would be decorative:
-  /// the load is memoized on success and would never run again, so nothing
-  /// would come back for what was put back.
-  void _scheduleGuardRetry() {
-    if (_guardRetry != null || _disposed) return;
-    _guardRetry = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => unawaited(runGuardRetryTick()),
-    );
-  }
-
-  /// Whether the guard will try again. Cancelling it strands whatever bundle
+  /// Whether either gate will try again. Cancelling it strands whatever bundle
   /// is being held, so "did that failure end the retries" is the thing worth
   /// asserting about classification.
   @visibleForTesting
-  bool get guardRetryArmed => _guardRetry != null;
+  bool get guardRetryArmed =>
+      _exerciseGate.retryArmed || _routineGate.retryArmed;
 
-  /// One retry attempt, as its own method so a test can drive it without
-  /// waiting 30 seconds of wall clock.
+  /// One retry attempt of each gate, so a test can drive it without waiting
+  /// 30 seconds of wall clock.
   @visibleForTesting
   Future<void> runGuardRetryTick() async {
-    if (_disposed ||
-        (_serverExerciseVersionsLoaded && _deferredExercisePush == null)) {
-      _guardRetry?.cancel();
-      _guardRetry = null;
-      return;
-    }
-    if (_serverExerciseVersionsLoaded) {
-      await _flushDeferredExercisePush();
-    } else {
-      await _ensureServerExerciseVersionsLoaded();
-    }
-  }
-
-  Future<void> _flushDeferredExercisePush() async {
-    final deferred = _deferredExercisePush;
-    if (deferred == null || _disposed) return;
-    _deferredExercisePush = null;
-    try {
-      await _pushExercises(deferred);
-      if (_deferredExercisePush == null) {
-        _guardRetry?.cancel();
-        _guardRetry = null;
-      }
-    } catch (_) {
-      // Put it back and keep a retry armed. Dropping here, or restoring without
-      // rearming, breaks the reason for holding it: a device that signed in
-      // offline and is never touched again has no other route into a push.
-      if (_disposed) return;
-      _deferredExercisePush ??= deferred;
-      _scheduleGuardRetry();
-    }
+    await _exerciseGate.retryTick();
+    await _routineGate.retryTick();
   }
 
   /// Nothing to drain: the snapshot listeners replay the whole collection on
@@ -261,13 +159,8 @@ class FirestoreSyncTransport implements SyncTransport {
     // device updates it without a second read. This only refreshes versions it
     // is already tracking; it does not decide whether the guard is loaded,
     // because a metadata-only transition raises no event here (see
-    // [_loadServerExerciseVersions]).
-    if (!snap.metadata.isFromCache) {
-      for (final doc in snap.docs) {
-        final v = (doc.data()['version'] as num?)?.toInt();
-        if (v != null) _serverExerciseVersions[doc.id] = v;
-      }
-    }
+    // [_ServerReadGate._readServer]).
+    if (!snap.metadata.isFromCache) _recordServerExerciseVersions(snap.docs);
 
     final upserted = <Map<String, Object?>>[];
     for (final change in snap.docChanges) {
@@ -309,16 +202,33 @@ class FirestoreSyncTransport implements SyncTransport {
     }
   }
 
+  void _recordServerExerciseVersions(
+    Iterable<DocumentSnapshot<Map<String, Object?>>> docs,
+  ) {
+    for (final doc in docs) {
+      final v = (doc.data()?['version'] as num?)?.toInt();
+      if (v != null) _serverExerciseVersions[doc.id] = v;
+    }
+  }
+
+  /// Every added or modified doc is emitted, our own writes included: the
+  /// receiver's version-LWW makes an echo a no-op. Only what the server is
+  /// known to hold is recorded, so a cached or pending doc never vouches for
+  /// the next push.
   void _onRoutinesSnapshot(QuerySnapshot<Map<String, Object?>> snap) {
+    final fromServer = !snap.metadata.isFromCache;
     final upserted = <Map<String, Object?>>[];
     final removed = <String>[];
     for (final change in snap.docChanges) {
+      final doc = change.doc;
       switch (change.type) {
         case DocumentChangeType.added:
         case DocumentChangeType.modified:
-          upserted.add(change.doc.data()!);
+          if (fromServer) _recordServerRoutines([doc]);
+          upserted.add(doc.data()!);
         case DocumentChangeType.removed:
-          removed.add(change.doc.id);
+          if (fromServer) _serverRoutines.remove(doc.id);
+          removed.add(doc.id);
       }
     }
     if (upserted.isNotEmpty) {
@@ -371,11 +281,11 @@ class FirestoreSyncTransport implements SyncTransport {
     if (_disposed) return;
     switch (type) {
       case routineBundleType:
-        await _pushRoutines(payload);
+        await _routineGate.push(_rows(payload, 'routines'));
       case routineDeletedType:
         await _deleteRoutines(payload);
       case exerciseBundleType:
-        await _pushExercises(payload);
+        await _exerciseGate.push(_rows(payload, 'exercises'));
       case workoutCompletedType:
         await _pushWorkout(payload);
       case syncRequestType:
@@ -389,83 +299,57 @@ class FirestoreSyncTransport implements SyncTransport {
   /// missing from this bundle may just belong to a peer we haven't merged yet;
   /// real deletions arrive as [routineDeletedType]. This is what keeps one
   /// authority from wiping another's routines.
-  Future<void> _pushRoutines(Map<String, Object?> payload) async {
-    final raw = (payload['routines'] as List?)?.cast<Object?>() ?? const [];
+  ///
+  /// A routine whose server copy is strictly newer is left alone: the inbound
+  /// snapshot corrects the local row instead. Equal versions write, because a
+  /// phone-side exercise rename changes a routine's content without bumping
+  /// its version, and skipping it would strand the rename on the phone.
+  Future<void> _writeRoutines(List<Map<String, Object?>> rows) async {
     final batch = _fs.batch();
-    var writes = 0;
-    for (final r in raw) {
-      final data = (r as Map).cast<String, Object?>();
+    final written = <String, Map<String, Object?>>{};
+    for (final data in rows) {
       final syncId = data['syncId'] as String;
-      // Skip docs whose content we already wrote, so the push → own-snapshot →
-      // apply → push echo terminates without a Firestore read.
-      if (jsonEquals(_lastWrittenRoutine[syncId], data)) continue;
+      final server = _serverRoutines[syncId];
+      if (server != null && _versionOf(server) > _versionOf(data)) continue;
+      if (jsonEquals(server, data)) continue;
       batch.set(_routines.doc(syncId), data);
-      _lastWrittenRoutine[syncId] = data;
-      writes++;
+      written[syncId] = data;
     }
-    if (writes > 0) await batch.commit();
+    if (written.isEmpty) return;
+    await batch.commit();
+    // A server snapshot that landed while the commit was in flight may already
+    // hold a newer doc, and overwriting its record with ours would let a later
+    // equal-version push revert it.
+    written.forEach((syncId, data) {
+      final seen = _serverRoutines[syncId];
+      if (seen == null || _versionOf(seen) <= _versionOf(data)) {
+        _serverRoutines[syncId] = data;
+      }
+    });
   }
 
-  /// Upsert exercise-library docs by syncId. Like [_pushRoutines], this is
+  void _recordServerRoutines(
+    Iterable<DocumentSnapshot<Map<String, Object?>>> docs,
+  ) {
+    for (final doc in docs) {
+      final data = doc.data();
+      if (data != null && !doc.metadata.hasPendingWrites) {
+        _serverRoutines[doc.id] = data;
+      }
+    }
+  }
+
+  /// Upsert exercise-library docs by syncId. Like [_writeRoutines], this is
   /// upsert-only (never deletes a doc for being absent) and skips docs whose
   /// content we already wrote, so the push → own-snapshot → apply → push echo
   /// terminates without a Firestore read. Deletions ride as tombstone docs.
-  Future<void> _pushExercises(Map<String, Object?> payload) {
-    final next = _exercisePushLock.then((_) => _pushExercisesSerial(payload));
-    // The chain must survive a failure, or one error wedges every later push.
-    // The caller still sees it: `next` keeps the error, this only detaches it
-    // from the queue.
-    _exercisePushLock = next.catchError((_) {});
-    return next;
-  }
-
-  Future<void> _pushExercisesSerial(Map<String, Object?> payload) async {
-    // Re-checked here, not just in send(). send() refuses once disposed so a
-    // fan-out already in flight cannot touch a signed-out account's documents,
-    // and queueing broke that: a push admitted while the transport was alive
-    // now runs whenever the queue reaches it, which can be after a sign-out or
-    // an account switch has disposed us.
-    if (_disposed) return;
-
-    final raw = (payload['exercises'] as List?)?.cast<Object?>() ?? const [];
-
-    // Fail closed. Until the server has answered there is no way to tell a
-    // local row that is genuinely newer from one that is merely fresh, and
-    // writing anyway is how a seeded library at version 1 would flatten an
-    // account's renames and muscle tags. Held, not dropped, and retried on a
-    // timer, because nothing else would come back for it.
-    //
-    // The load is started, never awaited here. SyncService awaits each
-    // transport's send serially and pushAll runs the context push before the
-    // workout pushes, and a Source.server read has no client deadline: on a
-    // reachable but slow connection, awaiting would park "Sync now" on the
-    // exercise bundle and the workouts behind it would never go out at all.
-    //
-    // Only a non-empty bundle is worth holding, and holding one unconditionally
-    // would be worse than not holding at all: a later empty bundle arriving
-    // while the guard is still unloaded would replace a real library with
-    // nothing, and the eventual replay would write nothing at all.
-    if (!_serverExerciseVersionsLoaded) {
-      unawaited(_ensureServerExerciseVersionsLoaded());
-      if (raw.isNotEmpty) {
-        _deferredExercisePush = payload;
-        _scheduleGuardRetry();
-      }
-      return;
-    }
-
-    // This bundle is a full export of the library and supersedes anything held
-    // from before the guard loaded. Keeping the older one would leave two
-    // independent batch commits racing over the same documents, with the stale
-    // one able to land last and undo whatever the newer one carried.
-    _deferredExercisePush = null;
+  Future<void> _writeExercises(List<Map<String, Object?>> rows) async {
     final batch = _fs.batch();
     final pendingContent = <String, Map<String, Object?>>{};
     final pendingVersions = <String, int>{};
-    for (final e in raw) {
-      final data = (e as Map).cast<String, Object?>();
+    for (final data in rows) {
       final syncId = data['syncId'] as String;
-      final version = (data['version'] as num?)?.toInt() ?? 1;
+      final version = _versionOf(data);
       final serverVersion = _serverExerciseVersions[syncId];
       // Someone else edited this exercise more recently. Our copy will be
       // corrected by the inbound snapshot; overwriting theirs would lose it.
@@ -493,23 +377,9 @@ class FirestoreSyncTransport implements SyncTransport {
     // listener consults the cache to decide whether to emit. This listener does
     // not: _onExercisesSnapshot emits every added or modified doc regardless,
     // so caching earlier would suppress nothing. What the cache decides here is
-    // whether the *next push* rewrites, and the queue above guarantees the next
-    // push cannot start until this one has finished filling it.
-    //
-    // A failed commit hands the bundle back to the deferred slot and arms the
-    // retry, the same recovery the flush path has. Without it this path is the
-    // one hole left in the argument for holding rather than dropping: the
-    // exception reaches _sendAll, which swallows it, and nothing would come
-    // back for a library that was never written.
-    try {
-      await batch.commit();
-    } catch (_) {
-      if (!_disposed) {
-        _deferredExercisePush ??= payload;
-        _scheduleGuardRetry();
-      }
-      rethrow;
-    }
+    // whether the *next push* rewrites, and the gate's queue guarantees the
+    // next push cannot start until this one has finished filling it.
+    await batch.commit();
     _lastWrittenExercise.addAll(pendingContent);
     _serverExerciseVersions.addAll(pendingVersions);
   }
@@ -520,9 +390,9 @@ class FirestoreSyncTransport implements SyncTransport {
     final batch = _fs.batch();
     for (final syncId in syncIds) {
       batch.delete(_routines.doc(syncId));
-      _lastWrittenRoutine.remove(syncId);
     }
     await batch.commit();
+    syncIds.forEach(_serverRoutines.remove);
   }
 
   /// Version-LWW upsert. Two ways to skip: the server copy is strictly newer
@@ -556,7 +426,7 @@ class FirestoreSyncTransport implements SyncTransport {
       if (cachedVersion > version) return;
       if (cachedVersion == version && jsonEquals(cached, payload)) return;
     }
-    // Cache before writing, like _pushRoutines does: the snapshot for our own
+    // Cache before writing: the snapshot for our own
     // write can be delivered before `set` completes, and it must find the entry
     // already there or it would echo back as an inbound message. Rolled back if
     // the write fails, so a later push isn't wrongly suppressed.
@@ -572,14 +442,230 @@ class FirestoreSyncTransport implements SyncTransport {
   @override
   Future<void> dispose() async {
     _disposed = true;
-    _guardRetry?.cancel();
-    _guardRetry = null;
+    _exerciseGate.dispose();
+    _routineGate.dispose();
     for (final s in _subs) {
       await s.cancel();
     }
     _subs.clear();
     await _messages.close();
     _started = false;
+  }
+}
+
+List<Map<String, Object?>> _rows(Map<String, Object?> payload, String key) =>
+    [
+      for (final row in (payload[key] as List?) ?? const [])
+        (row as Map).cast<String, Object?>(),
+    ];
+
+int _versionOf(Map<String, Object?> doc) =>
+    (doc['version'] as num?)?.toInt() ?? 1;
+
+/// Fails one collection's pushes closed until the server's copy of that
+/// collection has been read once in this process, then lets them through one
+/// at a time. Until the server has answered there is no way to tell a local
+/// row that is genuinely newer from one that is merely fresh.
+///
+/// A bundle that arrives early is held, not dropped, and retried on a timer:
+/// every other route back into a push needs an external trigger (an edit, a
+/// peer's sync request, "Sync now"), so a user who signs in with no network
+/// and then does not touch the app would otherwise never upload, however long
+/// they are online afterwards.
+class _ServerReadGate {
+  _ServerReadGate({
+    required this.collection,
+    required Future<QuerySnapshot<Map<String, Object?>>> Function() readServer,
+    required void Function(Iterable<DocumentSnapshot<Map<String, Object?>>>)
+        recordServerDocs,
+    required Future<void> Function(List<Map<String, Object?>> rows) write,
+  })  : _read = readServer,
+        _record = recordServerDocs,
+        _write = write;
+
+  final String collection;
+  final Future<QuerySnapshot<Map<String, Object?>>> Function() _read;
+  final void Function(Iterable<DocumentSnapshot<Map<String, Object?>>>)
+      _record;
+  final Future<void> Function(List<Map<String, Object?>> rows) _write;
+
+  bool _loaded = false;
+  Future<void>? _load;
+  bool _disposed = false;
+
+  /// Counts failed reads so a failure that is usually permanent can still get
+  /// a couple of goes. The transport attaches and reads the moment the user
+  /// signs in, which is exactly when a token has not reached the backend yet
+  /// and the read comes back permission-denied for a second.
+  int _failedReads = 0;
+
+  /// One timer covering both ways a push can be stuck: the read has never
+  /// succeeded, or it has and a replay failed. It has to cover the second as
+  /// well, or restoring the bundle on a failed replay would be decorative: the
+  /// load is memoized on success and would never run again.
+  Timer? _retry;
+
+  List<Map<String, Object?>>? _held;
+
+  /// Pushes run one at a time.
+  ///
+  /// Dropping a held bundle when a fresher one arrives only helps while the
+  /// held one is still held. Once its commit is in flight nothing supersedes
+  /// it, so a slow replay and a quick edit-triggered push become two batch
+  /// writes over the same documents with no ordering between them, and if the
+  /// older lands last the server keeps the pre-edit content while the local
+  /// row is newer. The inbound snapshot is then correctly rejected on version,
+  /// so the two stay diverged with nothing scheduled to repair it.
+  Future<void> _queue = Future<void>.value();
+
+  bool get retryArmed => _retry != null;
+
+  void warmUp() => unawaited(_ensureLoaded());
+
+  Future<void> push(List<Map<String, Object?>> rows) {
+    final next = _queue.then((_) => _pushInTurn(rows));
+    // The chain must survive a failure, or one error wedges every later push.
+    // The caller still sees it: `next` keeps the error, this only detaches it
+    // from the queue.
+    _queue = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _pushInTurn(List<Map<String, Object?>> rows) async {
+    // Re-checked here, not just in send(). A push admitted while the transport
+    // was alive runs whenever the queue reaches it, which can be after a
+    // sign-out or an account switch has disposed it.
+    if (_disposed) return;
+
+    // The load is started, never awaited here. SyncService awaits each
+    // transport's send serially and pushAll runs the context push before the
+    // workout pushes, and a Source.server read has no client deadline: on a
+    // reachable but slow connection, awaiting would park "Sync now" on this
+    // bundle and the workouts behind it would never go out at all.
+    //
+    // Only a non-empty bundle is worth holding: a later empty bundle arriving
+    // while the read is still pending would replace a real one with nothing,
+    // and the eventual replay would write nothing at all.
+    if (!_loaded) {
+      unawaited(_ensureLoaded());
+      if (rows.isNotEmpty) {
+        _held = rows;
+        _scheduleRetry();
+      }
+      return;
+    }
+
+    // This bundle is a full export and supersedes anything held from before
+    // the read. Keeping the older one would leave two batch commits racing
+    // over the same documents, with the stale one able to land last.
+    _held = null;
+    try {
+      await _write(rows);
+    } catch (_) {
+      // Without this the exception reaches _sendAll, which swallows it, and
+      // nothing would come back for a bundle that was never written.
+      if (!_disposed) {
+        _held ??= rows;
+        _scheduleRetry();
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureLoaded() async {
+    if (_loaded || _disposed) return;
+    await (_load ??= _readServer());
+  }
+
+  /// An explicit read rather than waiting for the snapshot listener to report
+  /// a non-cached snapshot.
+  ///
+  /// The listener cannot carry this. Firestore suppresses an event whose only
+  /// change is metadata unless the subscription opts into metadata changes, so
+  /// the `isFromCache` true-to-false transition raises nothing when the server
+  /// documents match the cache. That is the steady state, and it is trivially
+  /// true for a new account where both are empty, which is exactly the offline
+  /// sign-in this gate was built for: it would never open and every push would
+  /// be held for the life of the process.
+  Future<void> _readServer() async {
+    try {
+      final snap = await _read();
+      // A cache-served snapshot says nothing about the server. The SDK falls
+      // back to cache without throwing, and offline that is an empty snapshot,
+      // which would read as "the server holds nothing" and open the gate.
+      if (snap.metadata.isFromCache) return;
+      _record(snap.docs);
+      _loaded = true;
+    } catch (e) {
+      // Counted here rather than per call, so only failures spend the budget.
+      // Charging every attempt let an offline stretch — which returns above
+      // without failing at all — exhaust it, and the first permission-denied
+      // afterwards would then be judged permanent on its first occurrence.
+      _failedReads++;
+      // A permanent failure stops the retry as well: rules that reject this
+      // read reject it every time. Pushes stay blocked, which is the right way
+      // to be stuck.
+      if (!isRetryableFirestoreFailure(e, attempt: _failedReads)) {
+        _cancelRetry();
+        debugPrint('$collection guard read failed permanently: $e');
+      }
+    } finally {
+      _load = null;
+    }
+    // Not awaited. The flush commits a batch, and offline a Firestore write
+    // resolves only on reconnection, so awaiting it here would hang the
+    // original send() and stall _pushContext's fan-out for this transport.
+    if (_loaded) unawaited(_flushHeld());
+  }
+
+  void _scheduleRetry() {
+    if (_retry != null || _disposed) return;
+    _retry = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(retryTick()),
+    );
+  }
+
+  void _cancelRetry() {
+    _retry?.cancel();
+    _retry = null;
+  }
+
+  Future<void> retryTick() async {
+    if (_disposed || (_loaded && _held == null)) {
+      _cancelRetry();
+      return;
+    }
+    if (_loaded) {
+      await _flushHeld();
+    } else {
+      await _ensureLoaded();
+    }
+  }
+
+  /// The held bundle is taken when its turn in the queue comes, not when the
+  /// flush is asked for. Taken earlier, it would be written after any fresher
+  /// push already waiting in the queue and undo it.
+  Future<void> _flushHeld() async {
+    if (_held == null || _disposed) return;
+    final next = _queue.then((_) async {
+      final held = _held;
+      if (held == null) return;
+      await _pushInTurn(held);
+    });
+    _queue = next.catchError((_) {});
+    try {
+      await next;
+      if (_held == null) _cancelRetry();
+    } catch (_) {
+      // _pushInTurn has put the bundle back and kept a retry armed. Dropping
+      // it, or restoring without rearming, breaks the reason for holding it.
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    _cancelRetry();
   }
 }
 

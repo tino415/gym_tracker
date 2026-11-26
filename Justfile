@@ -185,6 +185,26 @@ phone-apk-demo:
       --dart-define=SYNC_BACKEND=firestore --dart-define=SEED_DEMO=true {{BUILD_DEFINE}}
     cp {{APK_OUT}}/app-{{APK_VARIANT}}.apk {{APK_OUT}}/gym-phone.apk
 
+# A debug phone APK that signs in and syncs against the Firebase emulators of
+# `just up` instead of the prod project. It dials localhost, the phone's own, so
+# run phone-emulator-ports before launching it.
+[doc('Debug phone APK against the Firebase emulators of just up')]
+phone-apk-emulator:
+    flutter build apk --debug --target-platform {{PHONE_ABIS}} \
+      --dart-define=SYNC_BACKEND=firestore --dart-define=FIREBASE_USE_EMULATOR=true {{BUILD_DEFINE}}
+    cp {{APK_OUT}}/app-debug.apk {{APK_OUT}}/gym-phone.apk
+
+# Points a phone emulator's localhost:4119 and :4120 at the auth and Firestore
+# emulators, so a phone-apk-emulator build reaches them. Refuses a handset, as
+# e2e does.
+[doc('adb reverse of the auth and Firestore emulator ports onto a phone emulator')]
+phone-emulator-ports device=PHONE_DEVICE:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    test -n "{{device}}" || { echo "no device: pass an adb serial or 'phone', or set GYM_PHONE_DEVICE" >&2; exit 1; }
+    dev=$(tool/adb-device.sh --emulator-only "{{device}}") || exit 1
+    adb -s "$dev" reverse tcp:4119 tcp:4119 && adb -s "$dev" reverse tcp:4120 tcp:4120
+
 # Install a built APK. Push + `pm install` rather than `adb install`: streamed
 # install fails on some Wear devices. The remote path is per-target so two
 # installs can run at once, and the staged copy is deleted afterwards — an APK

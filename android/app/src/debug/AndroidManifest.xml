@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The Firebase emulators of `just phone-apk-emulator` speak plain HTTP. -->
+    <application android:networkSecurityConfig="@xml/emulator_cleartext"/>
 </manifest>
