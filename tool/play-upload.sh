@@ -7,6 +7,7 @@
 #   tool/play-upload.sh --check <service-account.json> <package>
 #   tool/play-upload.sh --next-code <service-account.json> <package>
 #   tool/play-upload.sh --verify-signing <service-account.json> <package> <versionCode>
+#   tool/play-upload.sh --release-draft <service-account.json> <package> <track> <versionCode>
 #
 # An upload commits its release as a draft, then releases it only when Play's
 # app-signing cert equals the package's pin in play-app-signing.sha256.
@@ -17,6 +18,8 @@
 # every track's releases) plus 1, through an edit it deletes again.
 # --verify-signing prints Play's app-signing certs of a versionCode and fails
 # when one differs from the pin.
+# --release-draft checks the cert of a versionCode against the pin again and
+# releases its draft on the track as completed, keeping its release notes.
 set -euo pipefail
 shopt -s inherit_errexit
 
@@ -82,8 +85,13 @@ upload() {
     echo "left versionCode $version as a draft on $track"
     return
   fi
-  release "$version" "$status"
-  echo "released versionCode $version to $track"
+  release_draft "$version"
+}
+
+release_checked_draft() {
+  signing_matches_pin "$version" "$(signing_hashes "$version")" ||
+    { echo "versionCode $version stays an unreleased draft on $track" >&2; return 1; }
+  release_draft "$version"
 }
 
 upload_as_draft() {
@@ -91,23 +99,33 @@ upload_as_draft() {
   edit=$(open_edit)
   response=$(call -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$bundle" \
     "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media") || { call -X DELETE "$api/$package/edits/$edit"; return 1; }
-  put_release "$edit" "$(jq -r .versionCode <<<"$response")" draft
+  put_draft_release "$edit" "$(jq -r .versionCode <<<"$response")"
   call -X POST "$api/$package/edits/$edit:commit" > /dev/null
   jq -r .versionCode <<<"$response"
 }
 
-release() {
-  local edit
+release_draft() {
+  local version=$1 edit draft
   edit=$(open_edit)
-  put_release "$edit" "$1" "$2"
+  draft=$(call "$api/$package/edits/$edit/tracks/$track" |
+    jq -c --arg code "$version" '.releases[]? | select(.status == "draft" and .versionCodes == [$code])') || draft=
+  if [ -z "$draft" ]; then
+    echo "no draft of versionCode $version on $track" >&2
+    call -X DELETE "$api/$package/edits/$edit"
+    return 1
+  fi
+  call -X PUT -H 'Content-Type: application/json' \
+    -d "$(jq -c --arg track "$track" '{track:$track,releases:[.status = "completed"]}' <<<"$draft")" \
+    "$api/$package/edits/$edit/tracks/$track" > /dev/null
   call -X POST "$api/$package/edits/$edit:commit" > /dev/null
+  echo "released versionCode $version to $track"
 }
 
-put_release() {
-  local edit=$1 version=$2 status=$3
+put_draft_release() {
+  local edit=$1 version=$2
   call -X PUT -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg track "$track" --arg code "$version" --arg notes "$notes" --arg status "$status" \
-      '{track:$track,releases:[{status:$status,versionCodes:[$code],releaseNotes:(if $notes == "" then [] else [{language:"en-US",text:$notes}] end)}]}')" \
+    -d "$(jq -nc --arg track "$track" --arg code "$version" --arg notes "$notes" \
+      '{track:$track,releases:[{status:"draft",versionCodes:[$code],releaseNotes:(if $notes == "" then [] else [{language:"en-US",text:$notes}] end)}]}')" \
     "$api/$package/edits/$edit/tracks/$track" > /dev/null
 }
 
@@ -154,6 +172,11 @@ elif [ "$1" = --verify-signing ]; then
   pinned_hash > /dev/null
   token=$(access_token "$key")
   signing_matches_pin "$version" "$(signing_hashes "$version")"
+elif [ "$1" = --release-draft ]; then
+  key=$2 package=$3 track=$4 version=$5
+  pinned_hash > /dev/null
+  token=$(access_token "$key")
+  release_checked_draft
 else
   key=$1 package=$2 track=$3 bundle=$4 notes=${5:-}
   token=$(access_token "$key")
