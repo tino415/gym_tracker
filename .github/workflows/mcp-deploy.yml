@@ -98,6 +98,17 @@ jobs:
             MCP_SIGNING_KID=k1
           secrets: |
             MCP_SIGNING_KEYS=mcp-signing-keys:latest
+          env_vars_update_strategy: overwrite
+          secrets_update_strategy: overwrite
+
+      - name: Show the mounted secrets
+        if: env.DEPLOY == 'true'
+        shell: bash
+        run: |
+          secrets=$(gcloud run services describe "$SERVICE" --region "${{ vars.GCP_REGION }}" --format json |
+            jq -r '(.spec.template.spec.containers[0].env // [])[] | select(.valueFrom.secretKeyRef) | "\(.name)=\(.valueFrom.secretKeyRef.name)"')
+          echo "$secrets"
+          printf 'Mounted secrets:\n\n```\n%s\n```\n\n' "$secrets" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Show the MCP URL
         if: env.DEPLOY == 'true'
