@@ -220,10 +220,12 @@ class DriftWorkoutRepository implements WorkoutRepository {
   @override
   Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
     required String exerciseId,
+    required String? routineExerciseId,
     required int setIndex,
     required String excludeWorkoutId,
   }) => _db.lastCompletionForExerciseAtSetIndex(
     exerciseId: exerciseId,
+    routineExerciseId: routineExerciseId,
     setIndex: setIndex,
     excludeWorkoutId: excludeWorkoutId,
   );

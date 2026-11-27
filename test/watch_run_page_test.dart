@@ -1338,6 +1338,42 @@ void main() {
       expect(find.text('Last: 8 × 30 kg'), findsOneWidget);
     });
   });
+
+  testWidgets('"Last" of an exercise listed twice is the entry being run', (
+    tester,
+  ) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final bike = await db.createExercise('Bike', kind: exerciseKindTime);
+    final routine = await db.createRoutine('Intervals');
+    for (final seconds in [240, 180]) {
+      final slot = await db.addExerciseToRoutine(
+        routineId: routine.syncId,
+        exerciseId: bike.syncId,
+      );
+      await db.addPlannedSet(routineExerciseId: slot.syncId, targetSeconds: seconds);
+    }
+    final past = await db.startWorkout(routine.syncId);
+    final entries = (await db.loadFullWorkout(past.syncId))!.exercises;
+    for (final (entry, seconds) in [(entries[1], 181), (entries[0], 241)]) {
+      await db.upsertSetCompletion(
+        workoutId: past.syncId,
+        workoutSetId: entry.sets.single.workoutSet.syncId,
+        actualSeconds: seconds,
+      );
+    }
+    await db.finishWorkout(past.syncId);
+
+    await _pumpRun(
+      tester,
+      db: db,
+      routine: (await db.loadFullRoutine(routine.syncId))!,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Last: 241s'), findsOneWidget);
+  });
 }
 
 Future<void> _openListAndTapFinish(WidgetTester tester) async {

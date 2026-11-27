@@ -1256,6 +1256,7 @@ void main() {
       final workout = await db.startWorkout(routine.syncId);
 
       final r = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 0,
         excludeWorkoutId: workout.syncId,
@@ -1312,6 +1313,7 @@ void main() {
       // Querying from a fresh in-progress workout.
       final wC = await db.startWorkout(routine.syncId);
       final r = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 0,
         excludeWorkoutId: wC.syncId,
@@ -1344,6 +1346,7 @@ void main() {
       await db.finishWorkout(w.syncId);
 
       final r = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 0,
         excludeWorkoutId: w.syncId,
@@ -1376,6 +1379,7 @@ void main() {
       // A separate in-progress workout queries.
       final wOther = await db.startWorkout(routine.syncId);
       final r = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 0,
         excludeWorkoutId: wOther.syncId,
@@ -1419,17 +1423,117 @@ void main() {
 
       final wNext = await db.startWorkout(routine.syncId);
       final r0 = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 0,
         excludeWorkoutId: wNext.syncId,
       );
       final r1 = await db.lastCompletionForExerciseAtSetIndex(
+        routineExerciseId: null,
         exerciseId: bench.syncId,
         setIndex: 1,
         excludeWorkoutId: wNext.syncId,
       );
       expect(r0!.actualReps, 5);
       expect(r1!.actualReps, 4);
+    });
+
+    group('exercise listed twice in a routine', () {
+      Future<({String exerciseId, String hardSlot, String easySlot, String next})>
+          seedIntervals({required bool easyLoggedFirst}) async {
+        final bike = await db.createExercise('Bike', kind: exerciseKindTime);
+        final routine = await db.createRoutine('Intervals');
+        final hard = await db.addExerciseToRoutine(
+          routineId: routine.syncId,
+          exerciseId: bike.syncId,
+        );
+        final easy = await db.addExerciseToRoutine(
+          routineId: routine.syncId,
+          exerciseId: bike.syncId,
+        );
+        await db.addPlannedSet(routineExerciseId: hard.syncId, targetSeconds: 240);
+        await db.addPlannedSet(routineExerciseId: easy.syncId, targetSeconds: 180);
+
+        final past = await db.startWorkout(routine.syncId);
+        final entries = (await db.loadFullWorkout(past.syncId))!.exercises;
+        final logs = [(entries[0], 241), (entries[1], 181)];
+        for (final (entry, seconds) in easyLoggedFirst ? logs.reversed : logs) {
+          await db.upsertSetCompletion(
+            workoutId: past.syncId,
+            workoutSetId: entry.sets.single.workoutSet.syncId,
+            actualSeconds: seconds,
+          );
+        }
+        await db.finishWorkout(past.syncId);
+        final next = await db.startWorkout(routine.syncId);
+        return (
+          exerciseId: bike.syncId,
+          hardSlot: hard.syncId,
+          easySlot: easy.syncId,
+          next: next.syncId,
+        );
+      }
+
+      for (final easyLoggedFirst in [true, false]) {
+        test('each entry reads its own actuals, easy logged first: '
+            '$easyLoggedFirst', () async {
+          final s = await seedIntervals(easyLoggedFirst: easyLoggedFirst);
+          Future<int?> lastSeconds(String slot) async =>
+              (await db.lastCompletionForExerciseAtSetIndex(
+                exerciseId: s.exerciseId,
+                routineExerciseId: slot,
+                setIndex: 0,
+                excludeWorkoutId: s.next,
+              ))?.actualSeconds;
+
+          expect(await lastSeconds(s.hardSlot), 241);
+          expect(await lastSeconds(s.easySlot), 181);
+        });
+      }
+
+      test('without a slot reads the first entry in routine order', () async {
+        final s = await seedIntervals(easyLoggedFirst: true);
+
+        final r = await db.lastCompletionForExerciseAtSetIndex(
+          exerciseId: s.exerciseId,
+          routineExerciseId: null,
+          setIndex: 0,
+          excludeWorkoutId: s.next,
+        );
+
+        expect(r!.actualSeconds, 241);
+      });
+
+      test('a newer workout from another routine still wins', () async {
+        final s = await seedIntervals(easyLoggedFirst: true);
+        final other = await db.createRoutine('Warm-up');
+        final slot = await db.addExerciseToRoutine(
+          routineId: other.syncId,
+          exerciseId: s.exerciseId,
+        );
+        await db.addPlannedSet(routineExerciseId: slot.syncId, targetSeconds: 600);
+        final newer = await db.startWorkout(other.syncId);
+        final entry = (await db.loadFullWorkout(newer.syncId))!.exercises.single;
+        await db.upsertSetCompletion(
+          workoutId: newer.syncId,
+          workoutSetId: entry.sets.single.workoutSet.syncId,
+          actualSeconds: 601,
+        );
+        await db.updateWorkoutTimes(
+          workoutId: newer.syncId,
+          startedAt: DateTime.now().add(const Duration(hours: 1)),
+          endedAt: DateTime.now().add(const Duration(hours: 2)),
+        );
+
+        final r = await db.lastCompletionForExerciseAtSetIndex(
+          exerciseId: s.exerciseId,
+          routineExerciseId: s.hardSlot,
+          setIndex: 0,
+          excludeWorkoutId: s.next,
+        );
+
+        expect(r!.actualSeconds, 601);
+      });
     });
   });
 
@@ -2124,6 +2228,7 @@ void main() {
 
       expect(
         await db.lastCompletionForExerciseAtSetIndex(
+          routineExerciseId: null,
           exerciseId: ex.syncId,
           setIndex: 0,
           excludeWorkoutId: current.syncId,
@@ -2135,6 +2240,7 @@ void main() {
 
       expect(
         await db.lastCompletionForExerciseAtSetIndex(
+          routineExerciseId: null,
           exerciseId: ex.syncId,
           setIndex: 0,
           excludeWorkoutId: current.syncId,

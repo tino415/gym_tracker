@@ -130,9 +130,12 @@ abstract class WorkoutRepository {
   /// What was last logged for [exerciseId] at [setIndex], ignoring
   /// [excludeWorkoutId] (the live session) and any unfinished or tombstoned
   /// workout. Null when the exercise has no history at that set index. The run
-  /// pages show it as a reference point next to the current set's target.
+  /// pages show it as a reference point next to the current set's target. Where
+  /// the newest match lists the exercise more than once, the
+  /// [routineExerciseId] entry wins, then the first in routine order.
   Future<SetCompletion?> lastCompletionForExerciseAtSetIndex({
     required String exerciseId,
+    required String? routineExerciseId,
     required int setIndex,
     required String excludeWorkoutId,
   });
