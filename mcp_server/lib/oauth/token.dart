@@ -112,6 +112,7 @@ class TokenEndpoint {
             uid: value.uid,
             clientId: value.clientId,
             resource: value.resource,
+            canSave: value.canSave,
             expiresAt: _now().add(refreshLifetime),
           ),
         );
@@ -168,6 +169,7 @@ class TokenEndpoint {
         uid: grant.uid,
         grantId: grant.grantId,
         clientId: grant.clientId,
+        canSave: grant.canSave,
       ),
     ),
     'token_type': 'Bearer',

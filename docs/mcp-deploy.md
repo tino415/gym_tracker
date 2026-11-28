@@ -14,7 +14,8 @@ token in production.
 ## Infrastructure
 
 The cloud resources are defined outside this repository. The runtime service
-account bypasses `firestore.rules`: it reads users' data and writes only the
+account bypasses `firestore.rules`: it reads users' data, writes the routines
+and new exercises `save_routine` saves under `users/{uid}`, and writes the
 sign-in state in `mcpCodes`, `mcpRefreshTokens` and `mcpRevokedGrants`, whose
 documents a TTL policy on `expiresAt` removes.
 

@@ -89,6 +89,7 @@ class ConnectEndpoint {
         redirectUri: pending.redirectUri,
         codeChallenge: pending.codeChallenge,
         resource: pending.resource,
+        canSave: body.showedSaveWording,
         expiresAt: _now().add(codeLifetime),
       ),
     );
@@ -122,6 +123,7 @@ class ConnectEndpoint {
         request,
         decision as String,
         idToken as String? ?? '',
+        showedSaveWording: json['access'] == readWriteAccess,
       );
     } on FormatException {
       return null;
@@ -137,10 +139,21 @@ class ConnectEndpoint {
   }
 }
 
+/// What the consent page sends when the user saw that the assistant can save
+/// routines. A page cached from before says only that it can read, and sends
+/// nothing, so its grant cannot save.
+const readWriteAccess = 'read-write';
+
 class _ConnectBody {
-  _ConnectBody(this.request, this.decision, this.idToken);
+  _ConnectBody(
+    this.request,
+    this.decision,
+    this.idToken, {
+    required this.showedSaveWording,
+  });
 
   final String request;
   final String decision;
   final String idToken;
+  final bool showedSaveWording;
 }

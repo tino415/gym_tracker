@@ -573,8 +573,8 @@
       }
     }
   },
-  "connectWhatItReads": "{client} will be able to read your routines, workouts and exercises when you ask it about your training. It cannot change anything and never sees your heart rate.",
-  "@connectWhatItReads": {
+  "connectWhatItCanDo": "{client} will be able to read your routines, workouts and exercises, and to create or change routines and add new exercises when you ask it to. It cannot delete a routine or an exercise or change your workouts, and never sees your heart rate.",
+  "@connectWhatItCanDo": {
     "placeholders": {
       "client": {
         "type": "String"

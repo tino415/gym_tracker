@@ -5,11 +5,13 @@ class AccessClaims {
     required this.uid,
     required this.grantId,
     required this.clientId,
+    this.canSave = false,
   });
 
   final String uid;
   final String grantId;
   final String clientId;
+  final bool canSave;
 }
 
 class AccessTokens {
@@ -35,6 +37,7 @@ class AccessTokens {
       'sub': claims.uid,
       'gid': claims.grantId,
       'client_id': claims.clientId,
+      if (claims.canSave) 'wr': true,
       'iat': issuedAt,
       'exp': issuedAt + lifetime.inSeconds,
     });
@@ -50,6 +53,11 @@ class AccessTokens {
     if (uid is! String || grantId is! String || clientId is! String)
       return null;
     if (uid.isEmpty || grantId.isEmpty) return null;
-    return AccessClaims(uid: uid, grantId: grantId, clientId: clientId);
+    return AccessClaims(
+      uid: uid,
+      grantId: grantId,
+      clientId: clientId,
+      canSave: claims['wr'] == true,
+    );
   }
 }

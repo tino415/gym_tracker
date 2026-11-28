@@ -174,7 +174,7 @@
   "shellTabWorkouts": "Tréningy",
   "shellAccount": "Účet",
   "connectTitle": "Pripojiť {client} ku GymTrackeru?",
-  "connectWhatItReads": "{client} bude môcť čítať tvoje rutiny, tréningy a cviky, keď sa ho opýtaš na svoj tréning. Nemôže nič meniť a tepovú frekvenciu nikdy nevidí.",
+  "connectWhatItCanDo": "{client} bude môcť čítať tvoje rutiny, tréningy a cviky a na tvoju žiadosť vytvárať alebo meniť rutiny a pridávať nové cviky. Nemôže zmazať rutinu ani cvik, ani meniť tvoje tréningy, a tepovú frekvenciu nikdy nevidí.",
   "connectWarning": "Pokračuj, len ak si pripájanie GymTrackera práve spustil v aplikácii {client}.",
   "connectAllow": "Povoliť",
   "connectDeny": "Zamietnuť",

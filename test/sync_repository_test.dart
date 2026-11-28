@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gym_tracker/data/database.dart';
@@ -50,6 +53,27 @@ void main() {
   });
 
   tearDown(() => db.close());
+
+  test(
+    'a routine as save_routine writes it applies and exports back unchanged, '
+    'so the phone writes nothing back',
+    () async {
+      final fixture = (jsonDecode(
+        File('test/fixtures/save_routine_doc.json').readAsStringSync(),
+      ) as Map).cast<String, Object?>();
+
+      await repo.applyRoutineBundleUpsert(
+        RoutineBundleMessage([RoutineTemplateDto.fromJson(fixture)]),
+      );
+
+      final exported = await repo.exportAllRoutines();
+      expect(
+        jsonEquals(exported.single.toJson(), fixture),
+        isTrue,
+        reason: jsonEncode(exported.single.toJson()),
+      );
+    },
+  );
 
   group('applyRoutineBundle versioning', () {
     test('same-version bundle still applies changed targets', () async {
