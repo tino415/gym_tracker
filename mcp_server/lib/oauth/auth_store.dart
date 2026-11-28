@@ -10,6 +10,7 @@ class GrantedCode {
     required this.redirectUri,
     required this.codeChallenge,
     required this.resource,
+    required this.canSave,
     required this.expiresAt,
   });
 
@@ -19,6 +20,9 @@ class GrantedCode {
   final String redirectUri;
   final String codeChallenge;
   final String resource;
+
+  /// Granted on a consent page that said the assistant can save routines.
+  final bool canSave;
   final DateTime expiresAt;
 }
 
@@ -28,6 +32,7 @@ class RefreshGrant {
     required this.uid,
     required this.clientId,
     required this.resource,
+    required this.canSave,
     required this.expiresAt,
   });
 
@@ -35,6 +40,9 @@ class RefreshGrant {
   final String uid;
   final String clientId;
   final String resource;
+
+  /// Granted on a consent page that said the assistant can save routines.
+  final bool canSave;
   final DateTime expiresAt;
 }
 
@@ -80,6 +88,7 @@ class AuthStore {
     'redirectUri': code.redirectUri,
     'codeChallenge': code.codeChallenge,
     'resource': code.resource,
+    'write': code.canSave,
     'used': false,
     'expiresAt': code.expiresAt,
   });
@@ -99,6 +108,7 @@ class AuthStore {
               redirectUri: fields['redirectUri'] as String,
               codeChallenge: fields['codeChallenge'] as String,
               resource: fields['resource'] as String,
+              canSave: fields['write'] == true,
               expiresAt: DateTime.parse(fields['expiresAt'] as String),
             ),
           ),
@@ -120,6 +130,7 @@ class AuthStore {
       uid: fields['uid'] as String,
       clientId: fields['clientId'] as String,
       resource: fields['resource'] as String,
+      canSave: fields['write'] == true,
       expiresAt: successorExpiresAt,
     );
     if (grant.clientId != clientId) return null;
@@ -171,6 +182,7 @@ class AuthStore {
     'uid': grant.uid,
     'clientId': grant.clientId,
     'resource': grant.resource,
+    'write': grant.canSave,
     'used': false,
     'expiresAt': grant.expiresAt,
   };

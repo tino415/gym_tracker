@@ -49,6 +49,7 @@ class HttpConnectGateway implements ConnectGateway {
         'request': request,
         'idToken': decision == ConnectDecision.allow ? await _idToken() : null,
         'decision': decision.name,
+        'access': 'read-write',
       }),
     );
     if (response.statusCode != 200) throw ConnectRefused(response.statusCode);

@@ -124,6 +124,7 @@ void main() {
     required String request,
     String? idToken,
     String decision = 'allow',
+    String? access,
   }) => httpClient.post(
     at(server, '/connect'),
     headers: {'Content-Type': 'application/json'},
@@ -131,6 +132,7 @@ void main() {
       'request': request,
       'idToken': ?idToken,
       'decision': decision,
+      'access': ?access,
     }),
   );
 
@@ -156,12 +158,18 @@ void main() {
     String idToken, {
     String clientId = _claudeAi,
     String redirectUri = _claudeAiRedirect,
+    String? access,
   }) async {
     final sealed = sealedRequestFrom(
       await authorize(server, clientId: clientId, redirectUri: redirectUri),
     );
     final params = await redirectParams(
-      await postConnect(server, request: sealed, idToken: idToken),
+      await postConnect(
+        server,
+        request: sealed,
+        idToken: idToken,
+        access: access,
+      ),
     );
     expect(params['state'], 'abc');
     expect(params['iss'], _issuer);
@@ -195,12 +203,14 @@ void main() {
     String idToken, {
     String clientId = _claudeAi,
     String redirectUri = _claudeAiRedirect,
+    String? access,
   }) async {
     final code = await obtainCode(
       server,
       idToken,
       clientId: clientId,
       redirectUri: redirectUri,
+      access: access,
     );
     final response = await postToken(
       server,
@@ -819,6 +829,42 @@ void main() {
           tokens = (jsonDecode(response.body) as Map).cast();
         }
         expect(await mcpStatus(server, tokens['access_token'] as String), 200);
+      },
+    );
+
+    test(
+      'a grant made with access read-write keeps the save right through a '
+      'refresh; one without never gains it',
+      () async {
+        final server = await serve();
+        final user = await emulators.signUp();
+        final verifier = AccessTokens(
+          SigningKeys(
+            emulators.config.signingKeys,
+            emulators.config.signingKid,
+            now: () => clock,
+          ),
+          issuer: _issuer,
+          audience: _mcpUrl,
+          now: () => clock,
+        );
+        Future<List<bool>> rightsThroughRefresh(String? access) async {
+          final tokens = await tokensFor(server, user.idToken, access: access);
+          final refreshed = await postToken(
+            server,
+            refreshForm(tokens['refresh_token'] as String),
+          );
+          expect(refreshed.statusCode, 200, reason: refreshed.body);
+          final next = (jsonDecode(refreshed.body) as Map).cast();
+          return [
+            for (final t in [tokens, next])
+              verifier.verify(t['access_token'] as String)!.canSave,
+          ];
+        }
+
+        expect(await rightsThroughRefresh('read-write'), [true, true]);
+        expect(await rightsThroughRefresh(null), [false, false]);
+        expect(await rightsThroughRefresh('write'), [false, false]);
       },
     );
 

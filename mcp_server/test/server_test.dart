@@ -357,6 +357,7 @@ void main() {
             'get_workout',
             'list_routines',
             'list_workouts',
+            'save_routine',
           ],
         );
         for (final t in tools) {
@@ -515,17 +516,35 @@ void main() {
         await exercise('e2', 'Incline bench');
         await exercise('e3', 'Old bench', deletedAtMs: 2);
         await exercise('e4', 'Squat');
+        await emulators.putDocument(uid, 'exercises', 'e1', {
+          'syncId': 'e1',
+          'name': 'Bench press',
+          'kind': 'reps',
+          'params': [
+            {'builtin': 'weight'},
+            {'id': 'p-incline', 'name': 'Incline'},
+          ],
+          'version': 1,
+          'createdAtMs': 1,
+          'muscleSyncIds': ['muscle:triceps', 'muscle:chest', 'muscle:neck'],
+          'deletedAtMs': null,
+        });
         final client = await connect(await serverFor(uid));
 
         final result = await call(client, 'find_exercises', {'query': 'BENCH'});
 
+        final found = result.structuredContent!['exercises'] as List;
         expect(
-          [
-            for (final e in result.structuredContent!['exercises'] as List)
-              (e as Map)['name'],
-          ],
+          [for (final e in found) (e as Map)['name']],
           ['Bench press', 'Incline bench'],
         );
+        expect(found.first, {
+          'id': 'e1',
+          'name': 'Bench press',
+          'kind': 'reps',
+          'muscles': ['Chest', 'Triceps'],
+          'parameters': ['Incline'],
+        });
       },
     );
 
@@ -605,14 +624,19 @@ void main() {
           ['Legs', 'Push'],
         );
         final legs = routines.first as Map;
+        expect(legs['id'], 'r-legs');
+        expect(legs['version'], 1);
         expect(legs['exercises'], [
           {
+            'slotId': 'r-legs-e1',
+            'exerciseId': 'ex-squat',
             'name': 'Squat',
             'kind': 'reps',
             'restSeconds': 90,
             'sets': [
               {'reps': 5, 'weightKg': 100.0},
             ],
+            'alternatives': <Object?>[],
           },
         ]);
       });

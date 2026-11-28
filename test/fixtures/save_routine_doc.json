@@ -1,0 +1,96 @@
+{
+  "syncId": "id-1",
+  "name": "Push day",
+  "version": 1,
+  "createdAtMs": 1795860000000,
+  "exercises": [
+    {
+      "syncId": "id-2",
+      "exerciseSyncId": "ex-bench",
+      "exerciseName": "Bench press",
+      "exerciseKind": "reps",
+      "exerciseParams": [
+        {"id": "p-incline", "name": "Incline"},
+        {"builtin": "weight"}
+      ],
+      "orderIndex": 0,
+      "restSeconds": 120,
+      "circuitGroup": 1,
+      "plannedSets": [
+        {
+          "syncId": "id-3",
+          "setIndex": 0,
+          "targetReps": 8,
+          "targetWeightKg": 60.0,
+          "targetSeconds": null,
+          "targetParams": {"p-incline": 30.0}
+        },
+        {
+          "syncId": "id-4",
+          "setIndex": 1,
+          "targetReps": 6,
+          "targetWeightKg": 62.5,
+          "targetSeconds": null,
+          "targetParams": null
+        }
+      ],
+      "alternatives": [
+        {
+          "syncId": "id-5",
+          "exerciseSyncId": "ex-dips",
+          "exerciseName": "Dips",
+          "exerciseKind": "reps",
+          "exerciseParams": [{"builtin": "weight"}],
+          "orderIndex": 0,
+          "plannedSets": []
+        }
+      ],
+      "muscleSyncIds": ["muscle:chest", "muscle:triceps"]
+    },
+    {
+      "syncId": "id-6",
+      "exerciseSyncId": "ex-plank",
+      "exerciseName": "Plank",
+      "exerciseKind": "time",
+      "exerciseParams": [{"builtin": "weight"}],
+      "orderIndex": 1,
+      "restSeconds": 90,
+      "circuitGroup": 1,
+      "plannedSets": [
+        {
+          "syncId": "id-7",
+          "setIndex": 0,
+          "targetReps": null,
+          "targetWeightKg": null,
+          "targetSeconds": 60,
+          "targetParams": null
+        }
+      ],
+      "alternatives": [],
+      "muscleSyncIds": ["muscle:abs"]
+    },
+    {
+      "syncId": "id-9",
+      "exerciseSyncId": "id-8",
+      "exerciseName": "Cable fly",
+      "exerciseKind": "reps",
+      "exerciseParams": [{"builtin": "weight"}],
+      "orderIndex": 2,
+      "restSeconds": 90,
+      "circuitGroup": null,
+      "plannedSets": [
+        {
+          "syncId": "id-10",
+          "setIndex": 0,
+          "targetReps": 12,
+          "targetWeightKg": null,
+          "targetSeconds": null,
+          "targetParams": null
+        }
+      ],
+      "alternatives": [],
+      "muscleSyncIds": ["muscle:chest"]
+    }
+  ],
+  "deletedAtMs": null
+}

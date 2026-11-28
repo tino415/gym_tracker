@@ -27,6 +27,7 @@ import 'tools/get_workout.dart';
 import 'tools/list_routines.dart';
 import 'tools/list_workouts.dart';
 import 'tools/read_tool.dart';
+import 'tools/save_routine.dart';
 import 'user_scope.dart';
 
 /// Streamable HTTP front for the MCP server. `StreamableMcpServer` would do the
@@ -38,7 +39,10 @@ class GymMcpServer {
     this._config, {
     required http.Client client,
     DateTime Function() now = DateTime.now,
-  }) : _client = client {
+    String Function() newId = generateUUID,
+  }) : _client = client,
+       _now = now,
+       _newId = newId {
     _accounts = AccountDirectory(
       client: _client,
       identityToolkitRoot: _config.backend.identityToolkitRoot,
@@ -115,6 +119,8 @@ class GymMcpServer {
 
   final ServerConfig _config;
   final http.Client _client;
+  final DateTime Function() _now;
+  final String Function() _newId;
   late final AccountDirectory _accounts;
   late final BearerAuthenticator _authenticator;
   late final fs.FirestoreApi _firestore;
@@ -188,22 +194,22 @@ class GymMcpServer {
         return _unauthorized(request, reason, tokenPresented);
       case Throttled(:final retryAfter):
         return _tooManyRequests(request, retryAfter);
-      case Authenticated(:final account):
-        return await _route(request, account);
+      case Authenticated caller:
+        return await _route(request, caller);
     }
   }
 
-  Future<void> _route(HttpRequest request, VerifiedAccount account) async {
+  Future<void> _route(HttpRequest request, Authenticated caller) async {
     final sessionId = request.headers.value('mcp-session-id');
-    if (sessionId != null) return _routeToSession(request, account, sessionId);
+    if (sessionId != null) return _routeToSession(request, caller, sessionId);
     switch (request.method) {
       case 'POST':
         final body = await _readJson(request);
         if (body == null) return _plain(request, 400, 'Parse error');
         if (_isInitialize(body)) {
-          return _startSession(request, account, body);
+          return _startSession(request, caller, body);
         }
-        return _handleStateless(request, account, body);
+        return _handleStateless(request, caller, body);
       case 'GET' || 'DELETE':
         return _plain(request, 400, 'Missing session ID');
       default:
@@ -213,43 +219,48 @@ class GymMcpServer {
 
   Future<void> _routeToSession(
     HttpRequest request,
-    VerifiedAccount account,
+    Authenticated caller,
     String sessionId,
   ) async {
     final session = _sessions[sessionId];
-    if (session == null || session.uid != account.uid) {
-      return _plain(request, 404, 'Session not found');
-    }
+    final usable =
+        session != null &&
+        session.uid == caller.account.uid &&
+        session.canSave == caller.canSave;
+    if (!usable) return _plain(request, 404, 'Session not found');
     final body = request.method == 'POST' ? await _readJson(request) : null;
     await session.transport.handleRequest(request, body);
   }
 
   Future<void> _startSession(
     HttpRequest request,
-    VerifiedAccount account,
+    Authenticated caller,
     Object body,
   ) async {
     late final StreamableHTTPServerTransport transport;
     transport = _transport(
       sessionIdGenerator: () => generateUUID(),
-      onSessionInitialized: (id) =>
-          _sessions[id] = _Session(account.uid, transport),
+      onSessionInitialized: (id) => _sessions[id] = _Session(
+        caller.account.uid,
+        transport,
+        canSave: caller.canSave,
+      ),
     );
     transport.onclose = () {
       final id = transport.sessionId;
       if (id != null) _sessions.remove(id);
     };
-    await _serverFor(account).connect(transport);
+    await _serverFor(caller).connect(transport);
     await transport.handleRequest(request, body);
   }
 
   Future<void> _handleStateless(
     HttpRequest request,
-    VerifiedAccount account,
+    Authenticated caller,
     Object body,
   ) async {
     final transport = _transport(sessionIdGenerator: () => null);
-    await _serverFor(account).connect(transport);
+    await _serverFor(caller).connect(transport);
     await transport.handleRequest(request, body);
   }
 
@@ -268,19 +279,22 @@ class GymMcpServer {
     return transport;
   }
 
-  McpServer _serverFor(VerifiedAccount account) {
+  McpServer _serverFor(Authenticated caller) {
     final server = McpServer(
       const Implementation(name: 'gym-tracker', version: '0.0.1'),
     );
+    final account = caller.account;
     final context = ToolContext(
       UserScope(account, _firestore, _config.projectId),
       () async => await _accounts.verify(account.uid) != null,
+      canSave: caller.canSave,
     );
     registerListRoutines(server, context);
     registerGetRoutine(server, context);
     registerListWorkouts(server, context);
     registerGetWorkout(server, context);
     registerFindExercises(server, context);
+    registerSaveRoutine(server, context, now: _now, newId: _newId);
     return server;
   }
 
@@ -332,8 +346,9 @@ class GymMcpServer {
 }
 
 class _Session {
-  _Session(this.uid, this.transport);
+  _Session(this.uid, this.transport, {required this.canSave});
 
   final String uid;
   final StreamableHTTPServerTransport transport;
+  final bool canSave;
 }

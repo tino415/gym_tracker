@@ -51,17 +51,19 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('GymTracker')),
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: usable
-                ? _consent(context, gateway, client)
-                : Text(
-                    l10n.connectInvalidLink,
-                    key: const Key('connect-invalid'),
-                    textAlign: TextAlign.center,
-                  ),
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: usable
+                  ? _consent(context, gateway, client)
+                  : Text(
+                      l10n.connectInvalidLink,
+                      key: const Key('connect-invalid'),
+                      textAlign: TextAlign.center,
+                    ),
+            ),
           ),
         ),
       ),
@@ -77,7 +79,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
       children: [
         Text(l10n.connectTitle(client), style: theme.textTheme.headlineSmall),
         const SizedBox(height: 16),
-        Text(l10n.connectWhatItReads(client)),
+        Text(l10n.connectWhatItCanDo(client)),
         const SizedBox(height: 16),
         Text(
           l10n.connectWarning(client),

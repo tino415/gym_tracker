@@ -1,8 +1,8 @@
 # MCP server
 
 `mcp_server/` is a plain Dart package (mcp_dart, Streamable HTTP) that lets an AI
-assistant read a user's data in Firestore; ADR 0001 records how it is
-authenticated. It reads the app's DTOs through a path dependency on this
+assistant read a user's data in Firestore and save routines; ADR 0001 records
+how it is authenticated, ADR 0002 how it writes. It reads the app's DTOs through a path dependency on this
 package, so it resolves with `flutter pub get`, and `flutter analyze` at the
 root skips it. `just mcp` runs it against the emulators from `just up` (also a
 process-compose entry); on the emulators the static dev token is `dev-token`
@@ -19,6 +19,13 @@ token and a rotating 30-day refresh token. Clients are an allowlist by
 grants live in top-level Firestore collections with a TTL on `expiresAt`, so
 the runtime account can write there; a reused code or refresh token revokes its
 grant. The web build must be given `MCP_SERVER_URL` (the recipes do).
+
+A grant can save only when the consent page said so: its POST carries `access:
+"read-write"` only beside the sentence that names saving, so a cached older page
+grants reading alone. The right is stored as `write: true` on the code and on
+every refresh token, and the access token carries it as the claim `wr`; the dev
+token has it. A connection made without it still lists `save_routine`, which
+refuses and tells the assistant to have the user connect again.
 
 The emulator host variables pick the mode. Without them the server reads
 production through Application Default Credentials and refuses to start unless
@@ -44,7 +51,43 @@ Read tools: `list_routines`, `get_routine`, `list_workouts`, `get_workout`,
 `find_exercises`. Workout reads name their fields (the heart-rate series is about
 680 samples inline) and pass through `stripHealthData` (now in
 `lib/sync/health_data.dart`, re-exported by `health_upload_consent.dart`): there
-is no heart-rate scope in v1, so no tool may return one.
+is no heart-rate scope in v1, so no tool may return one. A routine read carries
+its `id`, `version` and each slot's `slotId` and alternatives, so it can be sent
+back to `save_routine` changed.
+
+`save_routine` is the one writing tool (readOnlyHint false, destructiveHint
+true, so the client confirms each call). It takes a whole routine in the read
+shape and writes it in one `documents.commit`:
+
+- Without `id` it creates the routine at version 1, refusing a name a live
+  routine already has, ignoring case; a rename on replace refuses the same way.
+  With `id` it replaces the whole routine at the stored version plus 1,
+  `deletedAtMs` null, and refuses unless `version` is the stored one. An unknown
+  or deleted id refuses; nothing is revived.
+- The commit's preconditions (`exists: false` on a create, the read's
+  `updateTime` on a replace) catch a write that lands between the read and the
+  commit; that refuses too, and the assistant reads again.
+- A slot names a live exercise by `exerciseId`, or a `newExercise` (name, kind,
+  muscles by name) written in the same commit with only the weight parameter. A
+  new name a live exercise has refuses; an exact name of a deleted one revives
+  it with its old parameters, as the web does. The routine copies name, kind,
+  parameters and muscles from the exercise, never from the draft, because the
+  phone copies them back onto the library. A name or kind in the draft must be
+  the library's or the one the routine was read with: the phone does not rewrite
+  a routine when an exercise is renamed.
+- A kept `slotId` or `alternativeId` keeps its id and its set ids by position;
+  alternatives left out of a kept slot keep their ids and sets, and take the
+  library's exercise like the rest.
+- Circuits are adjacent and at least two, except a broken one the phone left
+  (one member removed, or split by a reorder), which passes while the draft
+  keeps exactly its stored members.
+- The refusals are sentences meant for the assistant, and the limits (50
+  exercises, 20 sets, 10 alternatives, names of 1 to 100 characters) are checked
+  in code, not in the input schema, so the sentence is ours.
+
+`test/fixtures/save_routine_doc.json` is the document a create writes. The
+server test writes it and the app test applies it and exports it back
+unchanged, which is what keeps the phone from rewriting a saved routine.
 
 A tool never takes a uid. The only route to `users/{uid}/…` is `UserScope`,
 which needs a `VerifiedAccount` from `AccountDirectory.verify` (Firebase Auth,

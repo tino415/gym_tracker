@@ -4,17 +4,43 @@ import 'package:gym_tracker/sync/health_data.dart';
 import 'account_directory.dart';
 import 'firestore_values.dart';
 
-/// Reads of one user's `users/{uid}/…` documents, and nothing else. The server
-/// reaches Firestore with admin rights, which ignore the security rules, so
-/// this is the only place a path with a uid in it is built.
+/// A document with the time it was last written, which a commit can require to
+/// be unchanged.
+class StoredDocument {
+  StoredDocument(this.fields, this.updateTime);
+
+  final Map<String, Object?> fields;
+  final String updateTime;
+}
+
+/// A document to write, with the [StoredDocument.updateTime] it was read at,
+/// or null when it must not exist yet.
+class DocumentWrite {
+  DocumentWrite(this.fields, {this.readAt});
+
+  final Map<String, Object?> fields;
+  final String? readAt;
+
+  String get syncId => fields['syncId']! as String;
+}
+
+/// A commit's precondition failed: something wrote one of its documents after
+/// it was read.
+class CommitConflict implements Exception {}
+
+/// One user's `users/{uid}/…` documents: reads, and the one write save_routine
+/// makes. The server reaches Firestore with admin rights, which ignore the
+/// security rules, so this is the only place a path with a uid in it is built.
 class UserScope {
   UserScope(VerifiedAccount account, fs.FirestoreApi api, String projectId)
     : _uid = account.uid,
       _documents = api.projects.databases.documents,
+      _database = 'projects/$projectId/databases/(default)',
       _root = 'projects/$projectId/databases/(default)/documents';
 
   final String _uid;
   final fs.ProjectsDatabasesDocumentsResource _documents;
+  final String _database;
   final String _root;
 
   /// Workout documents carry the heart-rate series inline, about 680 samples,
@@ -36,6 +62,55 @@ class UserScope {
   Future<Map<String, Object?>?> routine(String id) => _document('routines', id);
 
   Future<List<Map<String, Object?>>> exercises() => _collection('exercises');
+
+  Future<StoredDocument?> storedRoutine(String id) async {
+    final document = await _get('$_root/users/$_uid/routines/$id');
+    return document == null ? null : _stored(document);
+  }
+
+  Future<List<StoredDocument>> storedExercises() async => [
+    for (final document in await _list('exercises')) _stored(document),
+  ];
+
+  /// The routine and the exercises it adds or revives, all or none.
+  Future<void> commitRoutine(
+    DocumentWrite routine,
+    List<DocumentWrite> exercises,
+  ) async {
+    try {
+      await _documents.commit(
+        fs.CommitRequest(
+          writes: [
+            _write('routines', routine),
+            for (final e in exercises) _write('exercises', e),
+          ],
+        ),
+        _database,
+      );
+    } on fs.DetailedApiRequestError catch (e) {
+      if (_failedPrecondition(e)) throw CommitConflict();
+      rethrow;
+    }
+  }
+
+  fs.Write _write(String collection, DocumentWrite write) => fs.Write(
+    update: fs.Document(
+      name: '$_root/users/$_uid/$collection/${write.syncId}',
+      fields: jsonToDocument(write.fields).fields,
+    ),
+    currentDocument: write.readAt == null
+        ? fs.Precondition(exists: false)
+        : fs.Precondition(updateTime: write.readAt),
+  );
+
+  bool _failedPrecondition(fs.DetailedApiRequestError e) {
+    final error = e.jsonResponse?['error'];
+    final status = error is Map ? error['status'] : null;
+    return e.status == 409 || status == 'FAILED_PRECONDITION';
+  }
+
+  StoredDocument _stored(fs.Document document) =>
+      StoredDocument(documentToJson(document), document.updateTime!);
 
   Future<Map<String, Object?>?> workout(String id) async {
     final found = await _document('workouts', id, fields: _workoutFields);
@@ -119,20 +194,28 @@ class UserScope {
     String id, {
     List<String>? fields,
   }) async {
+    final document = await _get(
+      '$_root/users/$_uid/$collection/$id',
+      fields: fields,
+    );
+    return document == null ? null : documentToJson(document);
+  }
+
+  Future<fs.Document?> _get(String name, {List<String>? fields}) async {
     try {
-      final document = await _documents.get(
-        '$_root/users/$_uid/$collection/$id',
-        mask_fieldPaths: fields,
-      );
-      return documentToJson(document);
+      return await _documents.get(name, mask_fieldPaths: fields);
     } on fs.DetailedApiRequestError catch (e) {
       if (e.status == 404) return null;
       rethrow;
     }
   }
 
-  Future<List<Map<String, Object?>>> _collection(String id) async {
-    final found = <Map<String, Object?>>[];
+  Future<List<Map<String, Object?>>> _collection(String id) async => [
+    for (final document in await _list(id)) documentToJson(document),
+  ];
+
+  Future<List<fs.Document>> _list(String id) async {
+    final found = <fs.Document>[];
     String? pageToken;
     do {
       final page = await _documents.list(
@@ -141,7 +224,7 @@ class UserScope {
         pageSize: 300,
         pageToken: pageToken,
       );
-      found.addAll((page.documents ?? []).map(documentToJson));
+      found.addAll(page.documents ?? []);
       pageToken = page.nextPageToken;
     } while (pageToken != null && pageToken.isNotEmpty);
     return found;

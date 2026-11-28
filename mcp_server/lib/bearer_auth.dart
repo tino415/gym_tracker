@@ -9,9 +9,10 @@ import 'request_budget.dart';
 sealed class AuthOutcome {}
 
 class Authenticated extends AuthOutcome {
-  Authenticated(this.account);
+  Authenticated(this.account, {required this.canSave});
 
   final VerifiedAccount account;
+  final bool canSave;
 }
 
 class Rejected extends AuthOutcome {
@@ -72,7 +73,10 @@ class BearerAuthenticator {
     }
     final wait = _perAccount.spend(claims.uid);
     if (wait != null) return Throttled(wait);
-    return _accountOutcome(await _accounts.verify(claims.uid));
+    return _accountOutcome(
+      await _accounts.verify(claims.uid),
+      canSave: claims.canSave,
+    );
   }
 
   Future<AuthOutcome> _authenticateDev(StaticToken dev) async {
@@ -87,12 +91,15 @@ class BearerAuthenticator {
     }
     final wait = _perAccount.spend(uid);
     if (wait != null) return Throttled(wait);
-    return _accountOutcome(await _accounts.verify(uid));
+    return _accountOutcome(await _accounts.verify(uid), canSave: true);
   }
 
-  AuthOutcome _accountOutcome(VerifiedAccount? account) => account == null
+  AuthOutcome _accountOutcome(
+    VerifiedAccount? account, {
+    required bool canSave,
+  }) => account == null
       ? Rejected('account does not exist or is disabled', tokenPresented: true)
-      : Authenticated(account);
+      : Authenticated(account, canSave: canSave);
 
   String? _bearerToken(String? header) {
     const prefix = 'Bearer ';

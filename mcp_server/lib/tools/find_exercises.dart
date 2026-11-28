@@ -1,6 +1,8 @@
+import 'package:gym_tracker/data/exercise_params.dart';
 import 'package:gym_tracker/sync/sync_dtos.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
+import 'muscles.dart';
 import 'read_tool.dart';
 
 const _maxMatches = 50;
@@ -25,6 +27,8 @@ void registerFindExercises(McpServer server, ToolContext context) {
             'id': JsonSchema.string(),
             'name': JsonSchema.string(),
             'kind': JsonSchema.string(),
+            'muscles': JsonSchema.array(items: JsonSchema.string()),
+            'parameters': JsonSchema.array(items: JsonSchema.string()),
           },
         ),
       ),
@@ -48,7 +52,13 @@ void registerFindExercises(McpServer server, ToolContext context) {
         {
           'exercises': [
             for (final e in shown)
-              {'id': e.syncId, 'name': e.name, 'kind': e.kind},
+              {
+                'id': e.syncId,
+                'name': e.name,
+                'kind': e.kind,
+                'muscles': muscleNames(e.muscleSyncIds),
+                'parameters': [for (final p in e.params.custom) p.name],
+              },
           ],
         },
       );
