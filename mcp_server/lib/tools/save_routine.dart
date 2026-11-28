@@ -179,12 +179,16 @@ class _RoutineSave {
         'change.',
       );
     }
+    if (routine.name.toLowerCase() != draft.name.toLowerCase()) {
+      await _refuseTakenName(draft.name, except: id);
+    }
     return stored;
   }
 
-  Future<void> _refuseTakenName(String name) async {
+  Future<void> _refuseTakenName(String name, {String? except}) async {
     for (final routine in await liveRoutines(_scope)) {
-      if (routine.name.toLowerCase() == name.toLowerCase()) {
+      if (routine.syncId != except &&
+          routine.name.toLowerCase() == name.toLowerCase()) {
         throw ToolRefusal(
           'A routine named ${routine.name} exists: pass id ${routine.syncId} '
           'to change it.',
@@ -253,7 +257,16 @@ class _RoutineBuilder {
     int index,
     RoutineExerciseDto? kept,
   ) {
-    final exercise = _library.resolve(slot.exercise);
+    final exercise = _library.resolve(
+      slot.exercise,
+      asRead: kept == null
+          ? null
+          : (
+              exerciseId: kept.exerciseSyncId,
+              name: kept.exerciseName,
+              kind: kept.exerciseKind,
+            ),
+    );
     return RoutineExerciseDto(
       syncId: kept?.syncId ?? newId(),
       exerciseSyncId: exercise.id,
@@ -276,7 +289,10 @@ class _RoutineBuilder {
   ) {
     final drafts = slot.alternatives;
     final alternatives = drafts == null
-        ? _sortedByOrder(kept?.alternatives ?? const [])
+        ? [
+            for (final a in _sortedByOrder(kept?.alternatives ?? const []))
+              _keptAsStored(a),
+          ]
         : _replacedAlternatives(drafts, primary, kept);
     _refuseBadAlternatives(alternatives, primary);
     return alternatives;
@@ -312,12 +328,36 @@ class _RoutineBuilder {
     return kept;
   }
 
+  AlternativeRefDto _keptAsStored(AlternativeRefDto stored) {
+    final exercise = _library.resolve(
+      _ExistingExercise(stored.exerciseSyncId),
+    );
+    return AlternativeRefDto(
+      syncId: stored.syncId,
+      exerciseSyncId: exercise.id,
+      exerciseName: exercise.name,
+      exerciseKind: exercise.kind,
+      exerciseParams: exercise.params,
+      orderIndex: stored.orderIndex,
+      plannedSets: stored.plannedSets,
+    );
+  }
+
   AlternativeRefDto _alternative(
     _AlternativeDraft draft,
     int index,
     AlternativeRefDto? kept,
   ) {
-    final exercise = _library.resolve(draft.exercise);
+    final exercise = _library.resolve(
+      draft.exercise,
+      asRead: kept == null
+          ? null
+          : (
+              exerciseId: kept.exerciseSyncId,
+              name: kept.exerciseName,
+              kind: kept.exerciseKind,
+            ),
+    );
     return AlternativeRefDto(
       syncId: kept?.syncId ?? newId(),
       exerciseSyncId: exercise.id,
@@ -371,15 +411,24 @@ class _RoutineBuilder {
     ];
   }
 
+  /// A circuit the phone left broken (one member removed, or split by a
+  /// reorder) passes when the draft keeps exactly its stored members.
   void _refuseScatteredCircuits() {
-    final positions = <int, List<int>>{};
-    for (final (index, slot) in _draft.slots.indexed) {
-      final group = slot.circuitGroup;
-      if (group != null) (positions[group] ??= []).add(index);
-    }
-    for (final MapEntry(key: group, value: at) in positions.entries) {
-      final adjacent = at.last - at.first == at.length - 1;
-      if (at.length < 2 || !adjacent) {
+    final drafted = _brokenCircuits([
+      for (final s in _draft.slots) (id: s.slotId, group: s.circuitGroup),
+    ]);
+    final stored = _brokenCircuits([
+      for (final e in _sortedSlots(_stored?.exercises ?? const []))
+        (id: e.syncId, group: e.circuitGroup),
+    ]);
+    for (final MapEntry(key: group, value: members) in drafted.entries) {
+      final storedMembers = stored[group];
+      final keptAsStored =
+          storedMembers != null &&
+          !members.contains(null) &&
+          members.toSet().containsAll(storedMembers) &&
+          storedMembers.toSet().containsAll(members);
+      if (!keptAsStored) {
         throw ToolRefusal(
           'The exercises of circuit $group must be next to each other, and '
           'at least two.',
@@ -388,9 +437,31 @@ class _RoutineBuilder {
     }
   }
 
+  /// The slot ids of each group whose members are fewer than two or not
+  /// next to each other.
+  Map<int, List<String?>> _brokenCircuits(
+    List<({String? id, int? group})> slots,
+  ) {
+    final positions = <int, List<int>>{};
+    for (final (index, slot) in slots.indexed) {
+      final group = slot.group;
+      if (group != null) (positions[group] ??= []).add(index);
+    }
+    return {
+      for (final MapEntry(key: group, value: at) in positions.entries)
+        if (at.length < 2 || at.last - at.first != at.length - 1)
+          group: [for (final i in at) slots[i].id],
+    };
+  }
+
+  List<RoutineExerciseDto> _sortedSlots(List<RoutineExerciseDto> list) =>
+      [...list]..sort((a, b) => a.orderIndex - b.orderIndex);
+
   List<AlternativeRefDto> _sortedByOrder(List<AlternativeRefDto> list) =>
       [...list]..sort((a, b) => a.orderIndex - b.orderIndex);
 }
+
+typedef _AsRead = ({String exerciseId, String name, String kind});
 
 /// What a routine slot copies from a library exercise.
 class _Exercise {
@@ -442,12 +513,15 @@ class _Library {
 
   List<DocumentWrite> get writes => [for (final (_, w) in _added.values) w];
 
-  _Exercise resolve(_ExerciseRef ref) => switch (ref) {
-    _ExistingExercise() => _existing(ref),
+  /// [asRead] is the name and kind the stored routine holds for this slot or
+  /// alternative: the phone does not rewrite a routine when an exercise is
+  /// renamed, so a read can carry either.
+  _Exercise resolve(_ExerciseRef ref, {_AsRead? asRead}) => switch (ref) {
+    _ExistingExercise() => _existing(ref, asRead),
     _NewExercise() => _new(ref),
   };
 
-  _Exercise _existing(_ExistingExercise ref) {
+  _Exercise _existing(_ExistingExercise ref, _AsRead? asRead) {
     final dto = _live[ref.exerciseId];
     if (dto == null) {
       throw ToolRefusal(
@@ -455,9 +529,11 @@ class _Library {
         'newExercise.',
       );
     }
-    final renamed = ref.name != null && ref.name != dto.name;
-    final rekinded = ref.kind != null && ref.kind != dto.kind;
-    if (renamed || rekinded) {
+    final read = asRead?.exerciseId == dto.syncId ? asRead : null;
+    bool matches(String? given, String current, String? readValue) =>
+        given == null || given == current || given == readValue;
+    if (!matches(ref.name, dto.name, read?.name) ||
+        !matches(ref.kind, dto.kind, read?.kind)) {
       throw ToolRefusal(
         'save_routine cannot rename an exercise or change its kind.',
       );
@@ -468,7 +544,7 @@ class _Library {
   _Exercise _new(_NewExercise ref) {
     final key = ref.name.toLowerCase();
     final added = _added[key];
-    if (added != null) return added.$1;
+    if (added != null) return _sameNewExercise(added.$1, ref);
     for (final live in _live.values) {
       if (live.name.toLowerCase() == key) {
         throw ToolRefusal(
@@ -484,6 +560,18 @@ class _Library {
     final exercise = _Exercise.of(dto);
     _added[key] = (exercise, DocumentWrite(dto.toJson(), readAt: readAt));
     return exercise;
+  }
+
+  _Exercise _sameNewExercise(_Exercise added, _NewExercise ref) {
+    final sameMuscles =
+        knownMuscleIds(ref.muscleIds).join() == added.muscleIds.join();
+    if (ref.kind != added.kind || !sameMuscles) {
+      throw ToolRefusal(
+        'The new exercise ${ref.name} is given twice with a different kind '
+        'or muscles.',
+      );
+    }
+    return added;
   }
 
   ExerciseDto _revived(ExerciseDto tombstone, _NewExercise ref) => ExerciseDto(

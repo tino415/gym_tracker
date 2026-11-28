@@ -139,9 +139,8 @@ class ConnectEndpoint {
   }
 }
 
-/// What the consent page sends when the user saw that the assistant can save
-/// routines. A page cached from before says only that it can read, and sends
-/// nothing, so its grant cannot save.
+/// What the consent page sends when it told the user that the assistant can
+/// save routines. Without it the grant can only read.
 const readWriteAccess = 'read-write';
 
 class _ConnectBody {

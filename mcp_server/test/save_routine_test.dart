@@ -87,8 +87,12 @@ void main() {
   Future<McpClient> connect(
     GymMcpServer server, {
     String token = 'dev-token',
+    McpProtocol protocol = McpProtocol.stable,
   }) async {
-    final client = McpClient(const Implementation(name: 'test', version: '1'));
+    final client = McpClient(
+      const Implementation(name: 'test', version: '1'),
+      options: McpClientOptions(protocol: protocol),
+    );
     clients.add(client);
     await client.connect(
       StreamableHttpClientTransport(
@@ -805,6 +809,159 @@ void main() {
         expect(await stored(uid, 'routines', 'id-1'), isNull);
       });
     }
+  });
+
+  test('a read made before an exercise was renamed saves, and the routine takes the library\'s names, kept alternatives too', () async {
+    final (:uid, :client) = await withPushDay();
+    final draft = await read(client, 'id-1');
+    await exercise(uid, 'ex-dips', 'Ring dips', version: 2);
+    await exercise(uid, 'ex-plank', 'Front plank', kind: 'time', muscles: ['muscle:abs'], version: 2);
+    final exercises = (draft['exercises'] as List).cast<Map>();
+
+    final result = await save(client, {
+      ...draft,
+      'exercises': [
+        {...exercises[0]}..remove('alternatives'),
+        ...exercises.skip(1),
+      ],
+    });
+
+    expect(result.isError, isNot(true), reason: text(result));
+    final routine = RoutineTemplateDto.fromJson(
+      (await stored(uid, 'routines', 'id-1'))!,
+    );
+    expect(routine.exercises[1].exerciseName, 'Front plank');
+    expect(routine.exercises[0].alternatives.single.exerciseName, 'Ring dips');
+  });
+
+  test('a circuit the phone left with one member saves as it is; a new one of one still refuses', () async {
+    final (:uid, :client) = await withPushDay();
+    final before = (await stored(uid, 'routines', 'id-1'))!;
+    final slots = (before['exercises'] as List).cast<Map>();
+    await emulators.putDocument(uid, 'routines', 'id-1', {
+      ...before,
+      'exercises': [slots[0], slots[2]],
+    });
+    final draft = await read(client, 'id-1');
+
+    final kept = await save(client, draft);
+    final added = await save(client, {
+      ...await read(client, 'id-1'),
+      'exercises': [
+        ...(draft['exercises'] as List),
+        {
+          'exerciseId': 'ex-row',
+          'circuitGroup': 2,
+          'sets': [
+            {'reps': 10},
+          ],
+        },
+      ],
+    });
+
+    expect(kept.isError, isNot(true), reason: text(kept));
+    expect(
+      text(added),
+      'The exercises of circuit 2 must be next to each other, and at least two.',
+    );
+  });
+
+  test('a replace cannot take the name of another live routine', () async {
+    final (uid: _, :client) = await withPushDay();
+    final pull = await save(client, {
+      'name': 'Pull day',
+      'exercises': [
+        {
+          'exerciseId': 'ex-row',
+          'sets': [
+            {'reps': 10},
+          ],
+        },
+      ],
+    });
+    final pullId =
+        (pull.structuredContent!['routine'] as Map)['id'] as String;
+
+    final renamed = await save(client, {
+      ...await read(client, 'id-1'),
+      'name': 'pull DAY',
+    });
+
+    expect(
+      text(renamed),
+      'A routine named Pull day exists: pass id $pullId to change it.',
+    );
+  });
+
+  test('the same new exercise given twice with another kind refuses', () async {
+    final uid = await emulators.createAccount();
+    await seedLibrary(uid);
+    final client = await connect(await serverFor(uid));
+
+    final result = await save(client, {
+      'name': 'Holds',
+      'exercises': [
+        {
+          'newExercise': {'name': 'Hold', 'kind': 'reps'},
+          'sets': [
+            {'reps': 5},
+          ],
+        },
+        {
+          'newExercise': {'name': 'hold', 'kind': 'time'},
+          'sets': [
+            {'seconds': 30},
+          ],
+        },
+      ],
+    });
+
+    expect(
+      text(result),
+      'The new exercise hold is given twice with a different kind or muscles.',
+    );
+  });
+
+  test('a routine without exercises refuses and writes nothing', () async {
+    final uid = await emulators.createAccount();
+    final client = await connect(await serverFor(uid));
+
+    final result = await save(client, {'name': 'Empty'});
+
+    expect(result.isError, isTrue);
+    expect(await stored(uid, 'routines', 'id-1'), isNull);
+  });
+
+  test('a session opened without the save right is not resumed by a token that has it', () async {
+    final uid = await emulators.createAccount();
+    final server = await serverFor(uid);
+    final config = emulators.config;
+    final readOnly = AccessTokens(
+      SigningKeys(config.signingKeys, config.signingKid),
+      issuer: config.issuer,
+      audience: config.mcpUrl,
+      now: () => clock,
+    ).issue(AccessClaims(uid: uid, grantId: 'g-read', clientId: 'c'));
+    final client = await connect(
+      server,
+      token: readOnly,
+      protocol: McpProtocol.legacy,
+    );
+    final session =
+        (client.transport as StreamableHttpClientTransport).sessionId;
+
+    final response = await http.post(
+      Uri.parse('http://127.0.0.1:${server.port}/mcp'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        'Authorization': 'Bearer dev-token',
+        'mcp-session-id': session!,
+      },
+      body: jsonEncode({'jsonrpc': '2.0', 'id': 9, 'method': 'tools/list'}),
+    );
+
+    expect(response.statusCode, 404);
   });
 
   test('a token without the save right refuses with the connection sentence, and get_routine still answers', () async {

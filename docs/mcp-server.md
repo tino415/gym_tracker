@@ -60,19 +60,27 @@ true, so the client confirms each call). It takes a whole routine in the read
 shape and writes it in one `documents.commit`:
 
 - Without `id` it creates the routine at version 1, refusing a name a live
-  routine already has, ignoring case. With `id` it replaces the whole routine at
-  the stored version plus 1, `deletedAtMs` null, and refuses unless `version` is
-  the stored one. An unknown or deleted id refuses; nothing is revived.
+  routine already has, ignoring case; a rename on replace refuses the same way.
+  With `id` it replaces the whole routine at the stored version plus 1,
+  `deletedAtMs` null, and refuses unless `version` is the stored one. An unknown
+  or deleted id refuses; nothing is revived.
 - The commit's preconditions (`exists: false` on a create, the read's
   `updateTime` on a replace) catch a write that lands between the read and the
   commit; that refuses too, and the assistant reads again.
 - A slot names a live exercise by `exerciseId`, or a `newExercise` (name, kind,
   muscles by name) written in the same commit with only the weight parameter. A
   new name a live exercise has refuses; an exact name of a deleted one revives
-  it. The routine copies name, kind, parameters and muscles from the exercise,
-  never from the draft, because the phone copies them back onto the library.
+  it with its old parameters, as the web does. The routine copies name, kind,
+  parameters and muscles from the exercise, never from the draft, because the
+  phone copies them back onto the library. A name or kind in the draft must be
+  the library's or the one the routine was read with: the phone does not rewrite
+  a routine when an exercise is renamed.
 - A kept `slotId` or `alternativeId` keeps its id and its set ids by position;
-  alternatives left out of a kept slot stay as stored.
+  alternatives left out of a kept slot keep their ids and sets, and take the
+  library's exercise like the rest.
+- Circuits are adjacent and at least two, except a broken one the phone left
+  (one member removed, or split by a reorder), which passes while the draft
+  keeps exactly its stored members.
 - The refusals are sentences meant for the assistant, and the limits (50
   exercises, 20 sets, 10 alternatives, names of 1 to 100 characters) are checked
   in code, not in the input schema, so the sentence is ours.

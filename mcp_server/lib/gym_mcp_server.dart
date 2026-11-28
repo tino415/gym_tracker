@@ -226,7 +226,7 @@ class GymMcpServer {
     final usable =
         session != null &&
         session.uid == caller.account.uid &&
-        (caller.canSave || !session.canSave);
+        session.canSave == caller.canSave;
     if (!usable) return _plain(request, 404, 'Session not found');
     final body = request.method == 'POST' ? await _readJson(request) : null;
     await session.transport.handleRequest(request, body);
